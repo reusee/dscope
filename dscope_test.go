@@ -3,6 +3,7 @@ package dscope
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -897,6 +898,30 @@ func TestFlatten(t *testing.T) {
 	}
 	s.Assign(&i)
 	if i != 43 {
+		t.Fatal()
+	}
+}
+
+func TestOverwriteNew(t *testing.T) {
+	scope := New(
+		func() int {
+			return 42
+		},
+		func(i int) string {
+			return strconv.Itoa(i)
+		},
+	)
+	scope = scope.Sub(
+		func() int {
+			return 24
+		},
+		func(i int) string {
+			return "foo"
+		},
+	)
+	var s string
+	scope.Assign(&s)
+	if s != "foo" {
 		t.Fatal()
 	}
 }
