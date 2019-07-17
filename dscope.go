@@ -1,23 +1,13 @@
 package dscope
 
 import (
-	crand "crypto/rand"
-	"encoding/binary"
 	"fmt"
 	"reflect"
 	"sort"
 	"sync"
 	"sync/atomic"
 	"unsafe"
-
-	"golang.org/x/exp/rand"
 )
-
-func init() {
-	var seed uint64
-	binary.Read(crand.Reader, binary.LittleEndian, &seed)
-	rand.Seed(seed)
-}
 
 type _TypeDecl struct {
 	InitFunc   interface{}
@@ -358,6 +348,7 @@ var (
 		return v
 	}()
 	typeIDLock sync.Mutex
+	nextTypeID _TypeID = 42 // guarded by typeIDLock
 )
 
 func getTypeID(t reflect.Type) (r _TypeID) {
@@ -375,9 +366,10 @@ func getTypeID(t reflect.Type) (r _TypeID) {
 	for k, v := range m {
 		newM[k] = v
 	}
-	i := _TypeID(rand.Int63())
-	newM[t] = i
+	nextTypeID++
+	id := nextTypeID
+	newM[t] = id
 	typeIDMap.Store(newM)
 	typeIDLock.Unlock()
-	return i
+	return id
 }
