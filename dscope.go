@@ -10,7 +10,8 @@ import (
 )
 
 type _TypeDecl struct {
-	InitFunc   interface{}
+	Kind       reflect.Kind
+	Init       interface{}
 	Get        func(scope Scope) []reflect.Value
 	ValueIndex int
 	TypeID     _TypeID
@@ -85,30 +86,47 @@ func (s Scope) Sub(
 	var newDeclsTemplate []_TypeDecl
 	var shadowedIDs []_TypeID
 	initNumOuts := make([]int, 0, len(inits))
+	initKinds := make([]reflect.Kind, 0, len(inits))
 	for _, init := range inits {
 		initType := reflect.TypeOf(init)
-		if initType.Kind() != reflect.Func {
-			panic(fmt.Errorf("not func: %T", init))
-		}
-		numOut := initType.NumOut()
-		if numOut == 0 {
-			panic(fmt.Errorf("bad initializer: %T", init))
-		}
-		initNumOuts = append(initNumOuts, numOut)
-		ids := make([]_TypeID, 0, numOut)
-		for i := 0; i < numOut; i++ {
-			t := initType.Out(i)
+		initKinds = append(initKinds, initType.Kind())
+		switch initType.Kind() {
+		case reflect.Func:
+			numOut := initType.NumOut()
+			if numOut == 0 {
+				panic(fmt.Errorf("bad initializer: %T", init))
+			}
+			initNumOuts = append(initNumOuts, numOut)
+			for i := 0; i < numOut; i++ {
+				t := initType.Out(i)
+				id := getTypeID(t)
+				newDeclsTemplate = append(newDeclsTemplate, _TypeDecl{
+					Kind:   reflect.Func,
+					TypeID: id,
+					Init:   init,
+				})
+				if t != scopeType {
+					if _, ok := s.declarations.Load(id); ok {
+						shadowedIDs = append(shadowedIDs, id)
+					}
+				}
+			}
+		case reflect.Ptr:
+			initNumOuts = append(initNumOuts, 0)
+			t := initType.Elem()
 			id := getTypeID(t)
-			ids = append(ids, id)
 			newDeclsTemplate = append(newDeclsTemplate, _TypeDecl{
-				TypeID:   id,
-				InitFunc: init,
+				Kind:   reflect.Ptr,
+				TypeID: id,
+				Init:   init,
 			})
 			if t != scopeType {
 				if _, ok := s.declarations.Load(id); ok {
 					shadowedIDs = append(shadowedIDs, id)
 				}
 			}
+		default:
+			panic(fmt.Errorf("invalid provider type: %T", init))
 		}
 	}
 	newDeclOrders := make([]int, 0, len(newDeclsTemplate))
@@ -137,29 +155,37 @@ func (s Scope) Sub(
 	traverse = func(decl _TypeDecl) {
 		color := colors[decl.TypeID]
 		if color == 1 {
-			panic(fmt.Errorf("dependency loop: %T", decl.InitFunc))
+			panic(fmt.Errorf("dependency loop: %T", decl.Init))
 		} else if color == 2 {
 			return
 		}
-		initType := reflect.TypeOf(decl.InitFunc)
-		numIn := initType.NumIn()
-		if numIn == 0 {
+		switch decl.Kind {
+		case reflect.Func:
+			initType := reflect.TypeOf(decl.Init)
+			numIn := initType.NumIn()
+			if numIn == 0 {
+				colors[decl.TypeID] = 2
+				return
+			}
+			colors[decl.TypeID] = 1
+			for i := 0; i < numIn; i++ {
+				requiredType := initType.In(i)
+				id2 := getTypeID(requiredType)
+				decl2, ok := declarationsTemplate.Load(id2)
+				if !ok {
+					panic(fmt.Errorf("no declaration for %v required by %T", requiredType, decl.Init))
+				}
+				downstreams[id2] = append(
+					downstreams[id2],
+					decl.TypeID,
+				)
+				traverse(decl2)
+			}
+		case reflect.Ptr:
 			colors[decl.TypeID] = 2
 			return
-		}
-		colors[decl.TypeID] = 1
-		for i := 0; i < numIn; i++ {
-			requiredType := initType.In(i)
-			id2 := getTypeID(requiredType)
-			decl2, ok := declarationsTemplate.Load(id2)
-			if !ok {
-				panic(fmt.Errorf("no declaration for %v required by %T", requiredType, decl.InitFunc))
-			}
-			downstreams[id2] = append(
-				downstreams[id2],
-				decl.TypeID,
-			)
-			traverse(decl2)
+		default:
+			panic("impossible")
 		}
 		colors[decl.TypeID] = 2
 	}
@@ -222,14 +248,32 @@ func (s Scope) Sub(
 			return scope
 		}
 		for idx, init := range inits {
-			get := cachedInit(init)
-			numOut := initNumOuts[idx]
-			for i := 0; i < numOut; i++ {
+			switch initKinds[idx] {
+			case reflect.Func:
+				get := cachedInit(init)
+				numOut := initNumOuts[idx]
+				for i := 0; i < numOut; i++ {
+					info := newDeclsTemplate[n]
+					newDecls[info.ValueIndex] = _TypeDecl{
+						Kind:       info.Kind,
+						Init:       init,
+						Get:        get,
+						ValueIndex: i,
+						TypeID:     info.TypeID,
+					}
+					n++
+				}
+			case reflect.Ptr:
+				v := reflect.ValueOf(init).Elem()
+				get := func(_ Scope) []reflect.Value {
+					return []reflect.Value{v}
+				}
 				info := newDeclsTemplate[n]
 				newDecls[info.ValueIndex] = _TypeDecl{
-					InitFunc:   init,
+					Kind:       info.Kind,
+					Init:       init,
 					Get:        get,
-					ValueIndex: i,
+					ValueIndex: 0,
 					TypeID:     info.TypeID,
 				}
 				n++
@@ -244,7 +288,7 @@ func (s Scope) Sub(
 				if !ok { // NOCOVER
 					panic("impossible")
 				}
-				decl.Get = cachedInit(decl.InitFunc)
+				decl.Get = cachedInit(decl.Init)
 				resetDecls = append(resetDecls, decl)
 			}
 			declarations = append(declarations, resetDecls)

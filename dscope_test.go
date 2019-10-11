@@ -74,7 +74,7 @@ func TestPanic(t *testing.T) {
 			}
 			if !strings.Contains(
 				fmt.Sprintf("%v", p),
-				"not func",
+				"invalid provider type",
 			) {
 				t.Fatalf("unexpected: %v", p)
 			}
@@ -924,4 +924,72 @@ func TestOverwriteNew(t *testing.T) {
 	if s != "foo" {
 		t.Fatal()
 	}
+}
+
+func TestPointerProvider(t *testing.T) {
+	i := float64(42)
+	scope := New(
+		&i,
+		func(f float64) int {
+			return int(f)
+		},
+	)
+	scope.Call(func(
+		i int,
+	) {
+		if i != 42 {
+			t.Fatal()
+		}
+	})
+
+	scope = New(
+		func(f float64) int {
+			return int(f)
+		},
+		&i,
+	)
+	scope.Call(func(
+		i int,
+	) {
+		if i != 42 {
+			t.Fatal()
+		}
+	})
+
+	scope = New(
+		func(f float64) int {
+			return int(f)
+		},
+		&i,
+	).Sub(
+		func() int {
+			return 24
+		},
+	)
+	scope.Call(func(
+		i int,
+	) {
+		if i != 24 {
+			t.Fatal()
+		}
+	})
+
+	scope = New(
+		func(f float64) int {
+			return int(f)
+		},
+		&i,
+	).Sub(
+		func() float64 {
+			return 24
+		},
+	)
+	scope.Call(func(
+		i int,
+	) {
+		if i != 24 {
+			t.Fatal()
+		}
+	})
+
 }
