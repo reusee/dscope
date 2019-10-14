@@ -327,7 +327,7 @@ func TestOnce(t *testing.T) {
 			var i int
 			scope.Assign(&i)
 			if i != 42 {
-				t.Fatal()
+				panic("fail")
 			}
 			wg.Done()
 		}()
@@ -404,7 +404,7 @@ func TestOnceFunc(t *testing.T) {
 			var fn func() int
 			scope.Assign(&fn)
 			if fn() != 42 {
-				t.Fatal()
+				panic("fail")
 			}
 			wg.Done()
 		}()
@@ -442,7 +442,7 @@ func TestSubLazyMulti(t *testing.T) {
 			var i int
 			scope.Assign(&i)
 			if i != 42 {
-				t.Fatal()
+				panic("fail")
 			}
 			wg.Done()
 		}()
@@ -450,7 +450,7 @@ func TestSubLazyMulti(t *testing.T) {
 			var i int
 			scope.Assign(&i)
 			if i != 42 {
-				t.Fatal()
+				panic("fail")
 			}
 			wg.Done()
 		}()

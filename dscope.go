@@ -44,9 +44,7 @@ func cachedInit(init interface{}) func(Scope) []reflect.Value {
 }
 
 var (
-	scopeType     = reflect.TypeOf((*Scope)(nil)).Elem()
-	scopeTypeID   = getTypeID(scopeType)
-	scopeInitType = reflect.TypeOf((*func() Scope)(nil)).Elem()
+	scopeType = reflect.TypeOf((*Scope)(nil)).Elem()
 )
 
 var subFuncs _SubFuncsMap
