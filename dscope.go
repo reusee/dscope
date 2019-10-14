@@ -140,10 +140,8 @@ func (s Scope) Sub(
 		newDeclsTemplate[idx].ValueIndex = i
 	}
 
-	declarationsTemplate := make(UnionMap, len(s.declarations))
-	copy(declarationsTemplate, s.declarations)
-	sortedNewDeclsTemplate := make([]_TypeDecl, len(newDeclsTemplate))
-	copy(sortedNewDeclsTemplate, newDeclsTemplate)
+	declarationsTemplate := append(s.declarations[:0:0], s.declarations...)
+	sortedNewDeclsTemplate := append(newDeclsTemplate[:0:0], newDeclsTemplate...)
 	sort.Slice(sortedNewDeclsTemplate, func(i, j int) bool {
 		return sortedNewDeclsTemplate[i].TypeID < sortedNewDeclsTemplate[j].TypeID
 	})
