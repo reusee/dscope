@@ -3,6 +3,7 @@ package dscope
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -80,7 +81,7 @@ func (s Scope) Sub(
 	subFuncsLock.RUnlock()
 
 	// collect new decls
-	var declsByPosition []*_TypeDecl
+	var newDeclsTemplate []_TypeDecl
 	var shadowedIDs []_TypeID
 	initNumOuts := make([]int, 0, len(inits))
 	initKinds := make([]reflect.Kind, 0, len(inits))
@@ -97,7 +98,7 @@ func (s Scope) Sub(
 			for i := 0; i < numOut; i++ {
 				t := initType.Out(i)
 				id := getTypeID(t)
-				declsByPosition = append(declsByPosition, &_TypeDecl{
+				newDeclsTemplate = append(newDeclsTemplate, _TypeDecl{
 					Kind:   reflect.Func,
 					TypeID: id,
 					Init:   init,
@@ -112,7 +113,7 @@ func (s Scope) Sub(
 			initNumOuts = append(initNumOuts, 0)
 			t := initType.Elem()
 			id := getTypeID(t)
-			declsByPosition = append(declsByPosition, &_TypeDecl{
+			newDeclsTemplate = append(newDeclsTemplate, _TypeDecl{
 				Kind:   reflect.Ptr,
 				TypeID: id,
 				Init:   init,
@@ -126,18 +127,23 @@ func (s Scope) Sub(
 			panic(fmt.Errorf("invalid provider type: %T", init))
 		}
 	}
-
-	var declsByTypeID []*_TypeDecl
-	for _, decl := range declsByPosition {
-		if len(declsByTypeID) <= int(decl.TypeID) {
-			declsByTypeID = append(declsByTypeID, make([]*_TypeDecl, int(decl.TypeID)-len(declsByTypeID)+1)...)
-		}
-		declsByTypeID[decl.TypeID] = decl
+	newDeclOrders := make([]int, 0, len(newDeclsTemplate))
+	for i := range newDeclsTemplate {
+		newDeclOrders = append(newDeclOrders, i)
 	}
-	declarationsTemplate := append(
-		append(s.declarations[:0:0], s.declarations...),
-		declsByTypeID,
-	)
+	sort.Slice(newDeclOrders, func(i, j int) bool {
+		return newDeclsTemplate[newDeclOrders[i]].TypeID < newDeclsTemplate[newDeclOrders[j]].TypeID
+	})
+	for i, idx := range newDeclOrders {
+		newDeclsTemplate[idx].ValueIndex = i
+	}
+
+	declarationsTemplate := append(s.declarations[:0:0], s.declarations...)
+	sortedNewDeclsTemplate := append(newDeclsTemplate[:0:0], newDeclsTemplate...)
+	sort.Slice(sortedNewDeclsTemplate, func(i, j int) bool {
+		return sortedNewDeclsTemplate[i].TypeID < sortedNewDeclsTemplate[j].TypeID
+	})
+	declarationsTemplate = append(declarationsTemplate, sortedNewDeclsTemplate)
 
 	colors := make(map[_TypeID]int)
 	downstreams := make(map[_TypeID][]_TypeID)
@@ -186,7 +192,6 @@ func (s Scope) Sub(
 	// reset info
 	set := make(map[_TypeID]struct{})
 	var resetIDs []_TypeID
-	var maxResetID _TypeID
 	colors = make(map[_TypeID]int)
 	var resetDownstream func(id _TypeID)
 	resetDownstream = func(id _TypeID) {
@@ -199,9 +204,6 @@ func (s Scope) Sub(
 			}
 			if _, ok := set[downstream]; !ok {
 				resetIDs = append(resetIDs, downstream)
-				if downstream > maxResetID {
-					maxResetID = downstream
-				}
 			}
 			set[downstream] = struct{}{}
 			resetDownstream(downstream)
@@ -211,6 +213,9 @@ func (s Scope) Sub(
 	for _, id := range shadowedIDs {
 		resetDownstream(id)
 	}
+	sort.Slice(resetIDs, func(i, j int) bool {
+		return resetIDs[i] < resetIDs[j]
+	})
 
 	// fn
 	fn := func(s Scope, inits []interface{}) Scope {
@@ -220,12 +225,12 @@ func (s Scope) Sub(
 		var declarations UnionMap
 		if len(s.declarations) > 32 {
 			// flatten
-			var decls []*_TypeDecl
+			var decls []_TypeDecl
 			s.declarations.Range(func(decl _TypeDecl) {
-				if len(decls) <= int(decl.TypeID) {
-					decls = append(decls, make([]*_TypeDecl, int(decl.TypeID)-len(decls)+1)...)
-				}
-				decls[decl.TypeID] = &decl
+				decls = append(decls, decl)
+			})
+			sort.Slice(decls, func(i, j int) bool {
+				return decls[i].TypeID < decls[j].TypeID
 			})
 			declarations = UnionMap{decls}
 		} else {
@@ -233,7 +238,7 @@ func (s Scope) Sub(
 			copy(declarations, s.declarations)
 		}
 
-		newDecls := make([]*_TypeDecl, len(declsByTypeID))
+		newDecls := make([]_TypeDecl, len(newDeclsTemplate))
 		n := 0
 		inits[len(inits)-1] = func() Scope {
 			return scope
@@ -244,8 +249,8 @@ func (s Scope) Sub(
 				get := cachedInit(init)
 				numOut := initNumOuts[idx]
 				for i := 0; i < numOut; i++ {
-					info := declsByPosition[n]
-					newDecls[info.TypeID] = &_TypeDecl{
+					info := newDeclsTemplate[n]
+					newDecls[info.ValueIndex] = _TypeDecl{
 						Kind:       info.Kind,
 						Init:       init,
 						Get:        get,
@@ -259,8 +264,8 @@ func (s Scope) Sub(
 				get := func(_ Scope) []reflect.Value {
 					return []reflect.Value{v}
 				}
-				info := declsByPosition[n]
-				newDecls[info.TypeID] = &_TypeDecl{
+				info := newDeclsTemplate[n]
+				newDecls[info.ValueIndex] = _TypeDecl{
 					Kind:       info.Kind,
 					Init:       init,
 					Get:        get,
@@ -273,14 +278,14 @@ func (s Scope) Sub(
 		declarations = append(declarations, newDecls)
 
 		if len(resetIDs) > 0 {
-			resetDecls := make([]*_TypeDecl, maxResetID+1)
+			resetDecls := make([]_TypeDecl, 0, len(resetIDs))
 			for _, id := range resetIDs {
 				decl, ok := declarations.Load(id)
 				if !ok { // NOCOVER
 					panic("impossible")
 				}
 				decl.Get = cachedInit(decl.Init)
-				resetDecls[decl.TypeID] = &decl
+				resetDecls = append(resetDecls, decl)
 			}
 			declarations = append(declarations, resetDecls)
 		}
@@ -383,7 +388,7 @@ var (
 		return v
 	}()
 	typeIDLock sync.Mutex
-	nextTypeID _TypeID = 1 // guarded by typeIDLock
+	nextTypeID _TypeID = 42 // guarded by typeIDLock
 )
 
 func getTypeID(t reflect.Type) (r _TypeID) {
@@ -401,8 +406,8 @@ func getTypeID(t reflect.Type) (r _TypeID) {
 	for k, v := range m {
 		newM[k] = v
 	}
-	id := nextTypeID
 	nextTypeID++
+	id := nextTypeID
 	newM[t] = id
 	typeIDMap.Store(newM)
 	typeIDLock.Unlock()

@@ -4,16 +4,12 @@ import "testing"
 
 func TestUnionMap(t *testing.T) {
 	var m UnionMap
-	m = append(m, []*_TypeDecl{
-		nil,
+	m = append(m, []_TypeDecl{
 		{TypeID: 1, ValueIndex: 1},
 		{TypeID: 2, ValueIndex: 2},
 		{TypeID: 3, ValueIndex: 3},
 	})
-	m = append(m, []*_TypeDecl{
-		nil,
-		nil,
-		nil,
+	m = append(m, []_TypeDecl{
 		{TypeID: 3, ValueIndex: 6},
 	})
 
