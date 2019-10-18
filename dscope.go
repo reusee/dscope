@@ -13,6 +13,7 @@ type _TypeDecl struct {
 	Kind       reflect.Kind
 	Init       interface{}
 	Get        func(scope Scope) []reflect.Value
+	Value      reflect.Value
 	ValueIndex int
 	TypeID     _TypeID
 }
@@ -260,19 +261,12 @@ func (s Scope) Sub(
 					n++
 				}
 			case reflect.Ptr:
-				values := []reflect.Value{
-					reflect.ValueOf(init).Elem(),
-				}
-				get := func(_ Scope) []reflect.Value {
-					return values
-				}
 				info := newDeclsTemplate[n]
 				newDecls[info.ValueIndex] = _TypeDecl{
-					Kind:       info.Kind,
-					Init:       init,
-					Get:        get,
-					ValueIndex: 0,
-					TypeID:     info.TypeID,
+					Kind:   info.Kind,
+					Init:   init,
+					Value:  reflect.ValueOf(init).Elem(),
+					TypeID: info.TypeID,
 				}
 				n++
 			}
@@ -334,7 +328,13 @@ func (scope Scope) Get(t reflect.Type) (
 	if !ok {
 		return
 	}
-	return decl.Get(scope)[decl.ValueIndex], true
+	switch decl.Kind {
+	case reflect.Func:
+		return decl.Get(scope)[decl.ValueIndex], true
+	case reflect.Ptr:
+		return decl.Value, true
+	}
+	panic("impossible")
 }
 
 func (scope Scope) Call(fn interface{}, rets ...interface{}) []reflect.Value {
