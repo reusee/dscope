@@ -361,23 +361,30 @@ func (scope Scope) CallValue(fnValue reflect.Value, retArgs ...interface{}) []re
 	}
 	retValues := fnValue.Call(args)
 	if len(retValues) > 0 && len(retArgs) > 0 {
+		var m map[reflect.Type]int
+		v, ok := returnTypeMap.Load(fnType)
+		if !ok {
+			m = make(map[reflect.Type]int)
+			for i, ret := range retValues {
+				m[ret.Type()] = i
+			}
+			returnTypeMap.Store(fnType, m)
+		} else {
+			m = v.(map[reflect.Type]int)
+		}
 		for _, retArg := range retArgs {
 			v := reflect.ValueOf(retArg)
 			t := v.Type()
 			if t.Kind() != reflect.Ptr {
 				panic(fmt.Errorf("return param is not pointer: %s", t.String()))
 			}
-			t = t.Elem()
-			for _, retValue := range retValues {
-				if retValue.Type() == t {
-					v.Elem().Set(retValue)
-					break
-				}
-			}
+			v.Elem().Set(retValues[m[t.Elem()]])
 		}
 	}
 	return retValues
 }
+
+var returnTypeMap sync.Map
 
 func (scope Scope) IsZero() bool {
 	return len(scope.declarations) == 0
