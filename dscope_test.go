@@ -993,3 +993,14 @@ func TestPointerProvider(t *testing.T) {
 	})
 
 }
+
+func TestAssignNotExistsReturn(t *testing.T) {
+	var foo int
+	var s string
+	New().Call(func() string {
+		return "42"
+	}, &foo, &s)
+	if s != "42" {
+		t.Fatal()
+	}
+}
