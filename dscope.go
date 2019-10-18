@@ -388,8 +388,8 @@ func (scope Scope) CallValue(fnValue reflect.Value, retArgs ...interface{}) []re
 		v, ok := returnTypeMap.Load(fnType)
 		if !ok {
 			m = make(map[reflect.Type]int)
-			for i, ret := range retValues {
-				m[ret.Type()] = i
+			for i := 0; i < fnType.NumOut(); i++ {
+				m[fnType.Out(i)] = i
 			}
 			returnTypeMap.Store(fnType, m)
 		} else {
