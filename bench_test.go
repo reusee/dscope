@@ -448,6 +448,30 @@ func BenchmarkCallPointerProvider(b *testing.B) {
 	}
 }
 
+func BenchmarkSimpleCall(b *testing.B) {
+	type Foo int
+	f := Foo(42)
+	scope := New(&f)
+	var ret Foo
+	for i := 0; i < b.N; i++ {
+		scope.Call(func(
+			f Foo,
+		) Foo {
+			return f
+		}, &ret)
+	}
+}
+
+func BenchmarkCallWithScope(b *testing.B) {
+	scope := New()
+	for i := 0; i < b.N; i++ {
+		scope.Call(func(
+			_ Scope,
+		) {
+		})
+	}
+}
+
 func BenchmarkAssign(b *testing.B) {
 	scope := New().Sub(
 		func() T1 { return 42 },
