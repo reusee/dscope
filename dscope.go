@@ -349,17 +349,31 @@ func (scope Scope) CallValue(fnValue reflect.Value, retArgs ...interface{}) []re
 	if h, ok := FastCalls[fnType]; ok {
 		return h(scope, fnValue, retArgs)
 	}
-	numIn := fnType.NumIn()
-	args := make([]reflect.Value, numIn)
-	for i := 0; i < numIn; i++ {
-		argType := fnType.In(i)
-		argValue, ok := scope.Get(argType)
-		if !ok {
-			panic(fmt.Errorf("no declaration for %s", argType.String()))
+
+	var fn func(Scope) []reflect.Value
+	if v, ok := getArgsFunc.Load(fnType); !ok {
+		var types []reflect.Type
+		numIn := fnType.NumIn()
+		for i := 0; i < numIn; i++ {
+			types = append(types, fnType.In(i))
 		}
-		args[i] = argValue
+		fn = func(scope Scope) []reflect.Value {
+			ret := make([]reflect.Value, len(types))
+			for i, t := range types {
+				ret[i], ok = scope.Get(t)
+				if !ok {
+					panic(fmt.Errorf("no declaration for %s", t.String()))
+				}
+			}
+			return ret
+		}
+		getArgsFunc.Store(fnType, fn)
+	} else {
+		fn = v.(func(Scope) []reflect.Value)
 	}
-	retValues := fnValue.Call(args)
+
+	retValues := fnValue.Call(fn(scope))
+
 	if len(retValues) > 0 && len(retArgs) > 0 {
 		var m map[reflect.Type]int
 		v, ok := returnTypeMap.Load(fnType)
@@ -381,10 +395,13 @@ func (scope Scope) CallValue(fnValue reflect.Value, retArgs ...interface{}) []re
 			v.Elem().Set(retValues[m[t.Elem()]])
 		}
 	}
+
 	return retValues
 }
 
 var returnTypeMap sync.Map
+
+var getArgsFunc sync.Map
 
 func (scope Scope) IsZero() bool {
 	return len(scope.declarations) == 0
