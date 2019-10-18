@@ -319,11 +319,10 @@ func (scope Scope) Assign(objs ...interface{}) {
 	}
 }
 
-func (scope Scope) Get(t reflect.Type) (
+func (scope Scope) GetByID(id _TypeID) (
 	ret reflect.Value,
 	ok bool,
 ) {
-	id := getTypeID(t)
 	decl, ok := scope.declarations.Load(id)
 	if !ok {
 		return
@@ -335,6 +334,13 @@ func (scope Scope) Get(t reflect.Type) (
 		return decl.Value, true
 	}
 	panic("impossible")
+}
+
+func (scope Scope) Get(t reflect.Type) (
+	ret reflect.Value,
+	ok bool,
+) {
+	return scope.GetByID(getTypeID(t))
 }
 
 func (scope Scope) Call(fn interface{}, rets ...interface{}) []reflect.Value {
@@ -353,16 +359,19 @@ func (scope Scope) CallValue(fnValue reflect.Value, retArgs ...interface{}) []re
 	var fn func(Scope) []reflect.Value
 	if v, ok := getArgsFunc.Load(fnType); !ok {
 		var types []reflect.Type
+		var ids []_TypeID
 		numIn := fnType.NumIn()
 		for i := 0; i < numIn; i++ {
-			types = append(types, fnType.In(i))
+			t := fnType.In(i)
+			types = append(types, t)
+			ids = append(ids, getTypeID(t))
 		}
 		fn = func(scope Scope) []reflect.Value {
-			ret := make([]reflect.Value, len(types))
-			for i, t := range types {
-				ret[i], ok = scope.Get(t)
+			ret := make([]reflect.Value, len(ids))
+			for i, id := range ids {
+				ret[i], ok = scope.GetByID(id)
 				if !ok {
-					panic(fmt.Errorf("no declaration for %s", t.String()))
+					panic(fmt.Errorf("no declaration for %s", types[i].String()))
 				}
 			}
 			return ret
