@@ -260,9 +260,11 @@ func (s Scope) Sub(
 					n++
 				}
 			case reflect.Ptr:
-				v := reflect.ValueOf(init).Elem()
+				values := []reflect.Value{
+					reflect.ValueOf(init).Elem(),
+				}
 				get := func(_ Scope) []reflect.Value {
-					return []reflect.Value{v}
+					return values
 				}
 				info := newDeclsTemplate[n]
 				newDecls[info.ValueIndex] = _TypeDecl{
