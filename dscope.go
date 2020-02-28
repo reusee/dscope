@@ -18,7 +18,7 @@ type _TypeDecl struct {
 	TypeID     _TypeID
 }
 
-type _TypeID int64
+type _TypeID int
 
 var typeIDSize = int(unsafe.Sizeof(_TypeID(0)))
 
