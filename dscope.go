@@ -365,6 +365,7 @@ func (scope Scope) CallValue(fnValue reflect.Value, retArgs ...interface{}) []re
 		}
 		fn = func(scope Scope) []reflect.Value {
 			ret := make([]reflect.Value, len(ids))
+			var ok bool
 			for i, id := range ids {
 				ret[i], ok = scope.GetByID(id)
 				if !ok {

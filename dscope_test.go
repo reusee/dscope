@@ -1004,3 +1004,15 @@ func TestAssignNotExistsReturn(t *testing.T) {
 		t.Fatal()
 	}
 }
+
+func TestRacyCall(t *testing.T) {
+	s := New(func() int {
+		return 42
+	})
+	for i := 0; i < 512; i++ {
+		go func() {
+			s.Call(func(i int) {
+			})
+		}()
+	}
+}
