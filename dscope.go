@@ -353,7 +353,7 @@ func (scope Scope) Call(fn interface{}, rets ...interface{}) []reflect.Value {
 func (scope Scope) CallValue(fnValue reflect.Value, retArgs ...interface{}) []reflect.Value {
 	fnType := fnValue.Type()
 
-	var fn func(Scope) []reflect.Value
+	var getArgs func(Scope) []reflect.Value
 	if v, ok := getArgsFunc.Load(fnType); !ok {
 		var types []reflect.Type
 		var ids []_TypeID
@@ -363,7 +363,7 @@ func (scope Scope) CallValue(fnValue reflect.Value, retArgs ...interface{}) []re
 			types = append(types, t)
 			ids = append(ids, getTypeID(t))
 		}
-		fn = func(scope Scope) []reflect.Value {
+		getArgs = func(scope Scope) []reflect.Value {
 			ret := make([]reflect.Value, len(ids))
 			var ok bool
 			for i, id := range ids {
@@ -374,11 +374,11 @@ func (scope Scope) CallValue(fnValue reflect.Value, retArgs ...interface{}) []re
 			}
 			return ret
 		}
-		getArgsFunc.Store(fnType, fn)
+		getArgsFunc.Store(fnType, getArgs)
 	} else {
-		fn = v.(func(Scope) []reflect.Value)
+		getArgs = v.(func(Scope) []reflect.Value)
 	}
-	retValues := fnValue.Call(fn(scope))
+	retValues := fnValue.Call(getArgs(scope))
 
 	if len(retValues) > 0 && len(retArgs) > 0 {
 		var m map[reflect.Type]int
