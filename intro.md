@@ -3,7 +3,7 @@ dscope 是一个在 go 语言里模拟动态作用域机制的库
 ## 类型与值的声明
 
 ```go
-func New(...interface{}) Scope
+func New(...any) Scope
 ```
 
 一个 Scope 表示一组类型到值的映射。Scope 是不可变的，所有类型与值关系作为 New 方法的参数传入。
@@ -55,7 +55,7 @@ IntA, IntB, IntC 的基础类型都是 int，但它们是不同的类型，分�
 ### Assign
 
 ```go
-func (s Scope) Assign(...interface{})
+func (s Scope) Assign(...any)
 ```
 
 Scope 的 Assign 方法，参数是指向变量的指针，根据各个变量的类型，获取相应类型的值，并赋值到该变量。
@@ -93,7 +93,7 @@ v, ok := scope.Get(reflect.TypeOf((*int)(nil)).Elem())
 ### Call
 
 ```go
-func (s Scope) Call(fn interface{}, ret ...interface{}) []reflect.Value
+func (s Scope) Call(fn any, ret ...any) []reflect.Value
 ```
 
 Call 方法将调用传入的函数，并以 []reflect.Value 返回该函数的返回值。
@@ -116,7 +116,7 @@ rets := scope.Call(
 ### CallValue
 
 ```go
-func (s Scope) CallValue(reflect.Value, ret ...interface{}) []reflect.Value
+func (s Scope) CallValue(reflect.Value, ret ...any) []reflect.Value
 ```
 
 CallValue 与 Call 作用一样，区别是函数以 reflect.Value 类型传入 
@@ -166,7 +166,7 @@ string 类型依赖 int 类型，而 int 类型又依赖 string 类型，则构�
 ## 子作用域
 
 ```go
-func (s Scope) Sub(...interface{}) Scope
+func (s Scope) Sub(...any) Scope
 ```
 
 Scope 的 Sub 方法，可以根据传入的定义函数，调整一些映射关系，并返回一个新的 Scope 对象。

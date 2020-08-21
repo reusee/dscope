@@ -11,7 +11,7 @@ import (
 
 type _TypeDecl struct {
 	Kind       reflect.Kind
-	Init       interface{}
+	Init       any
 	Get        func(scope Scope) []reflect.Value
 	Value      reflect.Value
 	ValueIndex int
@@ -28,12 +28,12 @@ type Scope struct {
 }
 
 func New(
-	inits ...interface{},
+	inits ...any,
 ) Scope {
 	return Scope{}.Sub(inits...)
 }
 
-func cachedInit(init interface{}) func(Scope) []reflect.Value {
+func cachedInit(init any) func(Scope) []reflect.Value {
 	var once sync.Once
 	var values []reflect.Value
 	return func(scope Scope) []reflect.Value {
@@ -52,14 +52,14 @@ var subFuncs _SubFuncsMap
 
 var subFuncsLock sync.RWMutex
 
-type _SubFunc = func(Scope, []interface{}) Scope
+type _SubFunc = func(Scope, []any) Scope
 
 func dumbScopeProvider() (_ Scope) { // NOCOVER
 	return
 }
 
 func (s Scope) Sub(
-	inits ...interface{},
+	inits ...any,
 ) Scope {
 
 	inits = append(inits, dumbScopeProvider)
@@ -219,7 +219,7 @@ func (s Scope) Sub(
 	})
 
 	// fn
-	fn := func(s Scope, inits []interface{}) Scope {
+	fn := func(s Scope, inits []any) Scope {
 		scope := Scope{
 			initTypeSig: sig,
 		}
@@ -304,7 +304,7 @@ func (s Scope) Sub(
 	return scope
 }
 
-func (scope Scope) Assign(objs ...interface{}) {
+func (scope Scope) Assign(objs ...any) {
 	for _, o := range objs {
 		v := reflect.ValueOf(o)
 		if v.Kind() != reflect.Ptr {
@@ -343,14 +343,14 @@ func (scope Scope) Get(t reflect.Type) (
 	return scope.GetByID(getTypeID(t))
 }
 
-func (scope Scope) Call(fn interface{}, rets ...interface{}) []reflect.Value {
+func (scope Scope) Call(fn any, rets ...any) []reflect.Value {
 	return scope.CallValue(
 		reflect.ValueOf(fn),
 		rets...,
 	)
 }
 
-func (scope Scope) CallValue(fnValue reflect.Value, retArgs ...interface{}) []reflect.Value {
+func (scope Scope) CallValue(fnValue reflect.Value, retArgs ...any) []reflect.Value {
 	fnType := fnValue.Type()
 
 	var getArgs func(Scope) []reflect.Value

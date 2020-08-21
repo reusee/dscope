@@ -462,7 +462,7 @@ func TestSubLazyMulti(t *testing.T) {
 }
 
 func TestDeclareInterface(t *testing.T) {
-	type Foo interface{}
+	type Foo any
 	scope := New().Sub(
 		func() Foo {
 			return Foo(42)
@@ -473,7 +473,7 @@ func TestDeclareInterface(t *testing.T) {
 	if f != 42 {
 		t.Fatal()
 	}
-	type Bar interface{}
+	type Bar any
 	sub := scope.Sub(
 		func() Bar {
 			return Bar(24)
