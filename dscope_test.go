@@ -53,7 +53,7 @@ func TestPanic(t *testing.T) {
 			}
 			if !strings.Contains(
 				fmt.Sprintf("%v", p),
-				"bad initializer: func(int)",
+				"function returns nothing: func(int)",
 			) {
 				t.Fatalf("unexpected: %v", p)
 			}
@@ -74,7 +74,7 @@ func TestPanic(t *testing.T) {
 			}
 			if !strings.Contains(
 				fmt.Sprintf("%v", p),
-				"invalid provider type",
+				"not a function or a pointer: int",
 			) {
 				t.Fatalf("unexpected: %v", p)
 			}
@@ -106,7 +106,7 @@ func TestPanic(t *testing.T) {
 			}
 			if !strings.Contains(
 				fmt.Sprintf("%v", p),
-				"no declaration for string",
+				"dependency not found: string",
 			) {
 				t.Fatalf("unexpected: %v", p)
 			}
@@ -123,7 +123,7 @@ func TestPanic(t *testing.T) {
 			}
 			if !strings.Contains(
 				fmt.Sprintf("%v", p),
-				"no declaration for string",
+				"dependency not found: string",
 			) {
 				t.Fatalf("unexpected: %v", p)
 			}
@@ -139,7 +139,7 @@ func TestPanic(t *testing.T) {
 			}
 			if !strings.Contains(
 				fmt.Sprintf("%v", p),
-				"no declaration for string",
+				"dependency not found: func(string) int32 requires string",
 			) {
 				t.Fatalf("unexpected: %v", p)
 			}
@@ -542,7 +542,7 @@ func TestCallReturn(t *testing.T) {
 			}
 			if !strings.Contains(
 				fmt.Sprintf("%v", p),
-				"return param is not pointer: int",
+				"bad argument, must be a pointer: int",
 			) {
 				t.Fatalf("unexpected: %v", p)
 			}

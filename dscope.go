@@ -1,7 +1,6 @@
 package dscope
 
 import (
-	"fmt"
 	"reflect"
 	"sort"
 	"sync"
@@ -93,7 +92,10 @@ func (s Scope) Sub(
 		case reflect.Func:
 			numOut := initType.NumOut()
 			if numOut == 0 {
-				panic(fmt.Errorf("bad initializer: %T", init))
+				panic(ErrBadArgument{
+					Value:  init,
+					Reason: "function returns nothing",
+				})
 			}
 			initNumOuts = append(initNumOuts, numOut)
 			for i := 0; i < numOut; i++ {
@@ -125,7 +127,10 @@ func (s Scope) Sub(
 				}
 			}
 		default:
-			panic(fmt.Errorf("invalid provider type: %T", init))
+			panic(ErrBadArgument{
+				Value:  init,
+				Reason: "not a function or a pointer",
+			})
 		}
 	}
 	newDeclOrders := make([]int, 0, len(newDeclsTemplate))
@@ -152,7 +157,9 @@ func (s Scope) Sub(
 	traverse = func(decl _TypeDecl) {
 		color := colors[decl.TypeID]
 		if color == 1 {
-			panic(fmt.Errorf("dependency loop: %T", decl.Init))
+			panic(ErrDependencyLoop{
+				Value: decl.Init,
+			})
 		} else if color == 2 {
 			return
 		}
@@ -170,7 +177,10 @@ func (s Scope) Sub(
 				id2 := getTypeID(requiredType)
 				decl2, ok := declarationsTemplate.Load(id2)
 				if !ok {
-					panic(fmt.Errorf("no declaration for %v required by %T", requiredType, decl.Init))
+					panic(ErrDependencyNotFound{
+						Type: requiredType,
+						By:   decl.Init,
+					})
 				}
 				downstreams[id2] = append(
 					downstreams[id2],
@@ -308,12 +318,17 @@ func (scope Scope) Assign(objs ...any) {
 	for _, o := range objs {
 		v := reflect.ValueOf(o)
 		if v.Kind() != reflect.Ptr {
-			panic("must be a pointer")
+			panic(ErrBadArgument{
+				Value:  o,
+				Reason: "must be a pointer",
+			})
 		}
 		t := v.Type().Elem()
 		value, ok := scope.Get(t)
 		if !ok {
-			panic(fmt.Errorf("no declaration for %s", t.String()))
+			panic(ErrDependencyNotFound{
+				Type: t,
+			})
 		}
 		v.Elem().Set(value)
 	}
@@ -369,7 +384,9 @@ func (scope Scope) CallValue(fnValue reflect.Value, retArgs ...any) []reflect.Va
 			for i, id := range ids {
 				ret[i], ok = scope.GetByID(id)
 				if !ok {
-					panic(fmt.Errorf("no declaration for %s", types[i].String()))
+					panic(ErrDependencyNotFound{
+						Type: types[i],
+					})
 				}
 			}
 			return ret
@@ -396,7 +413,10 @@ func (scope Scope) CallValue(fnValue reflect.Value, retArgs ...any) []reflect.Va
 			v := reflect.ValueOf(retArg)
 			t := v.Type()
 			if t.Kind() != reflect.Ptr {
-				panic(fmt.Errorf("return param is not pointer: %s", t.String()))
+				panic(ErrBadArgument{
+					Value:  retArg,
+					Reason: "must be a pointer",
+				})
 			}
 			if i, ok := m[t.Elem()]; ok {
 				v.Elem().Set(retValues[i])
