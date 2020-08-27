@@ -366,9 +366,17 @@ func (scope Scope) Call(fn any, rets ...any) []reflect.Value {
 }
 
 func (scope Scope) CallValue(fnValue reflect.Value, retArgs ...any) []reflect.Value {
+	rets, err := scope.PcallValue(fnValue, retArgs...)
+	if err != nil {
+		panic(err)
+	}
+	return rets
+}
+
+func (scope Scope) PcallValue(fnValue reflect.Value, retArgs ...any) ([]reflect.Value, error) {
 	fnType := fnValue.Type()
 
-	var getArgs func(Scope) []reflect.Value
+	var getArgs func(Scope) ([]reflect.Value, error)
 	if v, ok := getArgsFunc.Load(fnType); !ok {
 		var types []reflect.Type
 		var ids []_TypeID
@@ -378,24 +386,28 @@ func (scope Scope) CallValue(fnValue reflect.Value, retArgs ...any) []reflect.Va
 			types = append(types, t)
 			ids = append(ids, getTypeID(t))
 		}
-		getArgs = func(scope Scope) []reflect.Value {
+		getArgs = func(scope Scope) ([]reflect.Value, error) {
 			ret := make([]reflect.Value, len(ids))
 			var ok bool
 			for i, id := range ids {
 				ret[i], ok = scope.GetByID(id)
 				if !ok {
-					panic(ErrDependencyNotFound{
+					return nil, ErrDependencyNotFound{
 						Type: types[i],
-					})
+					}
 				}
 			}
-			return ret
+			return ret, nil
 		}
 		getArgsFunc.Store(fnType, getArgs)
 	} else {
-		getArgs = v.(func(Scope) []reflect.Value)
+		getArgs = v.(func(Scope) ([]reflect.Value, error))
 	}
-	retValues := fnValue.Call(getArgs(scope))
+	args, err := getArgs(scope)
+	if err != nil {
+		return nil, err
+	}
+	retValues := fnValue.Call(args)
 
 	if len(retValues) > 0 && len(retArgs) > 0 {
 		var m map[reflect.Type]int
@@ -424,7 +436,7 @@ func (scope Scope) CallValue(fnValue reflect.Value, retArgs ...any) []reflect.Va
 		}
 	}
 
-	return retValues
+	return retValues, nil
 }
 
 var returnTypeMap sync.Map
