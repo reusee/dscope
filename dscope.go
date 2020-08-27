@@ -365,6 +365,13 @@ func (scope Scope) Call(fn any, rets ...any) []reflect.Value {
 	)
 }
 
+func (scope Scope) Pcall(fn any, rets ...any) ([]reflect.Value, error) {
+	return scope.PcallValue(
+		reflect.ValueOf(fn),
+		rets...,
+	)
+}
+
 func (scope Scope) CallValue(fnValue reflect.Value, retArgs ...any) []reflect.Value {
 	rets, err := scope.PcallValue(fnValue, retArgs...)
 	if err != nil {
