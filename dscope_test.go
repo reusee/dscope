@@ -1019,13 +1019,19 @@ func TestRacyCall(t *testing.T) {
 }
 
 func TestUnset(t *testing.T) {
-	s := New(func() int {
-		return 42
-	})
+	s := New(
+		func() int {
+			return 42
+		},
+		func() string {
+			return "foo"
+		},
+	)
 	_, ok := s.Get(reflect.TypeOf((*int)(nil)).Elem())
 	if !ok {
 		t.Fatal()
 	}
+
 	s = s.Sub(func(int) Unset {
 		return Unset{}
 	})
@@ -1038,4 +1044,17 @@ func TestUnset(t *testing.T) {
 	if !errors.As(err, &notFound) {
 		t.Fatalf("got %v", err)
 	}
+
+	s = s.Sub(func(string) Unset {
+		return Unset{}
+	})
+	_, ok = s.Get(reflect.TypeOf((*string)(nil)).Elem())
+	if ok {
+		t.Fatal()
+	}
+	_, err = s.Pcall(func(string) {})
+	if !errors.As(err, &notFound) {
+		t.Fatalf("got %v", err)
+	}
+
 }

@@ -87,7 +87,7 @@ func (s Scope) Sub(
 	// collect new decls
 	var newDeclsTemplate []_TypeDecl
 	var shadowedIDs []_TypeID
-	initNumOuts := make([]int, 0, len(inits))
+	initNumDecls := make([]int, 0, len(inits))
 	initKinds := make([]reflect.Kind, 0, len(inits))
 	for _, init := range inits {
 		initType := reflect.TypeOf(init)
@@ -101,7 +101,7 @@ func (s Scope) Sub(
 					Reason: "function returns nothing",
 				})
 			}
-			initNumOuts = append(initNumOuts, numOut)
+			var numDecls int
 			for i := 0; i < numOut; i++ {
 				t := initType.Out(i)
 				id := getTypeID(t)
@@ -129,6 +129,7 @@ func (s Scope) Sub(
 							).Interface(),
 							IsUnset: true,
 						})
+						numDecls++
 						if _, ok := s.declarations.Load(inID); ok {
 							shadowedIDs = append(shadowedIDs, inID)
 						}
@@ -141,6 +142,7 @@ func (s Scope) Sub(
 						TypeID: id,
 						Init:   init,
 					})
+					numDecls++
 					if t != scopeType {
 						if _, ok := s.declarations.Load(id); ok {
 							shadowedIDs = append(shadowedIDs, id)
@@ -149,8 +151,9 @@ func (s Scope) Sub(
 				}
 
 			}
+			initNumDecls = append(initNumDecls, numDecls)
+
 		case reflect.Ptr:
-			initNumOuts = append(initNumOuts, 0)
 			t := initType.Elem()
 			id := getTypeID(t)
 			newDeclsTemplate = append(newDeclsTemplate, _TypeDecl{
@@ -163,6 +166,8 @@ func (s Scope) Sub(
 					shadowedIDs = append(shadowedIDs, id)
 				}
 			}
+			initNumDecls = append(initNumDecls, 1)
+
 		default:
 			panic(ErrBadArgument{
 				Value:  init,
@@ -295,12 +300,17 @@ func (s Scope) Sub(
 			switch initKinds[idx] {
 			case reflect.Func:
 				get := cachedInit(init)
-				numOut := initNumOuts[idx]
-				for i := 0; i < numOut; i++ {
+				numDecls := initNumDecls[idx]
+				for i := 0; i < numDecls; i++ {
 					info := newDeclsTemplate[n]
+					initFunc := init
+					if info.IsUnset {
+						// use maked func for unset decls
+						initFunc = info.Init
+					}
 					newDecls[info.ValueIndex] = _TypeDecl{
 						Kind:       info.Kind,
-						Init:       init,
+						Init:       initFunc,
 						Get:        get,
 						ValueIndex: i,
 						TypeID:     info.TypeID,
