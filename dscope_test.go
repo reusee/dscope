@@ -1,6 +1,7 @@
 package dscope
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -1014,5 +1015,27 @@ func TestRacyCall(t *testing.T) {
 			s.Call(func(i int) {
 			})
 		}()
+	}
+}
+
+func TestUnset(t *testing.T) {
+	s := New(func() int {
+		return 42
+	})
+	_, ok := s.Get(reflect.TypeOf((*int)(nil)).Elem())
+	if !ok {
+		t.Fatal()
+	}
+	s = s.Sub(func(int) Unset {
+		return Unset{}
+	})
+	_, ok = s.Get(reflect.TypeOf((*int)(nil)).Elem())
+	if ok {
+		t.Fatal()
+	}
+	_, err := s.Pcall(func(int) {})
+	var notFound ErrDependencyNotFound
+	if !errors.As(err, &notFound) {
+		t.Fatalf("got %v", err)
 	}
 }

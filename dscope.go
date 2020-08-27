@@ -14,11 +14,16 @@ type _TypeDecl struct {
 	Get        func(scope Scope) []reflect.Value
 	ValueIndex int
 	TypeID     _TypeID
+	IsUnset    bool
 }
 
 type _TypeID int
 
 var typeIDSize = int(unsafe.Sizeof(_TypeID(0)))
+
+type Unset struct{}
+
+var unsetTypeID = getTypeID(reflect.TypeOf((*Unset)(nil)).Elem())
 
 type Scope struct {
 	declarations UnionMap
@@ -100,16 +105,49 @@ func (s Scope) Sub(
 			for i := 0; i < numOut; i++ {
 				t := initType.Out(i)
 				id := getTypeID(t)
-				newDeclsTemplate = append(newDeclsTemplate, _TypeDecl{
-					Kind:   reflect.Func,
-					TypeID: id,
-					Init:   init,
-				})
-				if t != scopeType {
-					if _, ok := s.declarations.Load(id); ok {
-						shadowedIDs = append(shadowedIDs, id)
+
+				if id == unsetTypeID {
+					// unset decl
+					numIn := initType.NumIn()
+					for i := 0; i < numIn; i++ {
+						in := initType.In(i)
+						inID := getTypeID(in)
+						newDeclsTemplate = append(newDeclsTemplate, _TypeDecl{
+							Kind:   reflect.Func,
+							TypeID: inID,
+							Init: reflect.MakeFunc(
+								reflect.FuncOf(
+									[]reflect.Type{},
+									[]reflect.Type{
+										in,
+									},
+									false,
+								),
+								func([]reflect.Value) []reflect.Value {
+									panic("impossible")
+								},
+							).Interface(),
+							IsUnset: true,
+						})
+						if _, ok := s.declarations.Load(inID); ok {
+							shadowedIDs = append(shadowedIDs, inID)
+						}
+					}
+
+				} else {
+					// non-unset
+					newDeclsTemplate = append(newDeclsTemplate, _TypeDecl{
+						Kind:   reflect.Func,
+						TypeID: id,
+						Init:   init,
+					})
+					if t != scopeType {
+						if _, ok := s.declarations.Load(id); ok {
+							shadowedIDs = append(shadowedIDs, id)
+						}
 					}
 				}
+
 			}
 		case reflect.Ptr:
 			initNumOuts = append(initNumOuts, 0)
@@ -266,6 +304,7 @@ func (s Scope) Sub(
 						Get:        get,
 						ValueIndex: i,
 						TypeID:     info.TypeID,
+						IsUnset:    info.IsUnset,
 					}
 					n++
 				}
@@ -280,6 +319,7 @@ func (s Scope) Sub(
 					},
 					ValueIndex: 0,
 					TypeID:     info.TypeID,
+					IsUnset:    info.IsUnset,
 				}
 				n++
 			}
@@ -343,6 +383,10 @@ func (scope Scope) GetByID(id _TypeID) (
 ) {
 	decl, ok := scope.declarations.Load(id)
 	if !ok {
+		return
+	}
+	if decl.IsUnset {
+		ok = false
 		return
 	}
 	return decl.Get(scope)[decl.ValueIndex], true
