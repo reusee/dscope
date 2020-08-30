@@ -13,6 +13,7 @@ type _TypeDecl struct {
 	Init       any
 	Get        func(scope Scope) []reflect.Value
 	ValueIndex int
+	Type       reflect.Type
 	TypeID     _TypeID
 	IsUnset    bool
 }
@@ -29,14 +30,14 @@ type Scope struct {
 	declarations UnionMap
 	initTypeSig  []byte
 	ID           int64
-	NewDeclTypes map[reflect.Type]struct{}
+	ChangedTypes map[reflect.Type]struct{}
 }
 
 var nextID int64 = 42
 
 var Root = Scope{
 	ID:           atomic.AddInt64(&nextID, 1),
-	NewDeclTypes: make(map[reflect.Type]struct{}),
+	ChangedTypes: make(map[reflect.Type]struct{}),
 }
 
 func New(
@@ -98,7 +99,7 @@ func (s Scope) Sub(
 	shadowedIDs := make(map[_TypeID]struct{})
 	initNumDecls := make([]int, 0, len(inits))
 	initKinds := make([]reflect.Kind, 0, len(inits))
-	newDeclTypes := make(map[reflect.Type]struct{})
+	changedTypes := make(map[reflect.Type]struct{})
 	for _, init := range inits {
 		initType := reflect.TypeOf(init)
 		initKinds = append(initKinds, initType.Kind())
@@ -124,6 +125,7 @@ func (s Scope) Sub(
 						inID := getTypeID(in)
 						newDeclsTemplate = append(newDeclsTemplate, _TypeDecl{
 							Kind:   reflect.Func,
+							Type:   in,
 							TypeID: inID,
 							Init: reflect.MakeFunc(
 								reflect.FuncOf(
@@ -145,13 +147,14 @@ func (s Scope) Sub(
 								shadowedIDs[inID] = struct{}{}
 							}
 						}
-						newDeclTypes[in] = struct{}{}
+						changedTypes[in] = struct{}{}
 					}
 
 				} else {
 					// non-unset
 					newDeclsTemplate = append(newDeclsTemplate, _TypeDecl{
 						Kind:   reflect.Func,
+						Type:   t,
 						TypeID: id,
 						Init:   init,
 					})
@@ -161,7 +164,7 @@ func (s Scope) Sub(
 							shadowedIDs[id] = struct{}{}
 						}
 					}
-					newDeclTypes[t] = struct{}{}
+					changedTypes[t] = struct{}{}
 				}
 
 			}
@@ -172,6 +175,7 @@ func (s Scope) Sub(
 			id := getTypeID(t)
 			newDeclsTemplate = append(newDeclsTemplate, _TypeDecl{
 				Kind:   reflect.Ptr,
+				Type:   t,
 				TypeID: id,
 				Init:   init,
 			})
@@ -181,7 +185,7 @@ func (s Scope) Sub(
 				}
 			}
 			initNumDecls = append(initNumDecls, 1)
-			newDeclTypes[t] = struct{}{}
+			changedTypes[t] = struct{}{}
 
 		default:
 			panic(ErrBadArgument{
@@ -209,7 +213,7 @@ func (s Scope) Sub(
 	declarationsTemplate = append(declarationsTemplate, sortedNewDeclsTemplate)
 
 	colors := make(map[_TypeID]int)
-	downstreams := make(map[_TypeID][]_TypeID)
+	downstreams := make(map[_TypeID][]_TypeDecl)
 	var traverse func(decl _TypeDecl)
 	traverse = func(decl _TypeDecl) {
 		color := colors[decl.TypeID]
@@ -241,7 +245,7 @@ func (s Scope) Sub(
 				}
 				downstreams[id2] = append(
 					downstreams[id2],
-					decl.TypeID,
+					decl,
 				)
 				traverse(decl2)
 			}
@@ -267,14 +271,15 @@ func (s Scope) Sub(
 			return
 		}
 		for _, downstream := range downstreams[id] {
-			if _, ok := s.declarations.Load(downstream); !ok {
+			if _, ok := s.declarations.Load(downstream.TypeID); !ok {
 				continue
 			}
-			if _, ok := set[downstream]; !ok {
-				resetIDs = append(resetIDs, downstream)
+			if _, ok := set[downstream.TypeID]; !ok {
+				resetIDs = append(resetIDs, downstream.TypeID)
+				changedTypes[downstream.Type] = struct{}{}
 			}
-			set[downstream] = struct{}{}
-			resetDownstream(downstream)
+			set[downstream.TypeID] = struct{}{}
+			resetDownstream(downstream.TypeID)
 		}
 		colors[id] = 1
 	}
@@ -290,7 +295,7 @@ func (s Scope) Sub(
 		scope := Scope{
 			ID:           atomic.AddInt64(&nextID, 1),
 			initTypeSig:  sig,
-			NewDeclTypes: newDeclTypes,
+			ChangedTypes: changedTypes,
 		}
 		var declarations UnionMap
 		if len(s.declarations) > 32 {
@@ -330,6 +335,7 @@ func (s Scope) Sub(
 						Init:       initFunc,
 						Get:        get,
 						ValueIndex: i,
+						Type:       info.Type,
 						TypeID:     info.TypeID,
 						IsUnset:    info.IsUnset,
 					}
@@ -345,6 +351,7 @@ func (s Scope) Sub(
 						return []reflect.Value{v}
 					},
 					ValueIndex: 0,
+					Type:       info.Type,
 					TypeID:     info.TypeID,
 					IsUnset:    info.IsUnset,
 				}
