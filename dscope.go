@@ -28,12 +28,17 @@ var unsetTypeID = getTypeID(reflect.TypeOf((*Unset)(nil)).Elem())
 type Scope struct {
 	declarations UnionMap
 	initTypeSig  []byte
+	ID           int64
 }
+
+var nextID int64 = 42
 
 func New(
 	inits ...any,
 ) Scope {
-	return Scope{}.Sub(inits...)
+	return Scope{
+		ID: atomic.AddInt64(&nextID, 1),
+	}.Sub(inits...)
 }
 
 func cachedInit(init any) func(Scope) []reflect.Value {
@@ -86,7 +91,7 @@ func (s Scope) Sub(
 
 	// collect new decls
 	var newDeclsTemplate []_TypeDecl
-	var shadowedIDs []_TypeID
+	shadowedIDs := make(map[_TypeID]struct{})
 	initNumDecls := make([]int, 0, len(inits))
 	initKinds := make([]reflect.Kind, 0, len(inits))
 	for _, init := range inits {
@@ -131,7 +136,7 @@ func (s Scope) Sub(
 						})
 						numDecls++
 						if _, ok := s.declarations.Load(inID); ok {
-							shadowedIDs = append(shadowedIDs, inID)
+							shadowedIDs[inID] = struct{}{}
 						}
 					}
 
@@ -145,7 +150,7 @@ func (s Scope) Sub(
 					numDecls++
 					if t != scopeType {
 						if _, ok := s.declarations.Load(id); ok {
-							shadowedIDs = append(shadowedIDs, id)
+							shadowedIDs[id] = struct{}{}
 						}
 					}
 				}
@@ -163,7 +168,7 @@ func (s Scope) Sub(
 			})
 			if t != scopeType {
 				if _, ok := s.declarations.Load(id); ok {
-					shadowedIDs = append(shadowedIDs, id)
+					shadowedIDs[id] = struct{}{}
 				}
 			}
 			initNumDecls = append(initNumDecls, 1)
@@ -263,7 +268,7 @@ func (s Scope) Sub(
 		}
 		colors[id] = 1
 	}
-	for _, id := range shadowedIDs {
+	for id := range shadowedIDs {
 		resetDownstream(id)
 	}
 	sort.Slice(resetIDs, func(i, j int) bool {
@@ -273,6 +278,7 @@ func (s Scope) Sub(
 	// fn
 	fn := func(s Scope, inits []any) Scope {
 		scope := Scope{
+			ID:          atomic.AddInt64(&nextID, 1),
 			initTypeSig: sig,
 		}
 		var declarations UnionMap
