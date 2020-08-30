@@ -34,12 +34,15 @@ type Scope struct {
 
 var nextID int64 = 42
 
+var Root = Scope{
+	ID:           atomic.AddInt64(&nextID, 1),
+	NewDeclTypes: make(map[reflect.Type]struct{}),
+}
+
 func New(
 	inits ...any,
 ) Scope {
-	return Scope{
-		ID: atomic.AddInt64(&nextID, 1),
-	}.Sub(inits...)
+	return Root.Sub(inits...)
 }
 
 func cachedInit(init any) func(Scope) []reflect.Value {
