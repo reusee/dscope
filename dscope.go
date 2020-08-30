@@ -34,6 +34,7 @@ type Scope struct {
 	ID           int64
 	ParentID     int64
 	ChangedTypes map[reflect.Type]struct{}
+	SubFuncKey   uint64
 }
 
 var nextID int64 = 42
@@ -319,6 +320,7 @@ func (s Scope) Sub(
 			ID:           atomic.AddInt64(&nextID, 1),
 			ParentID:     s.ID,
 			ChangedTypes: changedTypes,
+			SubFuncKey:   key,
 		}
 		var declarations UnionMap
 		if len(s.declarations) > 32 {

@@ -1108,3 +1108,31 @@ func TestParentID(t *testing.T) {
 		t.Fatal()
 	}
 }
+
+func TestSubFuncKey(t *testing.T) {
+	s := New()
+	s1 := New()
+	if s.SubFuncKey != s1.SubFuncKey {
+		t.Fatal()
+	}
+
+	s1 = s1.Sub(func() int {
+		return 42
+	})
+	s = s.Sub(func() int {
+		return 42
+	})
+	if s.SubFuncKey != s1.SubFuncKey {
+		t.Fatal()
+	}
+
+	s1 = s1.Sub(func() string {
+		return "foo"
+	})
+	s = s.Sub(func() int {
+		return 42
+	})
+	if s.SubFuncKey == s1.SubFuncKey {
+		t.Fatal()
+	}
+}
