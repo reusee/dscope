@@ -1,6 +1,8 @@
 package dscope
 
 import (
+	"encoding/binary"
+	"hash/maphash"
 	"reflect"
 	"sort"
 	"sync"
@@ -26,15 +28,9 @@ type Unset struct{}
 
 var unsetTypeID = getTypeID(reflect.TypeOf((*Unset)(nil)).Elem())
 
-type _InitInfo struct {
-	ID   _TypeID
-	Type reflect.Type
-}
-
 type Scope struct {
 	declarations UnionMap
-	initInfos    []_InitInfo
-	initTypes    []reflect.Type
+	initTypeIDs  []_TypeID
 	ID           int64
 	ChangedTypes map[reflect.Type]struct{}
 }
@@ -73,19 +69,32 @@ func dumbScopeProvider() (_ Scope) { // NOCOVER
 
 var subFns sync.Map
 
+var seed = maphash.MakeSeed()
+
 func (s Scope) Sub(
 	inits ...any,
 ) Scope {
 
 	inits = append(inits, dumbScopeProvider)
 
-	initVector := make([]reflect.Type, 0, len(inits))
-	for _, init := range inits {
-		initVector = append(initVector, reflect.TypeOf(init))
+	h := new(maphash.Hash)
+	h.SetSeed(seed)
+	buf := make([]byte, 8)
+	for _, id := range s.initTypeIDs {
+		n := binary.PutVarint(buf, int64(id))
+		h.Write(buf[:n])
+		h.WriteByte('.')
 	}
-	transitionType := reflect.FuncOf(s.initTypes, initVector, false)
+	h.WriteByte('-')
+	for _, init := range inits {
+		id := getTypeID(reflect.TypeOf(init))
+		n := binary.PutVarint(buf, int64(id))
+		h.Write(buf[:n])
+		h.WriteByte('.')
+	}
+	key := h.Sum64()
 
-	if value, ok := subFns.Load(transitionType); ok {
+	if value, ok := subFns.Load(key); ok {
 		return value.(func(Scope, []any) Scope)(s, inits)
 	}
 
@@ -285,42 +294,29 @@ func (s Scope) Sub(
 		return resetIDs[i] < resetIDs[j]
 	})
 
-	initInfos := make([]_InitInfo, 0, len(s.initInfos)+len(inits))
-	initInfos = append(initInfos, s.initInfos...)
+	initTypeIDs := make([]_TypeID, 0, len(s.initTypeIDs)+len(inits))
+	initTypeIDs = append(initTypeIDs, s.initTypeIDs...)
 	for _, init := range inits {
 		t := reflect.TypeOf(init)
 		id := getTypeID(t)
-		i := sort.Search(len(initInfos), func(i int) bool {
-			return id >= initInfos[i].ID
+		i := sort.Search(len(initTypeIDs), func(i int) bool {
+			return id >= initTypeIDs[i]
 		})
-		if i < len(initInfos) {
-			if initInfos[i].ID == id {
+		if i < len(initTypeIDs) {
+			if initTypeIDs[i] == id {
 				continue
 			} else {
-				initInfos = append(initInfos[:i], append([]_InitInfo{
-					{
-						ID:   id,
-						Type: t,
-					},
-				}, initInfos[i:]...)...)
+				initTypeIDs = append(initTypeIDs[:i], append([]_TypeID{id}, initTypeIDs[i:]...)...)
 			}
 		} else {
-			initInfos = append(initInfos, _InitInfo{
-				ID:   id,
-				Type: t,
-			})
+			initTypeIDs = append(initTypeIDs, id)
 		}
-	}
-	initTypes := make([]reflect.Type, 0, len(initInfos))
-	for _, info := range initInfos {
-		initTypes = append(initTypes, info.Type)
 	}
 
 	// fn
 	fn := func(s Scope, inits []any) Scope {
 		scope := Scope{
-			initInfos:    initInfos,
-			initTypes:    initTypes,
+			initTypeIDs:  initTypeIDs,
 			ID:           atomic.AddInt64(&nextID, 1),
 			ChangedTypes: changedTypes,
 		}
@@ -405,7 +401,7 @@ func (s Scope) Sub(
 		return scope
 	}
 
-	subFns.Store(transitionType, fn)
+	subFns.Store(key, fn)
 
 	return fn(s, inits)
 }
