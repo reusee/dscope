@@ -60,7 +60,10 @@ var subFuncs _SubFuncsMap
 
 var subFuncsLock sync.RWMutex
 
-type _SubFunc = func(Scope, []any) Scope
+type _SubFunc = func(Scope, []any) (
+	Scope,
+	map[reflect.Type]struct{},
+)
 
 func dumbScopeProvider() (_ Scope) { // NOCOVER
 	return
@@ -69,6 +72,16 @@ func dumbScopeProvider() (_ Scope) { // NOCOVER
 func (s Scope) Sub(
 	inits ...any,
 ) Scope {
+	scope, _ := s.DetailedSub(inits...)
+	return scope
+}
+
+func (s Scope) DetailedSub(
+	inits ...any,
+) (
+	Scope,
+	map[reflect.Type]struct{},
+) {
 
 	inits = append(inits, dumbScopeProvider)
 
@@ -94,6 +107,7 @@ func (s Scope) Sub(
 	shadowedIDs := make(map[_TypeID]struct{})
 	initNumDecls := make([]int, 0, len(inits))
 	initKinds := make([]reflect.Kind, 0, len(inits))
+	newDeclTypes := make(map[reflect.Type]struct{})
 	for _, init := range inits {
 		initType := reflect.TypeOf(init)
 		initKinds = append(initKinds, initType.Kind())
@@ -135,9 +149,12 @@ func (s Scope) Sub(
 							IsUnset: true,
 						})
 						numDecls++
-						if _, ok := s.declarations.Load(inID); ok {
-							shadowedIDs[inID] = struct{}{}
+						if in != scopeType {
+							if _, ok := s.declarations.Load(inID); ok {
+								shadowedIDs[inID] = struct{}{}
+							}
 						}
+						newDeclTypes[in] = struct{}{}
 					}
 
 				} else {
@@ -153,6 +170,7 @@ func (s Scope) Sub(
 							shadowedIDs[id] = struct{}{}
 						}
 					}
+					newDeclTypes[t] = struct{}{}
 				}
 
 			}
@@ -172,6 +190,7 @@ func (s Scope) Sub(
 				}
 			}
 			initNumDecls = append(initNumDecls, 1)
+			newDeclTypes[t] = struct{}{}
 
 		default:
 			panic(ErrBadArgument{
@@ -276,7 +295,7 @@ func (s Scope) Sub(
 	})
 
 	// fn
-	fn := func(s Scope, inits []any) Scope {
+	fn := func(s Scope, inits []any) (Scope, map[reflect.Type]struct{}) {
 		scope := Scope{
 			ID:          atomic.AddInt64(&nextID, 1),
 			initTypeSig: sig,
@@ -357,7 +376,7 @@ func (s Scope) Sub(
 
 		scope.declarations = declarations
 
-		return scope
+		return scope, newDeclTypes
 	}
 
 	subFuncsLock.Lock()
@@ -368,9 +387,7 @@ func (s Scope) Sub(
 	})
 	subFuncsLock.Unlock()
 
-	scope := fn(s, inits)
-
-	return scope
+	return fn(s, inits)
 }
 
 func (scope Scope) Assign(objs ...any) {
