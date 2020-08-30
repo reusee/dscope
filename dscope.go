@@ -29,6 +29,7 @@ type Scope struct {
 	declarations UnionMap
 	initTypeSig  []byte
 	ID           int64
+	NewDeclTypes map[reflect.Type]struct{}
 }
 
 var nextID int64 = 42
@@ -60,10 +61,7 @@ var subFuncs _SubFuncsMap
 
 var subFuncsLock sync.RWMutex
 
-type _SubFunc = func(Scope, []any) (
-	Scope,
-	map[reflect.Type]struct{},
-)
+type _SubFunc = func(Scope, []any) Scope
 
 func dumbScopeProvider() (_ Scope) { // NOCOVER
 	return
@@ -72,16 +70,6 @@ func dumbScopeProvider() (_ Scope) { // NOCOVER
 func (s Scope) Sub(
 	inits ...any,
 ) Scope {
-	scope, _ := s.DetailedSub(inits...)
-	return scope
-}
-
-func (s Scope) DetailedSub(
-	inits ...any,
-) (
-	Scope,
-	map[reflect.Type]struct{},
-) {
 
 	inits = append(inits, dumbScopeProvider)
 
@@ -295,10 +283,11 @@ func (s Scope) DetailedSub(
 	})
 
 	// fn
-	fn := func(s Scope, inits []any) (Scope, map[reflect.Type]struct{}) {
+	fn := func(s Scope, inits []any) Scope {
 		scope := Scope{
-			ID:          atomic.AddInt64(&nextID, 1),
-			initTypeSig: sig,
+			ID:           atomic.AddInt64(&nextID, 1),
+			initTypeSig:  sig,
+			NewDeclTypes: newDeclTypes,
 		}
 		var declarations UnionMap
 		if len(s.declarations) > 32 {
@@ -376,7 +365,7 @@ func (s Scope) DetailedSub(
 
 		scope.declarations = declarations
 
-		return scope, newDeclTypes
+		return scope
 	}
 
 	subFuncsLock.Lock()
