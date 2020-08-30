@@ -32,13 +32,14 @@ type Scope struct {
 	declarations UnionMap
 	initTypeIDs  []_TypeID
 	ID           int64
+	ParentID     int64
 	ChangedTypes map[reflect.Type]struct{}
 }
 
 var nextID int64 = 42
 
 var Root = Scope{
-	ID:           atomic.AddInt64(&nextID, 1),
+	ID:           0,
 	ChangedTypes: make(map[reflect.Type]struct{}),
 }
 
@@ -318,6 +319,7 @@ func (s Scope) Sub(
 		scope := Scope{
 			initTypeIDs:  initTypeIDs,
 			ID:           atomic.AddInt64(&nextID, 1),
+			ParentID:     s.ID,
 			ChangedTypes: changedTypes,
 		}
 		var declarations UnionMap

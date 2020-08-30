@@ -1100,3 +1100,11 @@ func TestSubFunc(t *testing.T) {
 	}
 
 }
+
+func TestParentID(t *testing.T) {
+	s := New()
+	s1 := s.Sub()
+	if s1.ParentID != s.ID {
+		t.Fatal()
+	}
+}
