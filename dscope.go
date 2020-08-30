@@ -262,8 +262,25 @@ func (s Scope) Sub(
 		}
 		colors[decl.TypeID] = 2
 	}
+
+	initTypeIDs := make([]_TypeID, 0, len(s.initTypeIDs)+len(inits))
+	initTypeIDs = append(initTypeIDs, s.initTypeIDs...)
 	declarationsTemplate.Range(func(decl _TypeDecl) {
 		traverse(decl)
+		t := reflect.TypeOf(decl.Init)
+		id := getTypeID(t)
+		i := sort.Search(len(initTypeIDs), func(i int) bool {
+			return id >= initTypeIDs[i]
+		})
+		if i < len(initTypeIDs) {
+			if initTypeIDs[i] == id {
+				// existed
+			} else {
+				initTypeIDs = append(initTypeIDs[:i], append([]_TypeID{id}, initTypeIDs[i:]...)...)
+			}
+		} else {
+			initTypeIDs = append(initTypeIDs, id)
+		}
 	})
 
 	// reset info
@@ -294,25 +311,6 @@ func (s Scope) Sub(
 	sort.Slice(resetIDs, func(i, j int) bool {
 		return resetIDs[i] < resetIDs[j]
 	})
-
-	initTypeIDs := make([]_TypeID, 0, len(s.initTypeIDs)+len(inits))
-	initTypeIDs = append(initTypeIDs, s.initTypeIDs...)
-	for _, init := range inits {
-		t := reflect.TypeOf(init)
-		id := getTypeID(t)
-		i := sort.Search(len(initTypeIDs), func(i int) bool {
-			return id >= initTypeIDs[i]
-		})
-		if i < len(initTypeIDs) {
-			if initTypeIDs[i] == id {
-				continue
-			} else {
-				initTypeIDs = append(initTypeIDs[:i], append([]_TypeID{id}, initTypeIDs[i:]...)...)
-			}
-		} else {
-			initTypeIDs = append(initTypeIDs, id)
-		}
-	}
 
 	// fn
 	fn := func(s Scope, inits []any) Scope {
