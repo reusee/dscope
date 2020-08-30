@@ -1058,3 +1058,45 @@ func TestUnset(t *testing.T) {
 	}
 
 }
+
+func TestSubFunc(t *testing.T) {
+	type I int
+	type J int
+	type K int
+
+	s1 := New(func() I {
+		return 42
+	}, func(i I) J {
+		return J(i) * 2
+	})
+	s2 := New(func() I {
+		return 42
+	}, func() J {
+		return 42
+	})
+	var j J
+	s1.Assign(&j)
+	if j != 84 {
+		t.Fatal()
+	}
+
+	s1 = s1.Sub(func() K {
+		return 42
+	})
+	s2 = s2.Sub(func() K {
+		return 42
+	})
+
+	s2 = s2.Sub(func() I {
+		return 1
+	})
+	s1 = s1.Sub(func() I {
+		return 1
+	})
+
+	s1.Assign(&j)
+	if j != 2 {
+		t.Fatal()
+	}
+
+}

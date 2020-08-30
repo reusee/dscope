@@ -26,9 +26,15 @@ type Unset struct{}
 
 var unsetTypeID = getTypeID(reflect.TypeOf((*Unset)(nil)).Elem())
 
+type _InitInfo struct {
+	ID   _TypeID
+	Type reflect.Type
+}
+
 type Scope struct {
 	declarations UnionMap
-	initTypeSig  []byte
+	initInfos    []_InitInfo
+	initTypes    []reflect.Type
 	ID           int64
 	ChangedTypes map[reflect.Type]struct{}
 }
@@ -61,15 +67,11 @@ var (
 	scopeType = reflect.TypeOf((*Scope)(nil)).Elem()
 )
 
-var subFuncs _SubFuncsMap
-
-var subFuncsLock sync.RWMutex
-
-type _SubFunc = func(Scope, []any) Scope
-
 func dumbScopeProvider() (_ Scope) { // NOCOVER
 	return
 }
+
+var subFns sync.Map
 
 func (s Scope) Sub(
 	inits ...any,
@@ -77,22 +79,15 @@ func (s Scope) Sub(
 
 	inits = append(inits, dumbScopeProvider)
 
-	initTypeIDs := make([]_TypeID, 0, len(inits))
+	initVector := make([]reflect.Type, 0, len(inits))
 	for _, init := range inits {
-		initTypeIDs = append(initTypeIDs, getTypeID(reflect.TypeOf(init)))
+		initVector = append(initVector, reflect.TypeOf(init))
 	}
-	var sig []byte
-	h := (*reflect.SliceHeader)(unsafe.Pointer(&sig))
-	h.Len = len(initTypeIDs) * typeIDSize
-	h.Data = uintptr(unsafe.Pointer(&initTypeIDs[0]))
-	h.Cap = h.Len
+	transitionType := reflect.FuncOf(s.initTypes, initVector, false)
 
-	subFuncsLock.RLock()
-	if spec, ok := subFuncs.Find(s.initTypeSig, sig); ok {
-		subFuncsLock.RUnlock()
-		return spec.Func(s, inits)
+	if value, ok := subFns.Load(transitionType); ok {
+		return value.(func(Scope, []any) Scope)(s, inits)
 	}
-	subFuncsLock.RUnlock()
 
 	// collect new decls
 	var newDeclsTemplate []_TypeDecl
@@ -290,11 +285,43 @@ func (s Scope) Sub(
 		return resetIDs[i] < resetIDs[j]
 	})
 
+	initInfos := make([]_InitInfo, 0, len(s.initInfos)+len(inits))
+	initInfos = append(initInfos, s.initInfos...)
+	for _, init := range inits {
+		t := reflect.TypeOf(init)
+		id := getTypeID(t)
+		i := sort.Search(len(initInfos), func(i int) bool {
+			return id >= initInfos[i].ID
+		})
+		if i < len(initInfos) {
+			if initInfos[i].ID == id {
+				continue
+			} else {
+				initInfos = append(initInfos[:i], append([]_InitInfo{
+					{
+						ID:   id,
+						Type: t,
+					},
+				}, initInfos[i:]...)...)
+			}
+		} else {
+			initInfos = append(initInfos, _InitInfo{
+				ID:   id,
+				Type: t,
+			})
+		}
+	}
+	initTypes := make([]reflect.Type, 0, len(initInfos))
+	for _, info := range initInfos {
+		initTypes = append(initTypes, info.Type)
+	}
+
 	// fn
 	fn := func(s Scope, inits []any) Scope {
 		scope := Scope{
+			initInfos:    initInfos,
+			initTypes:    initTypes,
 			ID:           atomic.AddInt64(&nextID, 1),
-			initTypeSig:  sig,
 			ChangedTypes: changedTypes,
 		}
 		var declarations UnionMap
@@ -378,13 +405,7 @@ func (s Scope) Sub(
 		return scope
 	}
 
-	subFuncsLock.Lock()
-	subFuncs = subFuncs.Insert(_SubFuncsSpec{
-		Sig1: s.initTypeSig,
-		Sig2: sig,
-		Func: fn,
-	})
-	subFuncsLock.Unlock()
+	subFns.Store(transitionType, fn)
 
 	return fn(s, inits)
 }
