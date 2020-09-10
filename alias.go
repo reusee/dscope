@@ -1,6 +1,9 @@
 package dscope
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 type (
 	any = interface{}
@@ -8,4 +11,5 @@ type (
 
 var (
 	pt = fmt.Printf
+	as = errors.As
 )

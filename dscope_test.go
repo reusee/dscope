@@ -1027,20 +1027,20 @@ func TestUnset(t *testing.T) {
 			return "foo"
 		},
 	)
-	_, ok := s.Get(reflect.TypeOf((*int)(nil)).Elem())
-	if !ok {
+	_, err := s.Get(reflect.TypeOf((*int)(nil)).Elem())
+	if err != nil {
 		t.Fatal()
 	}
 
 	s = s.Sub(func(int) Unset {
 		return Unset{}
 	})
-	_, ok = s.Get(reflect.TypeOf((*int)(nil)).Elem())
-	if ok {
+	_, err = s.Get(reflect.TypeOf((*int)(nil)).Elem())
+	var notFound ErrDependencyNotFound
+	if !as(err, &notFound) {
 		t.Fatal()
 	}
-	_, err := s.Pcall(func(int) {})
-	var notFound ErrDependencyNotFound
+	_, err = s.Pcall(func(int) {})
 	if !errors.As(err, &notFound) {
 		t.Fatalf("got %v", err)
 	}
@@ -1048,8 +1048,8 @@ func TestUnset(t *testing.T) {
 	s = s.Sub(func(string) Unset {
 		return Unset{}
 	})
-	_, ok = s.Get(reflect.TypeOf((*string)(nil)).Elem())
-	if ok {
+	_, err = s.Get(reflect.TypeOf((*string)(nil)).Elem())
+	if !as(err, &notFound) {
 		t.Fatal()
 	}
 	_, err = s.Pcall(func(string) {})
