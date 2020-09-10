@@ -427,16 +427,20 @@ func (scope Scope) Assign(objs ...any) {
 	}
 }
 
-func (scope Scope) GetByID(id _TypeID) (
+func (scope Scope) getByID(id _TypeID, t reflect.Type) (
 	ret reflect.Value,
 	err error,
 ) {
 	decl, ok := scope.declarations.Load(id)
 	if !ok {
-		return ret, ErrDependencyNotFound{}
+		return ret, ErrDependencyNotFound{
+			Type: t,
+		}
 	}
 	if decl.IsUnset {
-		return ret, ErrDependencyNotFound{}
+		return ret, ErrDependencyNotFound{
+			Type: t,
+		}
 	}
 	values, err := decl.Get(scope)
 	if err != nil {
@@ -449,15 +453,7 @@ func (scope Scope) Get(t reflect.Type) (
 	ret reflect.Value,
 	err error,
 ) {
-	ret, err = scope.GetByID(getTypeID(t))
-	if err != nil {
-		var notFound ErrDependencyNotFound
-		if as(err, &notFound) {
-			notFound.Type = t
-			err = notFound
-		}
-	}
-	return
+	return scope.getByID(getTypeID(t), t)
 }
 
 func (scope Scope) Call(fn any, rets ...any) []reflect.Value {
@@ -499,13 +495,8 @@ func (scope Scope) PcallValue(fnValue reflect.Value, retArgs ...any) ([]reflect.
 			ret := make([]reflect.Value, len(ids))
 			for i, id := range ids {
 				var err error
-				ret[i], err = scope.GetByID(id)
+				ret[i], err = scope.getByID(id, types[i])
 				if err != nil {
-					var notFound ErrDependencyNotFound
-					if as(err, &notFound) {
-						notFound.Type = types[i]
-						err = notFound
-					}
 					return nil, err
 				}
 			}
