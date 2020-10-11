@@ -534,12 +534,12 @@ func (scope Scope) PcallValue(fnValue reflect.Value, retArgs ...any) ([]reflect.
 	}
 
 	args := *argsSlicePool.Get().(*[]reflect.Value)
+	defer argsSlicePool.Put(&args)
 	n, err := getArgs(scope, args)
 	if err != nil {
 		return nil, err
 	}
 	retValues := fnValue.Call(args[:n])
-	argsSlicePool.Put(&args)
 
 	if len(retValues) > 0 && len(retArgs) > 0 {
 		var m map[reflect.Type]int
