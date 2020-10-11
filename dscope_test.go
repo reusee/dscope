@@ -1136,3 +1136,43 @@ func TestSubFuncKey(t *testing.T) {
 		t.Fatal()
 	}
 }
+
+func TestSignature(t *testing.T) {
+	s := New().Sub(
+		func() int {
+			return 42
+		},
+	).Sub(
+		func() string {
+			return "foo"
+		},
+	)
+	s2 := New().Sub(
+		func() int {
+			return 42
+		},
+		func() string {
+			return "foo"
+		},
+	)
+	if s.signature != s2.signature {
+		t.Fatal()
+	}
+
+	s = s.Sub(func() int {
+		return 1
+	})
+	s2 = s2.Sub(func() int {
+		return 1
+	})
+	var i int
+	s.Assign(&i)
+	if i != 1 {
+		t.Fatal()
+	}
+	s2.Assign(&i)
+	if i != 1 {
+		t.Fatal()
+	}
+
+}

@@ -3,6 +3,7 @@ package dscope
 import (
 	"encoding/binary"
 	"hash/maphash"
+	"math"
 	"reflect"
 	"sort"
 	"sync"
@@ -30,7 +31,7 @@ var unsetTypeID = getTypeID(reflect.TypeOf((*Unset)(nil)).Elem())
 
 type Scope struct {
 	declarations UnionMap
-	initTypeIDs  []_TypeID
+	signature    uint64
 	ID           int64
 	ParentID     int64
 	ChangedTypes map[reflect.Type]struct{}
@@ -74,6 +75,13 @@ var subFns sync.Map
 
 var seed = maphash.MakeSeed()
 
+var signatureEncodeSize = func() int {
+	u := uint64(math.MaxUint64)
+	buf := make([]byte, 16)
+	n := binary.PutUvarint(buf, u)
+	return n
+}()
+
 func (s Scope) Sub(
 	inits ...any,
 ) Scope {
@@ -82,12 +90,9 @@ func (s Scope) Sub(
 
 	h := new(maphash.Hash)
 	h.SetSeed(seed)
-	buf := make([]byte, 8)
-	for _, id := range s.initTypeIDs {
-		n := binary.PutVarint(buf, int64(id))
-		h.Write(buf[:n])
-		h.WriteByte('.')
-	}
+	buf := make([]byte, signatureEncodeSize)
+	n := binary.PutUvarint(buf, s.signature)
+	h.Write(buf[:n])
 	h.WriteByte('-')
 	for _, init := range inits {
 		id := getTypeID(reflect.TypeOf(init))
@@ -265,8 +270,7 @@ func (s Scope) Sub(
 		colors[decl.TypeID] = 2
 	}
 
-	initTypeIDs := make([]_TypeID, 0, len(s.initTypeIDs)+len(inits))
-	initTypeIDs = append(initTypeIDs, s.initTypeIDs...)
+	initTypeIDs := make([]_TypeID, 0, declarationsTemplate.Len())
 	declarationsTemplate.Range(func(decl _TypeDecl) {
 		traverse(decl)
 		t := reflect.TypeOf(decl.Init)
@@ -284,6 +288,14 @@ func (s Scope) Sub(
 			initTypeIDs = append(initTypeIDs, id)
 		}
 	})
+	h = new(maphash.Hash)
+	h.SetSeed(seed)
+	for _, id := range initTypeIDs {
+		n = binary.PutVarint(buf, int64(id))
+		h.Write(buf[:n])
+		h.WriteByte('.')
+	}
+	signature := h.Sum64()
 
 	// reset info
 	set := make(map[_TypeID]struct{})
@@ -317,7 +329,7 @@ func (s Scope) Sub(
 	// fn
 	fn := func(s Scope, inits []any) Scope {
 		scope := Scope{
-			initTypeIDs:  initTypeIDs,
+			signature:    signature,
 			ID:           atomic.AddInt64(&nextID, 1),
 			ParentID:     s.ID,
 			ChangedTypes: changedTypes,
