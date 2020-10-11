@@ -373,7 +373,7 @@ func (s Scope) Sub(
 					info := newDeclsTemplate[n]
 					initFunc := init
 					if info.IsUnset {
-						// use maked func for unset decls
+						// use made func for unset decls
 						initFunc = info.Init
 					}
 					newDecls[info.ValueIndex] = _TypeDecl{
