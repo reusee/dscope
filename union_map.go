@@ -41,3 +41,11 @@ func (u UnionMap) Range(fn func(_TypeDecl)) {
 		}
 	}
 }
+
+func (u UnionMap) Len() int {
+	ret := 0
+	for _, decls := range u {
+		ret += len(decls)
+	}
+	return ret
+}
