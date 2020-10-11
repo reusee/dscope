@@ -498,10 +498,17 @@ func (scope Scope) CallValue(fnValue reflect.Value, retArgs ...any) []reflect.Va
 	return rets
 }
 
+var argsSlicePool = sync.Pool{
+	New: func() any {
+		slice := make([]reflect.Value, 256)
+		return &slice
+	},
+}
+
 func (scope Scope) PcallValue(fnValue reflect.Value, retArgs ...any) ([]reflect.Value, error) {
 	fnType := fnValue.Type()
 
-	var getArgs func(Scope) ([]reflect.Value, error)
+	var getArgs func(Scope, []reflect.Value) (int, error)
 	if v, ok := getArgsFunc.Load(fnType); !ok {
 		var types []reflect.Type
 		var ids []_TypeID
@@ -511,26 +518,28 @@ func (scope Scope) PcallValue(fnValue reflect.Value, retArgs ...any) ([]reflect.
 			types = append(types, t)
 			ids = append(ids, getTypeID(t))
 		}
-		getArgs = func(scope Scope) ([]reflect.Value, error) {
-			ret := make([]reflect.Value, len(ids))
+		getArgs = func(scope Scope, args []reflect.Value) (int, error) {
 			for i, id := range ids {
 				var err error
-				ret[i], err = scope.getByID(id, types[i])
+				args[i], err = scope.getByID(id, types[i])
 				if err != nil {
-					return nil, err
+					return 0, err
 				}
 			}
-			return ret, nil
+			return len(ids), nil
 		}
 		getArgsFunc.Store(fnType, getArgs)
 	} else {
-		getArgs = v.(func(Scope) ([]reflect.Value, error))
+		getArgs = v.(func(Scope, []reflect.Value) (int, error))
 	}
-	args, err := getArgs(scope)
+
+	args := *argsSlicePool.Get().(*[]reflect.Value)
+	n, err := getArgs(scope, args)
 	if err != nil {
 		return nil, err
 	}
-	retValues := fnValue.Call(args)
+	retValues := fnValue.Call(args[:n])
+	argsSlicePool.Put(&args)
 
 	if len(retValues) > 0 && len(retArgs) > 0 {
 		var m map[reflect.Type]int
