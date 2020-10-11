@@ -82,6 +82,13 @@ var signatureEncodeSize = func() int {
 	return n
 }()
 
+var signatureEncodeBufPool = sync.Pool{
+	New: func() any {
+		bs := make([]byte, signatureEncodeSize)
+		return &bs
+	},
+}
+
 func (s Scope) Sub(
 	inits ...any,
 ) Scope {
@@ -90,7 +97,8 @@ func (s Scope) Sub(
 
 	h := new(maphash.Hash)
 	h.SetSeed(seed)
-	buf := make([]byte, signatureEncodeSize)
+	buf := *signatureEncodeBufPool.Get().(*[]byte)
+	defer signatureEncodeBufPool.Put(&buf)
 	n := binary.PutUvarint(buf, s.signature)
 	h.Write(buf[:n])
 	h.WriteByte('-')
