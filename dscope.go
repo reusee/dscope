@@ -1,11 +1,10 @@
 package dscope
 
 import (
-	"encoding/binary"
-	"hash/maphash"
-	"math"
 	"reflect"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -31,11 +30,11 @@ var unsetTypeID = getTypeID(reflect.TypeOf((*Unset)(nil)).Elem())
 
 type Scope struct {
 	declarations UnionMap
-	signature    uint64
+	signature    string
 	ID           int64
 	ParentID     int64
 	ChangedTypes map[reflect.Type]struct{}
-	SubFuncKey   uint64
+	SubFuncKey   string
 }
 
 var nextID int64 = 42
@@ -73,42 +72,21 @@ func dumbScopeProvider() (_ Scope) { // NOCOVER
 
 var subFns sync.Map
 
-var seed = maphash.MakeSeed()
-
-var signatureEncodeSize = func() int {
-	u := uint64(math.MaxUint64)
-	buf := make([]byte, 16)
-	n := binary.PutUvarint(buf, u)
-	return n
-}()
-
-var signatureEncodeBufPool = sync.Pool{
-	New: func() any {
-		bs := make([]byte, signatureEncodeSize)
-		return &bs
-	},
-}
-
 func (s Scope) Sub(
 	inits ...any,
 ) Scope {
 
 	inits = append(inits, dumbScopeProvider)
 
-	h := new(maphash.Hash)
-	h.SetSeed(seed)
-	buf := *signatureEncodeBufPool.Get().(*[]byte)
-	defer signatureEncodeBufPool.Put(&buf)
-	n := binary.PutUvarint(buf, s.signature)
-	h.Write(buf[:n])
-	h.WriteByte('-')
+	var buf strings.Builder
+	buf.WriteString(s.signature)
+	buf.WriteByte('-')
 	for _, init := range inits {
 		id := getTypeID(reflect.TypeOf(init))
-		n := binary.PutVarint(buf, int64(id))
-		h.Write(buf[:n])
-		h.WriteByte('.')
+		buf.WriteString(strconv.FormatInt(int64(id), 10))
+		buf.WriteByte('.')
 	}
-	key := h.Sum64()
+	key := buf.String()
 
 	if value, ok := subFns.Load(key); ok {
 		return value.(func(Scope, []any) Scope)(s, inits)
@@ -296,14 +274,12 @@ func (s Scope) Sub(
 			initTypeIDs = append(initTypeIDs, id)
 		}
 	})
-	h = new(maphash.Hash)
-	h.SetSeed(seed)
+	buf.Reset()
 	for _, id := range initTypeIDs {
-		n = binary.PutVarint(buf, int64(id))
-		h.Write(buf[:n])
-		h.WriteByte('.')
+		buf.WriteString(strconv.FormatInt(int64(id), 10))
+		buf.WriteByte('.')
 	}
-	signature := h.Sum64()
+	signature := buf.String()
 
 	// reset info
 	set := make(map[_TypeID]struct{})
