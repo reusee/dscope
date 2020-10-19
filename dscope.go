@@ -481,9 +481,7 @@ var argsSlicePool = sync.Pool{
 	},
 }
 
-func (scope Scope) PcallValue(fnValue reflect.Value, retArgs ...any) ([]reflect.Value, error) {
-	fnType := fnValue.Type()
-
+func (scope Scope) GetArgs(fnType reflect.Type, args []reflect.Value) (int, error) {
 	var getArgs func(Scope, []reflect.Value) (int, error)
 	if v, ok := getArgsFunc.Load(fnType); !ok {
 		var types []reflect.Type
@@ -494,6 +492,7 @@ func (scope Scope) PcallValue(fnValue reflect.Value, retArgs ...any) ([]reflect.
 			types = append(types, t)
 			ids = append(ids, getTypeID(t))
 		}
+		n := len(ids)
 		getArgs = func(scope Scope, args []reflect.Value) (int, error) {
 			for i, id := range ids {
 				var err error
@@ -502,16 +501,21 @@ func (scope Scope) PcallValue(fnValue reflect.Value, retArgs ...any) ([]reflect.
 					return 0, err
 				}
 			}
-			return len(ids), nil
+			return n, nil
 		}
 		getArgsFunc.Store(fnType, getArgs)
 	} else {
 		getArgs = v.(func(Scope, []reflect.Value) (int, error))
 	}
+	return getArgs(scope, args)
+}
+
+func (scope Scope) PcallValue(fnValue reflect.Value, retArgs ...any) ([]reflect.Value, error) {
+	fnType := fnValue.Type()
 
 	args := *argsSlicePool.Get().(*[]reflect.Value)
 	defer argsSlicePool.Put(&args)
-	n, err := getArgs(scope, args)
+	n, err := scope.GetArgs(fnType, args)
 	if err != nil {
 		return nil, err
 	}
