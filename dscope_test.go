@@ -1176,3 +1176,32 @@ func TestSignature(t *testing.T) {
 	}
 
 }
+
+func TestPcallValueArgs(t *testing.T) {
+	scope := New(func() int {
+		return 42
+	})
+	intType := reflect.TypeOf((*int)(nil)).Elem()
+	for i := 0; i <= 50; i++ {
+		var args []reflect.Type
+		for j := 0; j < i; j++ {
+			args = append(args, intType)
+		}
+		fn := reflect.MakeFunc(
+			reflect.FuncOf(
+				args,
+				[]reflect.Type{},
+				false,
+			),
+			func(args []reflect.Value) (rets []reflect.Value) {
+				for _, arg := range args {
+					if arg.Int() != 42 {
+						t.Fatal()
+					}
+				}
+				return
+			},
+		).Interface()
+		scope.Call(fn)
+	}
+}

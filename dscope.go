@@ -474,12 +474,24 @@ func (scope Scope) CallValue(fnValue reflect.Value, retArgs ...any) []reflect.Va
 	return rets
 }
 
-var argsSlicePool = sync.Pool{
-	New: func() any {
-		slice := make([]reflect.Value, 256)
-		return &slice
-	},
-}
+const maxPooledArgsSize = 500
+
+const pooledArgsSizeStep = 5
+
+var argsPools = func() []sync.Pool {
+	numPools := maxPooledArgsSize / pooledArgsSizeStep
+	var pools []sync.Pool
+	for i := 0; i < numPools; i++ {
+		size := (i + 1) * pooledArgsSizeStep
+		pools = append(pools, sync.Pool{
+			New: func() any {
+				slice := make([]reflect.Value, size)
+				return &slice
+			},
+		})
+	}
+	return pools
+}()
 
 func (scope Scope) GetArgs(fnType reflect.Type, args []reflect.Value) (int, error) {
 	var getArgs func(Scope, []reflect.Value) (int, error)
@@ -513,8 +525,16 @@ func (scope Scope) GetArgs(fnType reflect.Type, args []reflect.Value) (int, erro
 func (scope Scope) PcallValue(fnValue reflect.Value, retArgs ...any) ([]reflect.Value, error) {
 	fnType := fnValue.Type()
 
-	args := *argsSlicePool.Get().(*[]reflect.Value)
-	defer argsSlicePool.Put(&args)
+	var args []reflect.Value
+	numIn := fnType.NumIn()
+	i := numIn / pooledArgsSizeStep
+	if i < len(argsPools) {
+		args = *argsPools[i].Get().(*[]reflect.Value)
+		defer argsPools[i].Put(&args)
+	} else {
+		args = make([]reflect.Value, numIn)
+	}
+
 	n, err := scope.GetArgs(fnType, args)
 	if err != nil {
 		return nil, err
