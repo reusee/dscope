@@ -133,9 +133,7 @@ func (s Scope) Sub(
 									},
 									false,
 								),
-								func([]reflect.Value) []reflect.Value {
-									panic("impossible")
-								},
+								nil,
 							).Interface(),
 							IsUnset: true,
 						})
