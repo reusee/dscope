@@ -28,6 +28,10 @@ type Unset struct{}
 
 var unsetTypeID = getTypeID(reflect.TypeOf((*Unset)(nil)).Elem())
 
+type Reset struct{}
+
+var resetTypeID = getTypeID(reflect.TypeOf((*Reset)(nil)).Elem())
+
 type Scope struct {
 	declarations UnionMap
 	signature    string
@@ -95,13 +99,16 @@ func (s Scope) Sub(
 	// collect new decls
 	var newDeclsTemplate []_TypeDecl
 	shadowedIDs := make(map[_TypeID]struct{})
+	explicitResetIDs := make(map[_TypeID]struct{})
 	initNumDecls := make([]int, 0, len(inits))
 	initKinds := make([]reflect.Kind, 0, len(inits))
 	changedTypes := make(map[reflect.Type]struct{})
 	for _, init := range inits {
 		initType := reflect.TypeOf(init)
 		initKinds = append(initKinds, initType.Kind())
+
 		switch initType.Kind() {
+
 		case reflect.Func:
 			numOut := initType.NumOut()
 			if numOut == 0 {
@@ -143,6 +150,16 @@ func (s Scope) Sub(
 								shadowedIDs[inID] = struct{}{}
 							}
 						}
+						changedTypes[in] = struct{}{}
+					}
+
+				} else if id == resetTypeID {
+					// reset decl
+					numIn := initType.NumIn()
+					for i := 0; i < numIn; i++ {
+						in := initType.In(i)
+						inID := getTypeID(in)
+						explicitResetIDs[inID] = struct{}{}
 						changedTypes[in] = struct{}{}
 					}
 
@@ -295,13 +312,23 @@ func (s Scope) Sub(
 			if _, ok := set[downstream.TypeID]; !ok {
 				resetIDs = append(resetIDs, downstream.TypeID)
 				changedTypes[downstream.Type] = struct{}{}
+				set[downstream.TypeID] = struct{}{}
 			}
-			set[downstream.TypeID] = struct{}{}
 			resetDownstream(downstream.TypeID)
 		}
 		colors[id] = 1
 	}
 	for id := range shadowedIDs {
+		resetDownstream(id)
+	}
+	for id := range explicitResetIDs {
+		if _, ok := s.declarations.Load(id); !ok {
+			continue
+		}
+		if _, ok := set[id]; !ok {
+			resetIDs = append(resetIDs, id)
+			set[id] = struct{}{}
+		}
 		resetDownstream(id)
 	}
 	sort.Slice(resetIDs, func(i, j int) bool {
@@ -584,7 +611,7 @@ var (
 		return v
 	}()
 	typeIDLock sync.Mutex
-	nextTypeID _TypeID = 42 // guarded by typeIDLock
+	nextTypeID _TypeID // guarded by typeIDLock
 )
 
 func getTypeID(t reflect.Type) (r _TypeID) {
