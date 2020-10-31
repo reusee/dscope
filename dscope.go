@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"unsafe"
 )
 
 type _TypeDecl struct {
@@ -21,8 +20,6 @@ type _TypeDecl struct {
 }
 
 type _TypeID int
-
-var typeIDSize = int(unsafe.Sizeof(_TypeID(0)))
 
 type Unset struct{}
 
