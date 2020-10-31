@@ -556,7 +556,7 @@ func (scope Scope) PcallValue(fnValue reflect.Value, retArgs ...any) ([]reflect.
 	if i < len(argsPools) {
 		args = *argsPools[i].Get().(*[]reflect.Value)
 		defer argsPools[i].Put(&args)
-	} else {
+	} else { // NOCOVER
 		args = make([]reflect.Value, numIn)
 	}
 
