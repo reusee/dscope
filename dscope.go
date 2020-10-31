@@ -265,7 +265,7 @@ func (s Scope) Sub(
 		case reflect.Ptr:
 			colors[decl.TypeID] = 2
 			return
-		default:
+		default: // NOCOVER
 			panic("impossible")
 		}
 		colors[decl.TypeID] = 2
@@ -464,7 +464,7 @@ func (scope Scope) getByID(id _TypeID, t reflect.Type) (
 		}
 	}
 	values, err := decl.Get(scope)
-	if err != nil {
+	if err != nil { // NOCOVER
 		return ret, err
 	}
 	return values[decl.ValueIndex], nil

@@ -993,6 +993,20 @@ func TestPointerProvider(t *testing.T) {
 		}
 	})
 
+	scope = New(func() int {
+		return 42
+	}).Sub(func() *int {
+		i := 42
+		return &i
+	}())
+	scope.Call(func(
+		i int,
+	) {
+		if i != 42 {
+			t.Fatal()
+		}
+	})
+
 }
 
 func TestAssignNotExistsReturn(t *testing.T) {
@@ -1239,7 +1253,7 @@ func TestReset(t *testing.T) {
 		t.Fatal()
 	}
 
-	s = s.Sub(func(int) (_ Reset) { return })
+	s = s.Sub(func(int, string) (_ Reset) { return })
 	s.Assign(&i)
 	if count != 2 {
 		t.Fatal()
