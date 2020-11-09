@@ -1,8 +1,8 @@
 package dscope
 
-type UnionMap [][]_TypeDecl
+type _UnionMap [][]_TypeDecl
 
-func (u UnionMap) Load(id _TypeID) (ds []_TypeDecl, ok bool) {
+func (u _UnionMap) Load(id _TypeID) (ds []_TypeDecl, ok bool) {
 	var left, right, idx, l uint
 	var id2 _TypeID
 	var m []_TypeDecl
@@ -37,7 +37,7 @@ func (u UnionMap) Load(id _TypeID) (ds []_TypeDecl, ok bool) {
 	return
 }
 
-func (u UnionMap) Range(fn func([]_TypeDecl)) {
+func (u _UnionMap) Range(fn func([]_TypeDecl)) {
 	keys := make(map[_TypeID]struct{})
 	var m []_TypeDecl
 	for i := len(u) - 1; i >= 0; i-- {
@@ -60,7 +60,7 @@ func (u UnionMap) Range(fn func([]_TypeDecl)) {
 	}
 }
 
-func (u UnionMap) Len() int {
+func (u _UnionMap) Len() int {
 	ret := 0
 	for _, decls := range u {
 		ret += len(decls)

@@ -36,7 +36,7 @@ type Reducer interface {
 var reducerType = reflect.TypeOf((*Reducer)(nil)).Elem()
 
 type Scope struct {
-	declarations UnionMap
+	declarations _UnionMap
 	signature    string
 	ID           int64
 	ParentID     int64
@@ -364,7 +364,7 @@ func (s Scope) Sub(
 			SubFuncKey:   key,
 			reducers:     reducers,
 		}
-		var declarations UnionMap
+		var declarations _UnionMap
 		if len(s.declarations) > 32 {
 			// flatten
 			var decls []_TypeDecl
@@ -374,9 +374,9 @@ func (s Scope) Sub(
 			sort.Slice(decls, func(i, j int) bool {
 				return decls[i].TypeID < decls[j].TypeID
 			})
-			declarations = UnionMap{decls}
+			declarations = _UnionMap{decls}
 		} else {
-			declarations = make(UnionMap, len(s.declarations), len(s.declarations)+2)
+			declarations = make(_UnionMap, len(s.declarations), len(s.declarations)+2)
 			copy(declarations, s.declarations)
 		}
 
