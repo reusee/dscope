@@ -13,11 +13,14 @@ func TestUnionMap(t *testing.T) {
 		{TypeID: 3, ValueIndex: 6},
 	})
 
-	v, ok := m.Load(1)
+	vs, ok := m.Load(1)
 	if !ok {
 		t.Fatal()
 	}
-	if v.ValueIndex != 1 {
+	if len(vs) != 1 {
+		t.Fatal()
+	}
+	if vs[0].ValueIndex != 1 {
 		t.Fatal()
 	}
 
@@ -27,11 +30,13 @@ func TestUnionMap(t *testing.T) {
 	}
 
 	n := 0
-	m.Range(func(d _TypeDecl) {
-		n++
-		if d.TypeID == 3 {
-			if d.ValueIndex != 6 {
-				t.Fatal()
+	m.Range(func(ds []_TypeDecl) {
+		for _, d := range ds {
+			n++
+			if d.TypeID == 3 {
+				if d.ValueIndex != 6 {
+					t.Fatal()
+				}
 			}
 		}
 	})

@@ -174,6 +174,29 @@ func TestPanic(t *testing.T) {
 		scope.Assign(&s)
 	}()
 
+	func() {
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			if !strings.Contains(
+				fmt.Sprintf("%v", p),
+				"bad declaration, non-reducer type has multiple declarations: int",
+			) {
+				t.Fatalf("unexpected: %v", p)
+			}
+		}()
+		New(
+			func() int {
+				return 1
+			},
+			func() int {
+				return 2
+			},
+		)
+	}()
+
 }
 
 func TestSubScope(t *testing.T) {
@@ -1272,4 +1295,32 @@ func TestReset(t *testing.T) {
 		t.Fatal()
 	}
 
+}
+
+type acc int
+
+var _ Reducer = acc(0)
+
+func (a acc) Reduce(_ Scope, vs []reflect.Value) reflect.Value {
+	var ret acc
+	for _, v := range vs {
+		ret += v.Interface().(acc)
+	}
+	return reflect.ValueOf(ret)
+}
+
+func TestReducer(t *testing.T) {
+	s := New(
+		func() acc {
+			return 1
+		},
+		func() acc {
+			return 2
+		},
+	)
+	var a acc
+	s.Assign(&a)
+	if a != 3 {
+		t.Fatal()
+	}
 }

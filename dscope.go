@@ -29,6 +29,12 @@ type Reset struct{}
 
 var resetTypeID = getTypeID(reflect.TypeOf((*Reset)(nil)).Elem())
 
+type Reducer interface {
+	Reduce(Scope, []reflect.Value) reflect.Value
+}
+
+var reducerType = reflect.TypeOf((*Reducer)(nil)).Elem()
+
 type Scope struct {
 	declarations UnionMap
 	signature    string
@@ -227,25 +233,24 @@ func (s Scope) Sub(
 
 	colors := make(map[_TypeID]int)
 	downstreams := make(map[_TypeID][]_TypeDecl)
-	var traverse func(decl _TypeDecl)
-	traverse = func(decl _TypeDecl) {
-		color := colors[decl.TypeID]
+	var traverse func(decls []_TypeDecl)
+	traverse = func(decls []_TypeDecl) {
+		id := decls[0].TypeID
+		color := colors[id]
 		if color == 1 {
 			panic(ErrDependencyLoop{
-				Value: decl.Init,
+				Value: decls[0].Init,
 			})
 		} else if color == 2 {
 			return
 		}
-		switch decl.Kind {
-		case reflect.Func:
+		colors[id] = 1
+		for _, decl := range decls {
+			if decl.Kind != reflect.Func {
+				continue
+			}
 			initType := reflect.TypeOf(decl.Init)
 			numIn := initType.NumIn()
-			if numIn == 0 {
-				colors[decl.TypeID] = 2
-				return
-			}
-			colors[decl.TypeID] = 1
 			for i := 0; i < numIn; i++ {
 				requiredType := initType.In(i)
 				id2 := getTypeID(requiredType)
@@ -262,32 +267,43 @@ func (s Scope) Sub(
 				)
 				traverse(decl2)
 			}
-		case reflect.Ptr:
-			colors[decl.TypeID] = 2
-			return
-		default: // NOCOVER
-			panic("impossible")
 		}
-		colors[decl.TypeID] = 2
+		colors[id] = 2
 	}
 
 	initTypeIDs := make([]_TypeID, 0, declarationsTemplate.Len())
-	declarationsTemplate.Range(func(decl _TypeDecl) {
-		traverse(decl)
-		t := reflect.TypeOf(decl.Init)
-		id := getTypeID(t)
-		i := sort.Search(len(initTypeIDs), func(i int) bool {
-			return id >= initTypeIDs[i]
-		})
-		if i < len(initTypeIDs) {
-			if initTypeIDs[i] == id {
-				// existed
+	declarationsTemplate.Range(func(decls []_TypeDecl) {
+		traverse(decls)
+
+		for _, decl := range decls {
+			t := reflect.TypeOf(decl.Init)
+			id := getTypeID(t)
+			i := sort.Search(len(initTypeIDs), func(i int) bool {
+				return id >= initTypeIDs[i]
+			})
+			if i < len(initTypeIDs) {
+				if initTypeIDs[i] == id {
+					// existed
+				} else {
+					initTypeIDs = append(
+						initTypeIDs[:i],
+						append([]_TypeID{id}, initTypeIDs[i:]...)...,
+					)
+				}
 			} else {
-				initTypeIDs = append(initTypeIDs[:i], append([]_TypeID{id}, initTypeIDs[i:]...)...)
+				initTypeIDs = append(initTypeIDs, id)
 			}
-		} else {
-			initTypeIDs = append(initTypeIDs, id)
 		}
+
+		if len(decls) > 1 {
+			if !decls[0].Type.Implements(reducerType) {
+				panic(ErrBadDeclaration{
+					Type:   decls[0].Type,
+					Reason: "non-reducer type has multiple declarations",
+				})
+			}
+		}
+
 	})
 	buf.Reset()
 	for _, id := range initTypeIDs {
@@ -348,8 +364,8 @@ func (s Scope) Sub(
 		if len(s.declarations) > 32 {
 			// flatten
 			var decls []_TypeDecl
-			s.declarations.Range(func(decl _TypeDecl) {
-				decls = append(decls, decl)
+			s.declarations.Range(func(ds []_TypeDecl) {
+				decls = append(decls, ds...)
 			})
 			sort.Slice(decls, func(i, j int) bool {
 				return decls[i].TypeID < decls[j].TypeID
@@ -410,12 +426,14 @@ func (s Scope) Sub(
 		if len(resetIDs) > 0 {
 			resetDecls := make([]_TypeDecl, 0, len(resetIDs))
 			for _, id := range resetIDs {
-				decl, ok := declarations.Load(id)
+				decls, ok := declarations.Load(id)
 				if !ok { // NOCOVER
 					panic("impossible")
 				}
-				decl.Get = cachedInit(decl.Init)
-				resetDecls = append(resetDecls, decl)
+				for _, decl := range decls {
+					decl.Get = cachedInit(decl.Init)
+					resetDecls = append(resetDecls, decl)
+				}
 			}
 			declarations = append(declarations, resetDecls)
 		}
@@ -449,32 +467,45 @@ func (scope Scope) Assign(objs ...any) {
 }
 
 func (scope Scope) getByID(id _TypeID, t reflect.Type) (
-	ret reflect.Value,
+	ret []reflect.Value,
 	err error,
 ) {
-	decl, ok := scope.declarations.Load(id)
+	decls, ok := scope.declarations.Load(id)
 	if !ok {
 		return ret, ErrDependencyNotFound{
 			Type: t,
 		}
 	}
-	if decl.IsUnset {
-		return ret, ErrDependencyNotFound{
-			Type: t,
+	for _, decl := range decls {
+		if decl.IsUnset {
+			return ret, ErrDependencyNotFound{
+				Type: t,
+			}
 		}
+		values, err := decl.Get(scope)
+		if err != nil { // NOCOVER
+			return ret, err
+		}
+		ret = append(ret, values[decl.ValueIndex])
 	}
-	values, err := decl.Get(scope)
-	if err != nil { // NOCOVER
-		return ret, err
-	}
-	return values[decl.ValueIndex], nil
+	return
 }
 
 func (scope Scope) Get(t reflect.Type) (
 	ret reflect.Value,
 	err error,
 ) {
-	return scope.getByID(getTypeID(t), t)
+	values, err := scope.getByID(getTypeID(t), t)
+	if err != nil {
+		return
+	}
+	if t.Implements(reducerType) {
+		ret = values[0].Interface().(Reducer).Reduce(scope, values)
+		return
+	}
+	// non-reducer
+	ret = values[0]
+	return
 }
 
 func (scope Scope) Call(fn any, rets ...any) []reflect.Value {
@@ -531,9 +562,9 @@ func (scope Scope) GetArgs(fnType reflect.Type, args []reflect.Value) (int, erro
 		}
 		n := len(ids)
 		getArgs = func(scope Scope, args []reflect.Value) (int, error) {
-			for i, id := range ids {
+			for i := range ids {
 				var err error
-				args[i], err = scope.getByID(id, types[i])
+				args[i], err = scope.Get(types[i])
 				if err != nil {
 					return 0, err
 				}

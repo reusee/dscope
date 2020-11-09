@@ -2,7 +2,7 @@ package dscope
 
 type UnionMap [][]_TypeDecl
 
-func (u UnionMap) Load(id _TypeID) (d _TypeDecl, ok bool) {
+func (u UnionMap) Load(id _TypeID) (ds []_TypeDecl, ok bool) {
 	var left, right, idx uint
 	var id2 _TypeID
 	var m []_TypeDecl
@@ -18,7 +18,17 @@ func (u UnionMap) Load(id _TypeID) (d _TypeDecl, ok bool) {
 			} else if id > id2 {
 				left = idx + 1
 			} else {
-				d = m[idx]
+				ds = append(ds, m[idx])
+				id := m[idx].TypeID
+				idx++
+				for idx < right {
+					if m[idx].TypeID == id {
+						ds = append(ds, m[idx])
+						idx++
+					} else {
+						break
+					}
+				}
 				ok = true
 				return
 			}
@@ -27,17 +37,25 @@ func (u UnionMap) Load(id _TypeID) (d _TypeDecl, ok bool) {
 	return
 }
 
-func (u UnionMap) Range(fn func(_TypeDecl)) {
+func (u UnionMap) Range(fn func([]_TypeDecl)) {
 	keys := make(map[_TypeID]struct{})
 	var m []_TypeDecl
 	for i := len(u) - 1; i >= 0; i-- {
 		m = u[i]
-		for _, d := range m {
+		for j, d := range m {
 			if _, ok := keys[d.TypeID]; ok {
 				continue
 			}
 			keys[d.TypeID] = struct{}{}
-			fn(d)
+			ds := []_TypeDecl{d}
+			for _, follow := range m[j+1:] {
+				if follow.TypeID == d.TypeID {
+					ds = append(ds, follow)
+				} else {
+					break
+				}
+			}
+			fn(ds)
 		}
 	}
 }
