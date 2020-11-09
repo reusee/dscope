@@ -42,7 +42,7 @@ type Scope struct {
 	ParentID     int64
 	ChangedTypes map[reflect.Type]struct{}
 	SubFuncKey   string
-	reducers     map[reflect.Type]struct{}
+	reducers     map[_TypeID]struct{}
 }
 
 var nextID int64 = 42
@@ -273,7 +273,7 @@ func (s Scope) Sub(
 	}
 
 	initTypeIDs := make([]_TypeID, 0, declarationsTemplate.Len())
-	reducers := make(map[reflect.Type]struct{})
+	reducers := make(map[_TypeID]struct{})
 	declarationsTemplate.Range(func(decls []_TypeDecl) {
 		traverse(decls)
 
@@ -298,7 +298,7 @@ func (s Scope) Sub(
 		}
 
 		if len(decls) > 1 {
-			reducers[decls[0].Type] = struct{}{}
+			reducers[decls[0].TypeID] = struct{}{}
 			if !decls[0].Type.Implements(reducerType) {
 				panic(ErrBadDeclaration{
 					Type:   decls[0].Type,
@@ -470,17 +470,20 @@ func (scope Scope) Assign(objs ...any) {
 	}
 }
 
-func (scope Scope) getByID(id _TypeID, t reflect.Type) (
-	ret []reflect.Value,
+func (scope Scope) get(id _TypeID, t reflect.Type) (
+	ret reflect.Value,
 	err error,
 ) {
+
 	decls, ok := scope.declarations.Load(id)
 	if !ok {
 		return ret, ErrDependencyNotFound{
 			Type: t,
 		}
 	}
-	for _, decl := range decls {
+
+	if _, ok := scope.reducers[id]; !ok {
+		decl := decls[0]
 		if decl.IsUnset {
 			return ret, ErrDependencyNotFound{
 				Type: t,
@@ -490,26 +493,33 @@ func (scope Scope) getByID(id _TypeID, t reflect.Type) (
 		if err != nil { // NOCOVER
 			return ret, err
 		}
-		ret = append(ret, values[decl.ValueIndex])
+		return values[decl.ValueIndex], nil
+
+	} else {
+		var vs []reflect.Value
+		for _, decl := range decls {
+			if decl.IsUnset {
+				return ret, ErrDependencyNotFound{
+					Type: t,
+				}
+			}
+			values, err := decl.Get(scope)
+			if err != nil { // NOCOVER
+				return ret, err
+			}
+			vs = append(vs, values[decl.ValueIndex])
+		}
+		ret = vs[0].Interface().(Reducer).Reduce(scope, vs)
+		return
 	}
-	return
+
 }
 
 func (scope Scope) Get(t reflect.Type) (
 	ret reflect.Value,
 	err error,
 ) {
-	values, err := scope.getByID(getTypeID(t), t)
-	if err != nil {
-		return
-	}
-	if _, ok := scope.reducers[t]; ok {
-		ret = values[0].Interface().(Reducer).Reduce(scope, values)
-		return
-	}
-	// non-reducer
-	ret = values[0]
-	return
+	return scope.get(getTypeID(t), t)
 }
 
 func (scope Scope) Call(fn any, rets ...any) []reflect.Value {
@@ -568,7 +578,7 @@ func (scope Scope) GetArgs(fnType reflect.Type, args []reflect.Value) (int, erro
 		getArgs = func(scope Scope, args []reflect.Value) (int, error) {
 			for i := range ids {
 				var err error
-				args[i], err = scope.Get(types[i])
+				args[i], err = scope.get(ids[i], types[i])
 				if err != nil {
 					return 0, err
 				}
