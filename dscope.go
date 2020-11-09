@@ -204,15 +204,18 @@ func (s Scope) Sub(
 			})
 		}
 	}
-	newDeclOrders := make([]int, 0, len(newDeclsTemplate))
+	type posAtTemplate int
+	posesAtTemplate := make([]posAtTemplate, 0, len(newDeclsTemplate))
 	for i := range newDeclsTemplate {
-		newDeclOrders = append(newDeclOrders, i)
+		posesAtTemplate = append(posesAtTemplate, posAtTemplate(i))
 	}
-	sort.Slice(newDeclOrders, func(i, j int) bool {
-		return newDeclsTemplate[newDeclOrders[i]].TypeID < newDeclsTemplate[newDeclOrders[j]].TypeID
+	sort.Slice(posesAtTemplate, func(i, j int) bool {
+		return newDeclsTemplate[posesAtTemplate[i]].TypeID < newDeclsTemplate[posesAtTemplate[j]].TypeID
 	})
-	for i, idx := range newDeclOrders {
-		newDeclsTemplate[idx].ValueIndex = i
+	type posAtSorted int
+	posesAtSorted := make([]posAtSorted, len(posesAtTemplate))
+	for i, j := range posesAtTemplate {
+		posesAtSorted[j] = posAtSorted(i)
 	}
 
 	declarationsTemplate := append(s.declarations[:0:0], s.declarations...)
@@ -374,7 +377,7 @@ func (s Scope) Sub(
 						// use made func for unset decls
 						initFunc = info.Init
 					}
-					newDecls[info.ValueIndex] = _TypeDecl{
+					newDecls[posesAtSorted[n]] = _TypeDecl{
 						Kind:       info.Kind,
 						Init:       initFunc,
 						Get:        get,
@@ -388,7 +391,7 @@ func (s Scope) Sub(
 			case reflect.Ptr:
 				info := newDeclsTemplate[n]
 				v := reflect.ValueOf(init).Elem()
-				newDecls[info.ValueIndex] = _TypeDecl{
+				newDecls[posesAtSorted[n]] = _TypeDecl{
 					Kind: info.Kind,
 					Init: init,
 					Get: func(scope Scope) ([]reflect.Value, error) {
