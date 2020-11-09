@@ -23,14 +23,11 @@ func (u UnionMap) Load(id _TypeID) (ds []_TypeDecl, ok bool) {
 		}
 		for ; idx < l; idx++ {
 			id2 = m[idx].TypeID
-			if id2 > id {
+			if id2 == id {
+				ds = append(ds, m[idx])
+			} else if id2 > id {
 				break
 			}
-			if id2 < id {
-				continue
-			}
-			// id2 == id
-			ds = append(ds, m[idx])
 		}
 		if len(ds) > 0 {
 			ok = true
