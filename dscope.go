@@ -254,7 +254,7 @@ func (s Scope) Sub(
 			for i := 0; i < numIn; i++ {
 				requiredType := initType.In(i)
 				id2 := getTypeID(requiredType)
-				decl2, ok := declarationsTemplate.Load(id2)
+				decls2, ok := declarationsTemplate.Load(id2)
 				if !ok {
 					panic(ErrDependencyNotFound{
 						Type: requiredType,
@@ -265,7 +265,7 @@ func (s Scope) Sub(
 					downstreams[id2],
 					decl,
 				)
-				traverse(decl2)
+				traverse(decls2)
 			}
 		}
 		colors[id] = 2

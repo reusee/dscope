@@ -1314,13 +1314,43 @@ func TestReducer(t *testing.T) {
 		func() acc {
 			return 1
 		},
-		func() acc {
-			return 2
-		},
 	)
 	var a acc
 	s.Assign(&a)
-	if a != 3 {
+	if a != 1 {
 		t.Fatal()
 	}
+
+	s = s.Sub(
+		func() acc {
+			return 2
+		},
+		func() string {
+			return "foo"
+		},
+		func() acc {
+			return 3
+		},
+	)
+	s.Assign(&a)
+	if a != 5 {
+		t.Fatal()
+	}
+
+	s = s.Sub(
+		func() acc {
+			return 3
+		},
+		func() string {
+			return "foo"
+		},
+		func() acc {
+			return 4
+		},
+	)
+	s.Assign(&a)
+	if a != 7 {
+		t.Fatal()
+	}
+
 }
