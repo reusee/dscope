@@ -641,6 +641,20 @@ func (scope Scope) PcallValue(fnValue reflect.Value, retArgs ...any) ([]reflect.
 	return retValues, nil
 }
 
+func (s Scope) Extend(t reflect.Type, inits ...any) Scope {
+	if !t.Implements(reducerType) {
+		panic(ErrBadDeclaration{
+			Type:   t,
+			Reason: "not a reducer type",
+		})
+	}
+	decls, _ := s.declarations.Load(getTypeID(t))
+	for _, decl := range decls {
+		inits = append(inits, decl.Init)
+	}
+	return s.Sub(inits...)
+}
+
 var returnTypeMap sync.Map
 
 var getArgsFunc sync.Map

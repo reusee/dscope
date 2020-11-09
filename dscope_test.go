@@ -1354,3 +1354,26 @@ func TestReducer(t *testing.T) {
 	}
 
 }
+
+func TestExtend(t *testing.T) {
+	s := New(func() acc {
+		return 1
+	}, func() acc {
+		return 2
+	})
+	var a acc
+	s.Assign(&a)
+	if a != 3 {
+		t.Fatal()
+	}
+	s = s.Extend(
+		reflect.TypeOf(a),
+		func() acc {
+			return 3
+		},
+	)
+	s.Assign(&a)
+	if a != 6 {
+		t.Fatal()
+	}
+}
