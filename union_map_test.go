@@ -7,7 +7,9 @@ func TestUnionMap(t *testing.T) {
 	m = append(m, []_TypeDecl{
 		{TypeID: 1, ValueIndex: 1},
 		{TypeID: 2, ValueIndex: 2},
-		{TypeID: 3, ValueIndex: 3},
+		{TypeID: 2, ValueIndex: 3},
+		{TypeID: 2, ValueIndex: 4},
+		{TypeID: 3, ValueIndex: 5},
 	})
 	m = append(m, []_TypeDecl{
 		{TypeID: 3, ValueIndex: 6},
@@ -21,6 +23,23 @@ func TestUnionMap(t *testing.T) {
 		t.Fatal()
 	}
 	if vs[0].ValueIndex != 1 {
+		t.Fatal()
+	}
+
+	vs, ok = m.Load(2)
+	if !ok {
+		t.Fatal()
+	}
+	if len(vs) != 3 {
+		t.Fatalf("got %d", len(vs))
+	}
+	if vs[0].ValueIndex != 2 {
+		t.Fatal()
+	}
+	if vs[1].ValueIndex != 3 {
+		t.Fatal()
+	}
+	if vs[2].ValueIndex != 4 {
 		t.Fatal()
 	}
 
@@ -40,8 +59,8 @@ func TestUnionMap(t *testing.T) {
 			}
 		}
 	})
-	if n != 3 {
-		t.Fatal()
+	if n != 5 {
+		t.Fatalf("got %d", n)
 	}
 
 }

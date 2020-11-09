@@ -6,6 +6,8 @@ func (u UnionMap) Load(id _TypeID) (ds []_TypeDecl, ok bool) {
 	var left, right, idx uint
 	var id2 _TypeID
 	var m []_TypeDecl
+	typeID := id
+	id-- // to find left bound of target id
 	for i := len(u) - 1; i >= 0; i-- {
 		m = u[i]
 		left = 0
@@ -18,20 +20,23 @@ func (u UnionMap) Load(id _TypeID) (ds []_TypeDecl, ok bool) {
 			} else if id > id2 {
 				left = idx + 1
 			} else {
-				ds = append(ds, m[idx])
-				id := m[idx].TypeID
-				idx++
-				for idx < right {
-					if m[idx].TypeID == id {
-						ds = append(ds, m[idx])
-						idx++
-					} else {
-						break
-					}
-				}
-				ok = true
-				return
+				break
 			}
+		}
+		right := uint(len(m))
+		for ; idx < right; idx++ {
+			id2 := m[idx].TypeID
+			if id2 > typeID {
+				break
+			}
+			if id2 != typeID {
+				continue
+			}
+			ds = append(ds, m[idx])
+		}
+		if len(ds) > 0 {
+			ok = true
+			return
 		}
 	}
 	return
