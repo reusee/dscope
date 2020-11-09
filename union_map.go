@@ -3,7 +3,7 @@ package dscope
 type UnionMap [][]_TypeDecl
 
 func (u UnionMap) Load(id _TypeID) (ds []_TypeDecl, ok bool) {
-	var left, right, idx uint
+	var left, right, idx, l uint
 	var id2 _TypeID
 	var m []_TypeDecl
 	typeID := id
@@ -11,7 +11,8 @@ func (u UnionMap) Load(id _TypeID) (ds []_TypeDecl, ok bool) {
 	for i := len(u) - 1; i >= 0; i-- {
 		m = u[i]
 		left = 0
-		right = uint(len(m))
+		l = uint(len(m))
+		right = l
 		for left < right {
 			idx = (left + right) >> 1
 			id2 = m[idx].TypeID
@@ -23,9 +24,8 @@ func (u UnionMap) Load(id _TypeID) (ds []_TypeDecl, ok bool) {
 				break
 			}
 		}
-		right := uint(len(m))
-		for ; idx < right; idx++ {
-			id2 := m[idx].TypeID
+		for ; idx < l; idx++ {
+			id2 = m[idx].TypeID
 			if id2 > typeID {
 				break
 			}
