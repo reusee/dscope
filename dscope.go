@@ -42,6 +42,7 @@ type Scope struct {
 	ParentID     int64
 	ChangedTypes map[reflect.Type]struct{}
 	SubFuncKey   string
+	reducers     map[reflect.Type]struct{}
 }
 
 var nextID int64 = 42
@@ -272,6 +273,7 @@ func (s Scope) Sub(
 	}
 
 	initTypeIDs := make([]_TypeID, 0, declarationsTemplate.Len())
+	reducers := make(map[reflect.Type]struct{})
 	declarationsTemplate.Range(func(decls []_TypeDecl) {
 		traverse(decls)
 
@@ -296,6 +298,7 @@ func (s Scope) Sub(
 		}
 
 		if len(decls) > 1 {
+			reducers[decls[0].Type] = struct{}{}
 			if !decls[0].Type.Implements(reducerType) {
 				panic(ErrBadDeclaration{
 					Type:   decls[0].Type,
@@ -359,6 +362,7 @@ func (s Scope) Sub(
 			ParentID:     s.ID,
 			ChangedTypes: changedTypes,
 			SubFuncKey:   key,
+			reducers:     reducers,
 		}
 		var declarations UnionMap
 		if len(s.declarations) > 32 {
@@ -499,7 +503,7 @@ func (scope Scope) Get(t reflect.Type) (
 	if err != nil {
 		return
 	}
-	if t.Implements(reducerType) {
+	if _, ok := scope.reducers[t]; ok {
 		ret = values[0].Interface().(Reducer).Reduce(scope, values)
 		return
 	}
