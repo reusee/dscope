@@ -1,3 +1,9 @@
+### TODO
+* Unset
+* Reset
+* Reducer
+* trick: cache Reducer results  
+
 dscope 是一个在 go 语言里模拟动态作用域机制的库
 
 ## 类型与值的声明
