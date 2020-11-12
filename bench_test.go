@@ -1,6 +1,7 @@
 package dscope
 
 import (
+	"reflect"
 	"testing"
 )
 
@@ -543,5 +544,32 @@ func BenchmarkRecursiveSub(b *testing.B) {
 			},
 		)
 		scope.Assign(&n)
+	}
+}
+
+type benchMultiFunc func()
+
+var _ Reducer = benchMultiFunc(nil)
+
+func (_ benchMultiFunc) Reduce(_ Scope, vs []reflect.Value) reflect.Value {
+	return Reduce(vs)
+}
+
+func BenchmarkMultipleDispatch(b *testing.B) {
+	s := New(
+		func() benchMultiFunc {
+			return func() {
+			}
+		},
+		func() benchMultiFunc {
+			return func() {
+			}
+		},
+	)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		s.Call(func(fn benchMultiFunc) {
+			fn()
+		})
 	}
 }
