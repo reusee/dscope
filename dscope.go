@@ -29,12 +29,6 @@ type Reset struct{}
 
 var resetTypeID = getTypeID(reflect.TypeOf((*Reset)(nil)).Elem())
 
-type Reducer interface {
-	Reduce(Scope, []reflect.Value) reflect.Value
-}
-
-var reducerType = reflect.TypeOf((*Reducer)(nil)).Elem()
-
 type Scope struct {
 	declarations _UnionMap
 	signature    string

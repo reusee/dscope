@@ -1377,3 +1377,38 @@ func TestExtend(t *testing.T) {
 		t.Fatal()
 	}
 }
+
+type testFunc func(*int)
+
+var _ Reducer = testFunc(nil)
+
+func (t testFunc) Reduce(_ Scope, vs []reflect.Value) reflect.Value {
+	return Reduce(vs)
+}
+
+type testFuncDef struct{}
+
+func (_ testFuncDef) Foo() testFunc {
+	return func(p *int) {
+		*p++
+	}
+}
+
+func (_ testFuncDef) Bar() testFunc {
+	return func(p *int) {
+		*p += 2
+	}
+}
+
+func TestMultipleDispatch(t *testing.T) {
+	s := New(Methods(new(testFuncDef))...)
+	var i int
+	s.Call(func(
+		fn testFunc,
+	) {
+		fn(&i)
+	})
+	if i != 3 {
+		t.Fatal()
+	}
+}
