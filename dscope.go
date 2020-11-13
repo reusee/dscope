@@ -144,7 +144,7 @@ func (s Scope) Sub(
 						})
 						numDecls++
 						if in != scopeType {
-							if _, ok := s.declarations.Load(inID); ok {
+							if _, ok := s.declarations.LoadOne(inID); ok {
 								shadowedIDs[inID] = struct{}{}
 							}
 						}
@@ -171,7 +171,7 @@ func (s Scope) Sub(
 					})
 					numDecls++
 					if t != scopeType {
-						if _, ok := s.declarations.Load(id); ok {
+						if _, ok := s.declarations.LoadOne(id); ok {
 							shadowedIDs[id] = struct{}{}
 						}
 					}
@@ -191,7 +191,7 @@ func (s Scope) Sub(
 				Init:   init,
 			})
 			if t != scopeType {
-				if _, ok := s.declarations.Load(id); ok {
+				if _, ok := s.declarations.LoadOne(id); ok {
 					shadowedIDs[id] = struct{}{}
 				}
 			}
@@ -319,7 +319,7 @@ func (s Scope) Sub(
 			return
 		}
 		for _, downstream := range downstreams[id] {
-			if _, ok := s.declarations.Load(downstream.TypeID); !ok {
+			if _, ok := s.declarations.LoadOne(downstream.TypeID); !ok {
 				continue
 			}
 			if _, ok := set[downstream.TypeID]; !ok {
@@ -335,7 +335,7 @@ func (s Scope) Sub(
 		resetDownstream(id)
 	}
 	for id := range explicitResetIDs {
-		if _, ok := s.declarations.Load(id); !ok {
+		if _, ok := s.declarations.LoadOne(id); !ok {
 			continue
 		}
 		if _, ok := set[id]; !ok {
@@ -469,15 +469,13 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 	err error,
 ) {
 
-	decls, ok := scope.declarations.Load(id)
-	if !ok {
-		return ret, ErrDependencyNotFound{
-			Type: t,
-		}
-	}
-
 	if _, ok := scope.reducers[id]; !ok {
-		decl := decls[0]
+		decl, ok := scope.declarations.LoadOne(id)
+		if !ok {
+			return ret, ErrDependencyNotFound{
+				Type: t,
+			}
+		}
 		if decl.IsUnset {
 			return ret, ErrDependencyNotFound{
 				Type: t,
@@ -490,6 +488,12 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 		return values[decl.ValueIndex], nil
 
 	} else {
+		decls, ok := scope.declarations.Load(id)
+		if !ok {
+			return ret, ErrDependencyNotFound{
+				Type: t,
+			}
+		}
 		var vs []reflect.Value
 		for _, decl := range decls {
 			if decl.IsUnset {

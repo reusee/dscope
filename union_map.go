@@ -37,6 +37,29 @@ func (u _UnionMap) Load(id _TypeID) (ds []_TypeDecl, ok bool) {
 	return
 }
 
+func (u _UnionMap) LoadOne(id _TypeID) (ret _TypeDecl, ok bool) {
+	var left, right, idx uint
+	var id2 _TypeID
+	var m []_TypeDecl
+	for i := len(u) - 1; i >= 0; i-- {
+		m = u[i]
+		left = 0
+		right = uint(len(m))
+		for left < right {
+			idx = (left + right) >> 1
+			id2 = m[idx].TypeID
+			if id2 > id {
+				right = idx
+			} else if id2 < id {
+				left = idx + 1
+			} else {
+				return m[idx], true
+			}
+		}
+	}
+	return
+}
+
 func (u _UnionMap) Range(fn func([]_TypeDecl)) {
 	keys := make(map[_TypeID]struct{})
 	var m []_TypeDecl
