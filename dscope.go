@@ -77,6 +77,18 @@ var subFns sync.Map
 func (s Scope) Sub(
 	inits ...any,
 ) Scope {
+	scope, err := s.Psub(inits...)
+	if err != nil {
+		panic(err)
+	}
+	return scope
+}
+
+var badScope = Scope{}
+
+func (s Scope) Psub(
+	inits ...any,
+) (Scope, error) {
 
 	inits = append(inits, dumbScopeProvider)
 
@@ -91,7 +103,7 @@ func (s Scope) Sub(
 	key := buf.String()
 
 	if value, ok := subFns.Load(key); ok {
-		return value.(func(Scope, []any) Scope)(s, inits)
+		return value.(func(Scope, []any) (Scope, error))(s, inits)
 	}
 
 	// collect new decls
@@ -110,10 +122,10 @@ func (s Scope) Sub(
 		case reflect.Func:
 			numOut := initType.NumOut()
 			if numOut == 0 {
-				panic(ErrBadArgument{
+				return badScope, ErrBadArgument{
 					Value:  init,
 					Reason: "function returns nothing",
-				})
+				}
 			}
 			var numDecls int
 			for i := 0; i < numOut; i++ {
@@ -199,10 +211,10 @@ func (s Scope) Sub(
 			changedTypes[t] = struct{}{}
 
 		default:
-			panic(ErrBadArgument{
+			return badScope, ErrBadArgument{
 				Value:  init,
 				Reason: "not a function or a pointer",
-			})
+			}
 		}
 	}
 	type posAtTemplate int
@@ -228,16 +240,16 @@ func (s Scope) Sub(
 
 	colors := make(map[_TypeID]int)
 	downstreams := make(map[_TypeID][]_TypeDecl)
-	var traverse func(decls []_TypeDecl)
-	traverse = func(decls []_TypeDecl) {
+	var traverse func(decls []_TypeDecl) error
+	traverse = func(decls []_TypeDecl) error {
 		id := decls[0].TypeID
 		color := colors[id]
 		if color == 1 {
-			panic(ErrDependencyLoop{
+			return ErrDependencyLoop{
 				Value: decls[0].Init,
-			})
+			}
 		} else if color == 2 {
-			return
+			return nil
 		}
 		colors[id] = 1
 		for _, decl := range decls {
@@ -251,25 +263,30 @@ func (s Scope) Sub(
 				id2 := getTypeID(requiredType)
 				decls2, ok := declarationsTemplate.Load(id2)
 				if !ok {
-					panic(ErrDependencyNotFound{
+					return ErrDependencyNotFound{
 						Type: requiredType,
 						By:   decl.Init,
-					})
+					}
 				}
 				downstreams[id2] = append(
 					downstreams[id2],
 					decl,
 				)
-				traverse(decls2)
+				if err := traverse(decls2); err != nil {
+					return err
+				}
 			}
 		}
 		colors[id] = 2
+		return nil
 	}
 
 	initTypeIDs := make([]_TypeID, 0, declarationsTemplate.Len())
 	reducers := make(map[_TypeID]struct{})
-	declarationsTemplate.Range(func(decls []_TypeDecl) {
-		traverse(decls)
+	if err := declarationsTemplate.Range(func(decls []_TypeDecl) error {
+		if err := traverse(decls); err != nil {
+			return err
+		}
 
 		for _, decl := range decls {
 			t := reflect.TypeOf(decl.Init)
@@ -294,14 +311,17 @@ func (s Scope) Sub(
 		if len(decls) > 1 {
 			reducers[decls[0].TypeID] = struct{}{}
 			if !decls[0].Type.Implements(reducerType) {
-				panic(ErrBadDeclaration{
+				return ErrBadDeclaration{
 					Type:   decls[0].Type,
 					Reason: "non-reducer type has multiple declarations",
-				})
+				}
 			}
 		}
 
-	})
+		return nil
+	}); err != nil {
+		return badScope, err
+	}
 	buf.Reset()
 	for _, id := range initTypeIDs {
 		buf.WriteString(strconv.FormatInt(int64(id), 10))
@@ -349,7 +369,7 @@ func (s Scope) Sub(
 	})
 
 	// fn
-	fn := func(s Scope, inits []any) Scope {
+	fn := func(s Scope, inits []any) (Scope, error) {
 		scope := Scope{
 			signature:    signature,
 			ID:           atomic.AddInt64(&nextID, 1),
@@ -362,9 +382,12 @@ func (s Scope) Sub(
 		if len(s.declarations) > 32 {
 			// flatten
 			var decls []_TypeDecl
-			s.declarations.Range(func(ds []_TypeDecl) {
+			if err := s.declarations.Range(func(ds []_TypeDecl) error {
 				decls = append(decls, ds...)
-			})
+				return nil
+			}); err != nil {
+				return badScope, err
+			}
 			sort.Slice(decls, func(i, j int) bool {
 				return decls[i].TypeID < decls[j].TypeID
 			})
@@ -438,7 +461,7 @@ func (s Scope) Sub(
 
 		scope.declarations = declarations
 
-		return scope
+		return scope, nil
 	}
 
 	subFns.Store(key, fn)

@@ -49,7 +49,7 @@ func TestUnionMap(t *testing.T) {
 	}
 
 	n := 0
-	m.Range(func(ds []_TypeDecl) {
+	m.Range(func(ds []_TypeDecl) error {
 		for _, d := range ds {
 			n++
 			if d.TypeID == 3 {
@@ -58,6 +58,7 @@ func TestUnionMap(t *testing.T) {
 				}
 			}
 		}
+		return nil
 	})
 	if n != 5 {
 		t.Fatalf("got %d", n)

@@ -60,7 +60,7 @@ func (u _UnionMap) LoadOne(id _TypeID) (ret _TypeDecl, ok bool) {
 	return
 }
 
-func (u _UnionMap) Range(fn func([]_TypeDecl)) {
+func (u _UnionMap) Range(fn func([]_TypeDecl) error) error {
 	keys := make(map[_TypeID]struct{})
 	var m []_TypeDecl
 	for i := len(u) - 1; i >= 0; i-- {
@@ -78,9 +78,12 @@ func (u _UnionMap) Range(fn func([]_TypeDecl)) {
 					break
 				}
 			}
-			fn(ds)
+			if err := fn(ds); err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }
 
 func (u _UnionMap) Len() int {
