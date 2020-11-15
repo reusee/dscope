@@ -41,7 +41,7 @@ type Scope struct {
 
 var nextID int64 = 42
 
-var root = Scope{
+var Universe = Scope{
 	ID:           0,
 	ChangedTypes: make(map[reflect.Type]struct{}),
 }
@@ -49,7 +49,7 @@ var root = Scope{
 func New(
 	inits ...any,
 ) Scope {
-	return root.Sub(inits...)
+	return Universe.Sub(inits...)
 }
 
 func cachedInit(init any) func(Scope) ([]reflect.Value, error) {
