@@ -1,6 +1,7 @@
 package dscope
 
 import (
+	"fmt"
 	"reflect"
 	"sort"
 	"strconv"
@@ -504,9 +505,22 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 				Type: t,
 			}
 		}
-		values, err := decl.Get(scope)
+		var values []reflect.Value
+		values, err = decl.Get(scope)
 		if err != nil { // NOCOVER
 			return ret, err
+		}
+		if decl.ValueIndex >= len(values) {
+			err = ErrBadDeclaration{
+				Type: t,
+				Reason: fmt.Sprintf(
+					"get %v from %T at %d",
+					t,
+					decl.Init,
+					decl.ValueIndex,
+				),
+			}
+			return
 		}
 		return values[decl.ValueIndex], nil
 
@@ -524,9 +538,22 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 					Type: t,
 				}
 			}
-			values, err := decl.Get(scope)
+			var values []reflect.Value
+			values, err = decl.Get(scope)
 			if err != nil { // NOCOVER
 				return ret, err
+			}
+			if decl.ValueIndex >= len(values) {
+				err = ErrBadDeclaration{
+					Type: t,
+					Reason: fmt.Sprintf(
+						"get %v from %T at %d",
+						t,
+						decl.Init,
+						decl.ValueIndex,
+					),
+				}
+				return
 			}
 			vs = append(vs, values[decl.ValueIndex])
 		}
