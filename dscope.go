@@ -11,11 +11,11 @@ import (
 )
 
 type _TypeDecl struct {
-	Kind       reflect.Kind
 	Init       any
-	Get        func(scope Scope) ([]reflect.Value, error)
-	ValueIndex int
 	Type       reflect.Type
+	Get        func(scope Scope) ([]reflect.Value, error)
+	Kind       reflect.Kind
+	ValueIndex int
 	TypeID     _TypeID
 	IsUnset    bool
 }
@@ -31,13 +31,13 @@ type Reset struct{}
 var resetTypeID = getTypeID(reflect.TypeOf((*Reset)(nil)).Elem())
 
 type Scope struct {
-	declarations _UnionMap
+	reducers     map[_TypeID]struct{}
+	ChangedTypes map[reflect.Type]struct{}
 	signature    string
+	subFuncKey   string
+	declarations _UnionMap
 	ID           int64
 	ParentID     int64
-	ChangedTypes map[reflect.Type]struct{}
-	subFuncKey   string
-	reducers     map[_TypeID]struct{}
 }
 
 var nextID int64 = 42
