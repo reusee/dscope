@@ -248,7 +248,7 @@ func (s Scope) Psub(
 		if color == 1 {
 			return ErrDependencyLoop{
 				Value: decls[0].Init,
-				Path:  path,
+				Path:  append(path, decls[0].Type),
 			}
 		} else if color == 2 {
 			return nil
