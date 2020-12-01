@@ -158,8 +158,12 @@ func TestPanic(t *testing.T) {
 			if p == nil {
 				t.Fatal("should panic")
 			}
+			err, ok := p.(ErrDependencyLoop)
+			if !ok {
+				t.Fatal()
+			}
 			if !strings.Contains(
-				fmt.Sprintf("%v", p),
+				err.Error(),
 				"dependency loop",
 			) {
 				t.Fatalf("unexpected: %v", p)

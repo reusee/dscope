@@ -7,12 +7,13 @@ import (
 
 type ErrDependencyLoop struct {
 	Value any
+	Path  []reflect.Type
 }
 
 var _ error = ErrDependencyLoop{}
 
 func (e ErrDependencyLoop) Error() string {
-	return fmt.Sprintf("dependency loop: %T", e.Value)
+	return fmt.Sprintf("dependency loop: %T by %+v", e.Value, e.Path)
 }
 
 type ErrDependencyNotFound struct {

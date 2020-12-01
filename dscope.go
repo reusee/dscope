@@ -241,13 +241,14 @@ func (s Scope) Psub(
 
 	colors := make(map[_TypeID]int)
 	downstreams := make(map[_TypeID][]_TypeDecl)
-	var traverse func(decls []_TypeDecl) error
-	traverse = func(decls []_TypeDecl) error {
+	var traverse func(decls []_TypeDecl, path []reflect.Type) error
+	traverse = func(decls []_TypeDecl, path []reflect.Type) error {
 		id := decls[0].TypeID
 		color := colors[id]
 		if color == 1 {
 			return ErrDependencyLoop{
 				Value: decls[0].Init,
+				Path:  path,
 			}
 		} else if color == 2 {
 			return nil
@@ -273,7 +274,7 @@ func (s Scope) Psub(
 					downstreams[id2],
 					decl,
 				)
-				if err := traverse(decls2); err != nil {
+				if err := traverse(decls2, append(path, decl.Type)); err != nil {
 					return err
 				}
 			}
@@ -285,7 +286,7 @@ func (s Scope) Psub(
 	initTypeIDs := make([]_TypeID, 0, declarationsTemplate.Len())
 	reducers := make(map[_TypeID]struct{})
 	if err := declarationsTemplate.Range(func(decls []_TypeDecl) error {
-		if err := traverse(decls); err != nil {
+		if err := traverse(decls, nil); err != nil {
 			return err
 		}
 
