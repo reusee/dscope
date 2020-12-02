@@ -10,7 +10,7 @@ func Downgrade(rs []any, t reflect.Type) []any {
 		for i := 0; i < t.NumIn(); i++ {
 			in := t.In(i)
 			for j := 0; j < t.NumOut(); j++ {
-				out := t.Out(i)
+				out := t.Out(j)
 
 				m, ok := inOut[in]
 				if !ok {
