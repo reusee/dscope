@@ -51,6 +51,15 @@ func Reduce(vs []reflect.Value) reflect.Value {
 			},
 		)
 
+	case reflect.Map:
+		ret = reflect.MakeMap(t)
+		for _, v := range vs {
+			iter := v.MapRange()
+			for iter.Next() {
+				ret.SetMapIndex(iter.Key(), iter.Value())
+			}
+		}
+
 	default:
 		panic(fmt.Errorf("don't know how to reduce %v", t))
 	}
