@@ -38,6 +38,7 @@ type Scope struct {
 	declarations _UnionMap
 	ID           int64
 	ParentID     int64
+	path         []reflect.Type
 }
 
 var nextID int64 = 42
@@ -58,11 +59,27 @@ func cachedInit(init any) func(Scope) ([]reflect.Value, error) {
 	var values []reflect.Value
 	var err error
 	return func(scope Scope) ([]reflect.Value, error) {
+		if len(scope.path) > 1 {
+			last := scope.path[len(scope.path)-1]
+			for _, elem := range scope.path[:len(scope.path)-1] {
+				if elem == last {
+					return nil, ErrDependencyLoop{
+						Value: init,
+						Path:  scope.path,
+					}
+				}
+			}
+		}
 		once.Do(func() {
 			values, err = scope.Pcall(init)
 		})
 		return values, err
 	}
+}
+
+func (s Scope) appendPath(t reflect.Type) Scope {
+	s.path = append(s.path, t)
+	return s
 }
 
 var (
@@ -402,7 +419,7 @@ func (s Scope) Psub(
 		newDecls := make([]_TypeDecl, len(newDeclsTemplate))
 		n := 0
 		inits[len(inits)-1] = func() Scope {
-			return scope
+			panic("impposible")
 		}
 		for idx, init := range inits {
 			switch initKinds[idx] {
@@ -472,6 +489,12 @@ func (s Scope) Psub(
 }
 
 func (scope Scope) Assign(objs ...any) {
+	if err := scope.PAssign(objs...); err != nil {
+		panic(err)
+	}
+}
+
+func (scope Scope) PAssign(objs ...any) error {
 	for _, o := range objs {
 		v := reflect.ValueOf(o)
 		if v.Kind() != reflect.Ptr {
@@ -483,16 +506,21 @@ func (scope Scope) Assign(objs ...any) {
 		t := v.Type().Elem()
 		value, err := scope.Get(t)
 		if err != nil {
-			panic(err)
+			return err
 		}
 		v.Elem().Set(value)
 	}
+	return nil
 }
 
 func (scope Scope) get(id _TypeID, t reflect.Type) (
 	ret reflect.Value,
 	err error,
 ) {
+
+	if t == scopeType {
+		return reflect.ValueOf(scope), nil
+	}
 
 	if _, ok := scope.reducers[id]; !ok {
 		decl, ok := scope.declarations.LoadOne(id)
@@ -507,7 +535,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 			}
 		}
 		var values []reflect.Value
-		values, err = decl.Get(scope)
+		values, err = decl.Get(scope.appendPath(t))
 		if err != nil { // NOCOVER
 			return ret, err
 		}
@@ -540,7 +568,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 				}
 			}
 			var values []reflect.Value
-			values, err = decl.Get(scope)
+			values, err = decl.Get(scope.appendPath(t))
 			if err != nil { // NOCOVER
 				return ret, err
 			}

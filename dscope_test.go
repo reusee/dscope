@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestAssign(t *testing.T) {
@@ -1413,6 +1414,33 @@ func TestMultipleDispatch(t *testing.T) {
 		fn(&i)
 	})
 	if i != 3 {
+		t.Fatal()
+	}
+}
+
+func TestRuntimeLoop(t *testing.T) {
+	s := New(
+		func(s Scope) int {
+			var i int
+			err := s.PAssign(&i)
+			var errDepLoop ErrDependencyLoop
+			if !errors.As(err, &errDepLoop) {
+				t.Fatal()
+			}
+			return 42
+		},
+	)
+	done := make(chan struct{})
+	go func() {
+		defer func() {
+			close(done)
+		}()
+		var i int
+		s.Assign(&i)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
 		t.Fatal()
 	}
 }
