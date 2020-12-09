@@ -36,9 +36,9 @@ type Scope struct {
 	signature    string
 	subFuncKey   string
 	declarations _UnionMap
+	path         []reflect.Type
 	ID           int64
 	ParentID     int64
-	path         []reflect.Type
 }
 
 var nextID int64 = 42
