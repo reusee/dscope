@@ -36,7 +36,7 @@ type Scope struct {
 	signature    string
 	subFuncKey   string
 	declarations _UnionMap
-	path         []reflect.Type
+	path         []reflect.Type //TODO use type id
 	ID           int64
 	ParentID     int64
 }
