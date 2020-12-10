@@ -60,6 +60,14 @@ func Reduce(vs []reflect.Value) reflect.Value {
 			}
 		}
 
+	case reflect.Int:
+		var i int64
+		for _, v := range vs {
+			i += v.Int()
+		}
+		ret = reflect.New(t).Elem()
+		ret.SetInt(i)
+
 	default:
 		panic(fmt.Errorf("don't know how to reduce %v", t))
 	}
