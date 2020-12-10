@@ -381,19 +381,43 @@ func (s Scope) Psub(
 		}
 		colors[id] = 1
 	}
+
 	for id := range shadowedIDs {
 		resetDownstream(id)
 	}
-	for id := range explicitResetIDs {
-		if _, ok := s.declarations.LoadOne(id); !ok {
-			continue
+
+	var reset func(id _TypeID)
+	reset = func(id _TypeID) {
+		decls, ok := s.declarations.Load(id)
+		if !ok {
+			return
 		}
 		if _, ok := set[id]; !ok {
 			resetIDs = append(resetIDs, id)
 			set[id] = struct{}{}
+		} else {
+			return
 		}
 		resetDownstream(id)
+		// reset types of the same init funcs
+		for _, decl := range decls {
+			if decl.Kind != reflect.Func {
+				continue
+			}
+			fnType := reflect.TypeOf(decl.Init)
+			for i := 0; i < fnType.NumOut(); i++ {
+				t := fnType.Out(i)
+				if t == decl.Type {
+					continue
+				}
+				reset(getTypeID(t))
+			}
+		}
 	}
+	for id := range explicitResetIDs {
+		reset(id)
+	}
+
 	sort.Slice(resetIDs, func(i, j int) bool {
 		return resetIDs[i] < resetIDs[j]
 	})
@@ -477,7 +501,6 @@ func (s Scope) Psub(
 		}
 		declarations = append(declarations, newDecls)
 
-		//TODO should reset related types downstream types
 		if len(resetIDs) > 0 {
 			resetDecls := make([]_TypeDecl, 0, len(resetIDs))
 			gets := make(map[int64]_Get)
@@ -492,30 +515,10 @@ func (s Scope) Psub(
 						get = cachedInit(decl.Init)
 						gets[decl.Get.ID] = get
 					}
-					getID := decl.Get.ID
 					decl.Get = get
 					resetDecls = append(resetDecls, decl)
-					// also reset decls with the same Get
-					fnType := reflect.TypeOf(decl.Init)
-					for i := 0; i < fnType.NumOut(); i++ {
-						t := fnType.Out(i)
-						if t == decl.Type {
-							continue
-						}
-						relateds, _ := declarations.Load(getTypeID(t))
-						for _, related := range relateds {
-							if related.Get.ID != getID {
-								continue
-							}
-							related.Get = get
-							resetDecls = append(resetDecls, related)
-						}
-					}
 				}
 			}
-			sort.Slice(resetDecls, func(i, j int) bool {
-				return resetDecls[i].TypeID < resetDecls[j].TypeID
-			})
 			declarations = append(declarations, resetDecls)
 		}
 
