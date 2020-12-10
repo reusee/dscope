@@ -477,6 +477,7 @@ func (s Scope) Psub(
 		}
 		declarations = append(declarations, newDecls)
 
+		//TODO should reset related types downstream types
 		if len(resetIDs) > 0 {
 			resetDecls := make([]_TypeDecl, 0, len(resetIDs))
 			gets := make(map[int64]_Get)
@@ -767,7 +768,6 @@ func (s Scope) Extend(t reflect.Type, inits ...any) Scope {
 	}
 	decls, _ := s.declarations.Load(getTypeID(t))
 	for _, decl := range decls {
-		//TODO fix call-once
 		inits = append(inits, decl.Init)
 	}
 	return s.Sub(inits...)
