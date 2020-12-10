@@ -13,11 +13,16 @@ import (
 type _TypeDecl struct {
 	Init       any
 	Type       reflect.Type
-	Get        func(scope Scope) ([]reflect.Value, error)
+	Get        _Get
 	Kind       reflect.Kind
 	ValueIndex int
 	TypeID     _TypeID
 	IsUnset    bool
+}
+
+type _Get struct {
+	ID   int64
+	Func func(scope Scope) ([]reflect.Value, error)
 }
 
 type _TypeID int
@@ -54,26 +59,32 @@ func New(
 	return Universe.Sub(inits...)
 }
 
-func cachedInit(init any) func(Scope) ([]reflect.Value, error) {
+var nextGetID int64 = 42
+
+func cachedInit(init any) _Get {
 	var once sync.Once
 	var values []reflect.Value
 	var err error
-	return func(scope Scope) ([]reflect.Value, error) {
-		if len(scope.path) > 1 {
-			last := scope.path[len(scope.path)-1]
-			for _, elem := range scope.path[:len(scope.path)-1] {
-				if elem == last {
-					return nil, ErrDependencyLoop{
-						Value: init,
-						Path:  scope.path,
+	id := atomic.AddInt64(&nextGetID, 1)
+	return _Get{
+		ID: id,
+		Func: func(scope Scope) ([]reflect.Value, error) {
+			if len(scope.path) > 1 {
+				last := scope.path[len(scope.path)-1]
+				for _, elem := range scope.path[:len(scope.path)-1] {
+					if elem == last {
+						return nil, ErrDependencyLoop{
+							Value: init,
+							Path:  scope.path,
+						}
 					}
 				}
 			}
-		}
-		once.Do(func() {
-			values, err = scope.Pcall(init)
-		})
-		return values, err
+			once.Do(func() {
+				values, err = scope.Pcall(init)
+			})
+			return values, err
+		},
 	}
 }
 
@@ -450,8 +461,11 @@ func (s Scope) Psub(
 				newDecls[posesAtSorted[n]] = _TypeDecl{
 					Kind: info.Kind,
 					Init: init,
-					Get: func(scope Scope) ([]reflect.Value, error) {
-						return []reflect.Value{v}, nil
+					Get: _Get{
+						ID: atomic.AddInt64(&nextGetID, 1),
+						Func: func(scope Scope) ([]reflect.Value, error) {
+							return []reflect.Value{v}, nil
+						},
 					},
 					ValueIndex: 0,
 					Type:       info.Type,
@@ -465,16 +479,42 @@ func (s Scope) Psub(
 
 		if len(resetIDs) > 0 {
 			resetDecls := make([]_TypeDecl, 0, len(resetIDs))
+			gets := make(map[int64]_Get)
 			for _, id := range resetIDs {
 				decls, ok := declarations.Load(id)
 				if !ok { // NOCOVER
 					panic("impossible")
 				}
 				for _, decl := range decls {
-					decl.Get = cachedInit(decl.Init)
+					get, ok := gets[decl.Get.ID]
+					if !ok {
+						get = cachedInit(decl.Init)
+						gets[decl.Get.ID] = get
+					}
+					getID := decl.Get.ID
+					decl.Get = get
 					resetDecls = append(resetDecls, decl)
+					// also reset decls with the same Get
+					fnType := reflect.TypeOf(decl.Init)
+					for i := 0; i < fnType.NumOut(); i++ {
+						t := fnType.Out(i)
+						if t == decl.Type {
+							continue
+						}
+						relateds, _ := declarations.Load(getTypeID(t))
+						for _, related := range relateds {
+							if related.Get.ID != getID {
+								continue
+							}
+							related.Get = get
+							resetDecls = append(resetDecls, related)
+						}
+					}
 				}
 			}
+			sort.Slice(resetDecls, func(i, j int) bool {
+				return resetDecls[i].TypeID < resetDecls[j].TypeID
+			})
 			declarations = append(declarations, resetDecls)
 		}
 
@@ -535,7 +575,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 			}
 		}
 		var values []reflect.Value
-		values, err = decl.Get(scope.appendPath(t))
+		values, err = decl.Get.Func(scope.appendPath(t))
 		if err != nil { // NOCOVER
 			return ret, err
 		}
@@ -568,7 +608,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 				}
 			}
 			var values []reflect.Value
-			values, err = decl.Get(scope.appendPath(t))
+			values, err = decl.Get.Func(scope.appendPath(t))
 			if err != nil { // NOCOVER
 				return ret, err
 			}
@@ -727,6 +767,7 @@ func (s Scope) Extend(t reflect.Type, inits ...any) Scope {
 	}
 	decls, _ := s.declarations.Load(getTypeID(t))
 	for _, decl := range decls {
+		//TODO fix call-once
 		inits = append(inits, decl.Init)
 	}
 	return s.Sub(inits...)

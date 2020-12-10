@@ -1444,3 +1444,60 @@ func TestRuntimeLoop(t *testing.T) {
 		t.Fatal()
 	}
 }
+
+func TestResetOnce(t *testing.T) {
+	n := 0
+	s := New(
+		func() (int, string) {
+			n++
+			return 42, "foo"
+		},
+	)
+	s = s.Sub(func(string) (_ Reset) { return })
+	var i int
+	var str string
+	s.Assign(&i, &str)
+	if i != 42 {
+		t.Fatal()
+	}
+	if str != "foo" {
+		t.Fatal()
+	}
+	if n != 1 {
+		t.Fatalf("got %d", n)
+	}
+}
+
+type extendAcc int
+
+func (_ extendAcc) Reduce(_ Scope, vs []reflect.Value) reflect.Value {
+	return Reduce(vs)
+}
+
+func TestExtendOnce(t *testing.T) {
+	n := 0
+	s := New(
+		func() (extendAcc, string) {
+			n++
+			return 42, "foo"
+		},
+	)
+	s = s.Extend(
+		reflect.TypeOf((*extendAcc)(nil)).Elem(),
+		func() extendAcc {
+			return 1
+		},
+	)
+	var acc extendAcc
+	var str string
+	s.Assign(&acc, &str)
+	if acc != 43 {
+		t.Fatalf("got %d\n", acc)
+	}
+	if str != "foo" {
+		t.Fatal()
+	}
+	if n != 1 {
+		t.Fatalf("got %d", n)
+	}
+}
