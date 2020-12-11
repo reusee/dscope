@@ -4,14 +4,14 @@ import "testing"
 
 func TestUnionMap(t *testing.T) {
 	var m _UnionMap
-	m = append(m, []_TypeDecl{
+	m = append(m, []_Decl{
 		{TypeID: 1, ValueIndex: 1},
 		{TypeID: 2, ValueIndex: 2},
 		{TypeID: 2, ValueIndex: 3},
 		{TypeID: 2, ValueIndex: 4},
 		{TypeID: 3, ValueIndex: 5},
 	})
-	m = append(m, []_TypeDecl{
+	m = append(m, []_Decl{
 		{TypeID: 3, ValueIndex: 6},
 	})
 
@@ -49,7 +49,7 @@ func TestUnionMap(t *testing.T) {
 	}
 
 	n := 0
-	m.Range(func(ds []_TypeDecl) error {
+	m.Range(func(ds []_Decl) error {
 		for _, d := range ds {
 			n++
 			if d.TypeID == 3 {

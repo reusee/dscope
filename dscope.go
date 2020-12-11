@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 )
 
-type _TypeDecl struct {
+type _Decl struct {
 	Init       any
 	Type       reflect.Type
 	Get        _Get
@@ -136,7 +136,7 @@ func (s Scope) Psub(
 	}
 
 	// collect new decls
-	var newDeclsTemplate []_TypeDecl
+	var newDeclsTemplate []_Decl
 	shadowedIDs := make(map[_TypeID]struct{})
 	explicitResetIDs := make(map[_TypeID]struct{})
 	initNumDecls := make([]int, 0, len(inits))
@@ -167,7 +167,7 @@ func (s Scope) Psub(
 					for i := 0; i < numIn; i++ {
 						in := initType.In(i)
 						inID := getTypeID(in)
-						newDeclsTemplate = append(newDeclsTemplate, _TypeDecl{
+						newDeclsTemplate = append(newDeclsTemplate, _Decl{
 							Kind:   reflect.Func,
 							Type:   in,
 							TypeID: inID,
@@ -204,7 +204,7 @@ func (s Scope) Psub(
 
 				} else {
 					// non-unset
-					newDeclsTemplate = append(newDeclsTemplate, _TypeDecl{
+					newDeclsTemplate = append(newDeclsTemplate, _Decl{
 						Kind:   reflect.Func,
 						Type:   t,
 						TypeID: id,
@@ -225,7 +225,7 @@ func (s Scope) Psub(
 		case reflect.Ptr:
 			t := initType.Elem()
 			id := getTypeID(t)
-			newDeclsTemplate = append(newDeclsTemplate, _TypeDecl{
+			newDeclsTemplate = append(newDeclsTemplate, _Decl{
 				Kind:   reflect.Ptr,
 				Type:   t,
 				TypeID: id,
@@ -268,9 +268,9 @@ func (s Scope) Psub(
 	declarationsTemplate = append(declarationsTemplate, sortedNewDeclsTemplate)
 
 	colors := make(map[_TypeID]int)
-	downstreams := make(map[_TypeID][]_TypeDecl)
-	var traverse func(decls []_TypeDecl, path []reflect.Type) error
-	traverse = func(decls []_TypeDecl, path []reflect.Type) error {
+	downstreams := make(map[_TypeID][]_Decl)
+	var traverse func(decls []_Decl, path []reflect.Type) error
+	traverse = func(decls []_Decl, path []reflect.Type) error {
 		id := decls[0].TypeID
 		color := colors[id]
 		if color == 1 {
@@ -313,7 +313,7 @@ func (s Scope) Psub(
 
 	initTypeIDs := make([]_TypeID, 0, declarationsTemplate.Len())
 	reducers := make(map[_TypeID]struct{})
-	if err := declarationsTemplate.Range(func(decls []_TypeDecl) error {
+	if err := declarationsTemplate.Range(func(decls []_Decl) error {
 		if err := traverse(decls, nil); err != nil {
 			return err
 		}
@@ -435,8 +435,8 @@ func (s Scope) Psub(
 		var declarations _UnionMap
 		if len(s.declarations) > 32 {
 			// flatten
-			var decls []_TypeDecl
-			if err := s.declarations.Range(func(ds []_TypeDecl) error {
+			var decls []_Decl
+			if err := s.declarations.Range(func(ds []_Decl) error {
 				decls = append(decls, ds...)
 				return nil
 			}); err != nil {
@@ -451,7 +451,7 @@ func (s Scope) Psub(
 			copy(declarations, s.declarations)
 		}
 
-		newDecls := make([]_TypeDecl, len(newDeclsTemplate))
+		newDecls := make([]_Decl, len(newDeclsTemplate))
 		n := 0
 		inits[len(inits)-1] = func() Scope {
 			panic("impposible")
@@ -468,7 +468,7 @@ func (s Scope) Psub(
 						// use made func for unset decls
 						initFunc = info.Init
 					}
-					newDecls[posesAtSorted[n]] = _TypeDecl{
+					newDecls[posesAtSorted[n]] = _Decl{
 						Kind:       info.Kind,
 						Init:       initFunc,
 						Get:        get,
@@ -482,7 +482,7 @@ func (s Scope) Psub(
 			case reflect.Ptr:
 				info := newDeclsTemplate[n]
 				v := reflect.ValueOf(init).Elem()
-				newDecls[posesAtSorted[n]] = _TypeDecl{
+				newDecls[posesAtSorted[n]] = _Decl{
 					Kind: info.Kind,
 					Init: init,
 					Get: _Get{
@@ -502,7 +502,7 @@ func (s Scope) Psub(
 		declarations = append(declarations, newDecls)
 
 		if len(resetIDs) > 0 {
-			resetDecls := make([]_TypeDecl, 0, len(resetIDs))
+			resetDecls := make([]_Decl, 0, len(resetIDs))
 			gets := make(map[int64]_Get)
 			for _, id := range resetIDs {
 				decls, ok := declarations.Load(id)

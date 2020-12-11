@@ -1,11 +1,11 @@
 package dscope
 
-type _UnionMap [][]_TypeDecl
+type _UnionMap [][]_Decl
 
-func (u _UnionMap) Load(id _TypeID) (ds []_TypeDecl, ok bool) {
+func (u _UnionMap) Load(id _TypeID) (ds []_Decl, ok bool) {
 	var left, right, idx, l uint
 	var id2 _TypeID
-	var m []_TypeDecl
+	var m []_Decl
 	for i := len(u) - 1; i >= 0; i-- {
 		m = u[i]
 		left = 0
@@ -37,10 +37,10 @@ func (u _UnionMap) Load(id _TypeID) (ds []_TypeDecl, ok bool) {
 	return
 }
 
-func (u _UnionMap) LoadOne(id _TypeID) (ret _TypeDecl, ok bool) {
+func (u _UnionMap) LoadOne(id _TypeID) (ret _Decl, ok bool) {
 	var left, right, idx uint
 	var id2 _TypeID
-	var m []_TypeDecl
+	var m []_Decl
 	for i := len(u) - 1; i >= 0; i-- {
 		m = u[i]
 		left = 0
@@ -60,9 +60,9 @@ func (u _UnionMap) LoadOne(id _TypeID) (ret _TypeDecl, ok bool) {
 	return
 }
 
-func (u _UnionMap) Range(fn func([]_TypeDecl) error) error {
+func (u _UnionMap) Range(fn func([]_Decl) error) error {
 	keys := make(map[_TypeID]struct{})
-	var m []_TypeDecl
+	var m []_Decl
 	for i := len(u) - 1; i >= 0; i-- {
 		m = u[i]
 		for j, d := range m {
@@ -70,7 +70,7 @@ func (u _UnionMap) Range(fn func([]_TypeDecl) error) error {
 				continue
 			}
 			keys[d.TypeID] = struct{}{}
-			ds := []_TypeDecl{d}
+			ds := []_Decl{d}
 			for _, follow := range m[j+1:] {
 				if follow.TypeID == d.TypeID {
 					ds = append(ds, follow)
