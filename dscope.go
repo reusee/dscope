@@ -21,8 +21,8 @@ type _Decl struct {
 }
 
 type _Get struct {
-	ID   int64
 	Func func(scope Scope) ([]reflect.Value, error)
+	ID   int64
 }
 
 type _TypeID int
