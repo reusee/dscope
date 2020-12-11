@@ -89,7 +89,10 @@ func cachedInit(init any) _Get {
 }
 
 func (s Scope) appendPath(t reflect.Type) Scope {
-	s.path = append(s.path, t)
+	s.path = append(
+		append(s.path[:0:0], s.path...),
+		t,
+	)
 	return s
 }
 
