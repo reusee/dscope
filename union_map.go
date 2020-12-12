@@ -2,12 +2,14 @@ package dscope
 
 type _UnionMap [][]_Decl
 
-func (u _UnionMap) Load(id _TypeID) (ds []_Decl, ok bool) {
+func (u _UnionMap) Load(id _TypeID) ([]_Decl, bool) {
 	var left, right, idx, l uint
+	var start, end int
 	var id2 _TypeID
 	var m []_Decl
 	for i := len(u) - 1; i >= 0; i-- {
 		m = u[i]
+		// do binary search
 		left = 0
 		l = uint(len(m))
 		right = l
@@ -15,26 +17,37 @@ func (u _UnionMap) Load(id _TypeID) (ds []_Decl, ok bool) {
 		for left < right {
 			idx = (left + right) >> 1
 			id2 = m[idx].TypeID
+			// need to find the first decl
 			if id2 >= id {
 				right = idx
 			} else {
 				left = idx + 1
 			}
 		}
+		start = -1
 		for ; idx < l; idx++ {
 			id2 = m[idx].TypeID
 			if id2 == id {
-				ds = append(ds, m[idx])
+				if start < 0 {
+					// found start
+					start = int(idx)
+					end = start + 1
+				} else {
+					// expand
+					end++
+				}
 			} else if id2 > id {
+				// exceed right bound
 				break
 			}
+			// id2 < id, skip
 		}
-		if len(ds) > 0 {
-			ok = true
-			return
+		if start != -1 {
+			// found
+			return m[start:end], true
 		}
 	}
-	return
+	return nil, false
 }
 
 func (u _UnionMap) LoadOne(id _TypeID) (ret _Decl, ok bool) {
