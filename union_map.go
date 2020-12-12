@@ -75,9 +75,12 @@ func (u _UnionMap) LoadOne(id _TypeID) (ret _Decl, ok bool) {
 	return
 }
 
+// Range iterates all decls
+// MUST NOT modify []_Decl argument in callback function
 func (u _UnionMap) Range(fn func([]_Decl) error) error {
 	keys := make(map[_TypeID]struct{})
 	var m []_Decl
+	var start, end int
 	for i := len(u) - 1; i >= 0; i-- {
 		m = u[i]
 		for j, d := range m {
@@ -85,15 +88,16 @@ func (u _UnionMap) Range(fn func([]_Decl) error) error {
 				continue
 			}
 			keys[d.TypeID] = struct{}{}
-			ds := []_Decl{d}
+			start = j
+			end = start + 1
 			for _, follow := range m[j+1:] {
 				if follow.TypeID == d.TypeID {
-					ds = append(ds, follow)
+					end++
 				} else {
 					break
 				}
 			}
-			if err := fn(ds); err != nil {
+			if err := fn(m[start:end]); err != nil {
 				return err
 			}
 		}
