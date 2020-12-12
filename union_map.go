@@ -2,6 +2,8 @@ package dscope
 
 type _UnionMap [][]_Decl
 
+// Load loads decls with specified id
+// MUST NOT modify returned slice
 func (u _UnionMap) Load(id _TypeID) ([]_Decl, bool) {
 	var left, right, idx, l uint
 	var start, end int
