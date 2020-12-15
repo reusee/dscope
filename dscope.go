@@ -12,6 +12,7 @@ import (
 
 type _Decl struct {
 	Init       any
+	InitName   string
 	Type       reflect.Type
 	Get        _Get
 	Kind       reflect.Kind
@@ -119,34 +120,47 @@ func (s Scope) Sub(
 var badScope = Scope{}
 
 func (s Scope) Psub(
-	inits ...any,
+	initializers ...any,
 ) (Scope, error) {
 
-	inits = append(inits, dumbScopeProvider)
+	initializers = append(initializers, dumbScopeProvider)
 
 	var buf strings.Builder
 	buf.WriteString(s.signature)
 	buf.WriteByte('-')
-	for _, init := range inits {
-		id := getTypeID(reflect.TypeOf(init))
+	for _, initializer := range initializers {
+		var id _TypeID
+		if named, ok := initializer.(NamedInit); ok {
+			id = getTypeID(reflect.TypeOf(named.Value))
+		} else {
+			id = getTypeID(reflect.TypeOf(initializer))
+		}
 		buf.WriteString(strconv.FormatInt(int64(id), 10))
 		buf.WriteByte('.')
 	}
 	key := buf.String()
 
 	if value, ok := subFns.Load(key); ok {
-		return value.(func(Scope, []any) (Scope, error))(s, inits)
+		return value.(func(Scope, []any) (Scope, error))(s, initializers)
 	}
 
 	// collect new decls
 	var newDeclsTemplate []_Decl
 	shadowedIDs := make(map[_TypeID]struct{})
 	explicitResetIDs := make(map[_TypeID]struct{})
-	initNumDecls := make([]int, 0, len(inits))
-	initKinds := make([]reflect.Kind, 0, len(inits))
+	initNumDecls := make([]int, 0, len(initializers))
+	initKinds := make([]reflect.Kind, 0, len(initializers))
 	changedTypes := make(map[reflect.Type]struct{})
-	for _, init := range inits {
-		initType := reflect.TypeOf(init)
+	for _, initializer := range initializers {
+		var initValue any
+		var initName string
+		if named, ok := initializer.(NamedInit); ok {
+			initValue = named.Value
+			initName = named.Name
+		} else {
+			initValue = initializer
+		}
+		initType := reflect.TypeOf(initValue)
 		initKinds = append(initKinds, initType.Kind())
 
 		switch initType.Kind() {
@@ -155,7 +169,7 @@ func (s Scope) Psub(
 			numOut := initType.NumOut()
 			if numOut == 0 {
 				return badScope, ErrBadArgument{
-					Value:  init,
+					Value:  initializer,
 					Reason: "function returns nothing",
 				}
 			}
@@ -208,10 +222,11 @@ func (s Scope) Psub(
 				} else {
 					// non-unset
 					newDeclsTemplate = append(newDeclsTemplate, _Decl{
-						Kind:   reflect.Func,
-						Type:   t,
-						TypeID: id,
-						Init:   init,
+						Kind:     reflect.Func,
+						Type:     t,
+						TypeID:   id,
+						Init:     initValue,
+						InitName: initName,
 					})
 					numDecls++
 					if t != scopeType {
@@ -229,10 +244,11 @@ func (s Scope) Psub(
 			t := initType.Elem()
 			id := getTypeID(t)
 			newDeclsTemplate = append(newDeclsTemplate, _Decl{
-				Kind:   reflect.Ptr,
-				Type:   t,
-				TypeID: id,
-				Init:   init,
+				Kind:     reflect.Ptr,
+				Type:     t,
+				TypeID:   id,
+				Init:     initValue,
+				InitName: initName,
 			})
 			if t != scopeType {
 				if _, ok := s.declarations.LoadOne(id); ok {
@@ -244,7 +260,7 @@ func (s Scope) Psub(
 
 		default:
 			return badScope, ErrBadArgument{
-				Value:  init,
+				Value:  initializer,
 				Reason: "not a function or a pointer",
 			}
 		}
@@ -426,7 +442,7 @@ func (s Scope) Psub(
 	})
 
 	// fn
-	fn := func(s Scope, inits []any) (Scope, error) {
+	fn := func(s Scope, initializers []any) (Scope, error) {
 		scope := Scope{
 			signature:    signature,
 			ID:           atomic.AddInt64(&nextID, 1),
@@ -456,17 +472,25 @@ func (s Scope) Psub(
 
 		newDecls := make([]_Decl, len(newDeclsTemplate))
 		n := 0
-		inits[len(inits)-1] = func() Scope {
+		initializers[len(initializers)-1] = func() Scope {
 			panic("impposible")
 		}
-		for idx, init := range inits {
+		for idx, initializer := range initializers {
+			var initValue any
+			var initName string
+			if named, ok := initializer.(NamedInit); ok {
+				initValue = named.Value
+				initName = named.Name
+			} else {
+				initValue = initializer
+			}
 			switch initKinds[idx] {
 			case reflect.Func:
-				get := cachedInit(init)
+				get := cachedInit(initValue)
 				numDecls := initNumDecls[idx]
 				for i := 0; i < numDecls; i++ {
 					info := newDeclsTemplate[n]
-					initFunc := init
+					initFunc := initValue
 					if info.IsUnset {
 						// use made func for unset decls
 						initFunc = info.Init
@@ -474,6 +498,7 @@ func (s Scope) Psub(
 					newDecls[posesAtSorted[n]] = _Decl{
 						Kind:       info.Kind,
 						Init:       initFunc,
+						InitName:   initName,
 						Get:        get,
 						ValueIndex: i,
 						Type:       info.Type,
@@ -484,10 +509,11 @@ func (s Scope) Psub(
 				}
 			case reflect.Ptr:
 				info := newDeclsTemplate[n]
-				v := reflect.ValueOf(init).Elem()
+				v := reflect.ValueOf(initValue).Elem()
 				newDecls[posesAtSorted[n]] = _Decl{
-					Kind: info.Kind,
-					Init: init,
+					Kind:     info.Kind,
+					Init:     initValue,
+					InitName: initName,
 					Get: _Get{
 						ID: atomic.AddInt64(&nextGetID, 1),
 						Func: func(scope Scope) ([]reflect.Value, error) {
@@ -532,7 +558,7 @@ func (s Scope) Psub(
 
 	subFns.Store(key, fn)
 
-	return fn(s, inits)
+	return fn(s, initializers)
 }
 
 func (scope Scope) Assign(objs ...any) {
@@ -608,6 +634,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 			}
 		}
 		var vs []reflect.Value
+		var names InitNames
 		for _, decl := range decls {
 			if decl.IsUnset {
 				return ret, ErrDependencyNotFound{
@@ -632,7 +659,9 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 				return
 			}
 			vs = append(vs, values[decl.ValueIndex])
+			names = append(names, decl.InitName)
 		}
+		scope = scope.Sub(&names)
 		ret = vs[0].Interface().(Reducer).Reduce(scope, vs)
 		return
 	}
