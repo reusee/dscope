@@ -8,6 +8,7 @@ import (
 
 type InitInfo struct {
 	Value any
+	Name  string
 }
 
 func (i InitInfo) Error() string {

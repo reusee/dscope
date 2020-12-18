@@ -64,7 +64,7 @@ func New(
 
 var nextGetID int64 = 42
 
-func cachedInit(init any) _Get {
+func cachedInit(init any, name string) _Get {
 	var once sync.Once
 	var values []reflect.Value
 	var err error
@@ -78,7 +78,10 @@ func cachedInit(init any) _Get {
 					if elem == last {
 						return nil, we(
 							ErrDependencyLoop,
-							e4.With(InitInfo{Value: init}),
+							e4.With(InitInfo{
+								Value: init,
+								Name:  name,
+							}),
 							e4.With(scope.path),
 						)
 					}
@@ -298,7 +301,10 @@ func (s Scope) Psub(
 		if color == 1 {
 			return we(
 				ErrDependencyLoop,
-				e4.With(InitInfo{Value: decls[0].Init}),
+				e4.With(InitInfo{
+					Value: decls[0].Init,
+					Name:  decls[0].InitName,
+				}),
 				e4.With(Path(append(path, decls[0].Type))),
 			)
 		} else if color == 2 {
@@ -490,7 +496,7 @@ func (s Scope) Psub(
 			}
 			switch initKinds[idx] {
 			case reflect.Func:
-				get := cachedInit(initValue)
+				get := cachedInit(initValue, initName)
 				numDecls := initNumDecls[idx]
 				for i := 0; i < numDecls; i++ {
 					info := newDeclsTemplate[n]
@@ -545,7 +551,7 @@ func (s Scope) Psub(
 				for _, decl := range decls {
 					get, ok := gets[decl.Get.ID]
 					if !ok {
-						get = cachedInit(decl.Init)
+						get = cachedInit(decl.Init, decl.InitName)
 						gets[decl.Get.ID] = get
 					}
 					decl.Get = get
