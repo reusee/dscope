@@ -12,7 +12,7 @@ type InitInfo struct {
 }
 
 func (i InitInfo) Error() string {
-	return fmt.Sprintf("init: %T", i.Value)
+	return fmt.Sprintf("init: name %s, type %T", i.Name, i.Value)
 }
 
 type Path []reflect.Type
