@@ -15,6 +15,14 @@ func (i InitInfo) Error() string {
 	return fmt.Sprintf("init: name %s, type %T", i.Name, i.Value)
 }
 
+type TypeInfo struct {
+	Type reflect.Type
+}
+
+func (t TypeInfo) Error() string {
+	return fmt.Sprintf("type: %v", t.Type)
+}
+
 type Path []reflect.Type
 
 func (p Path) Error() string {

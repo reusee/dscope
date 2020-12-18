@@ -1,7 +1,6 @@
 package dscope
 
 import (
-	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -106,11 +105,19 @@ func TestPanic(t *testing.T) {
 			if p == nil {
 				t.Fatal("should panic")
 			}
-			if !strings.Contains(
-				fmt.Sprintf("%v", p),
-				"dependency not found: string",
-			) {
-				t.Fatalf("unexpected: %v", p)
+			err, ok := p.(error)
+			if !ok {
+				t.Fatal()
+			}
+			if !is(err, ErrDependencyNotFound) {
+				t.Fatal()
+			}
+			var typeInfo TypeInfo
+			if !as(err, &typeInfo) {
+				t.Fatal()
+			}
+			if typeInfo.Type != reflect.TypeOf((*string)(nil)).Elem() {
+				t.Fatal()
 			}
 		}()
 		var s string
@@ -123,11 +130,19 @@ func TestPanic(t *testing.T) {
 			if p == nil {
 				t.Fatal("should panic")
 			}
-			if !strings.Contains(
-				fmt.Sprintf("%v", p),
-				"dependency not found: string",
-			) {
-				t.Fatalf("unexpected: %v", p)
+			err, ok := p.(error)
+			if !ok {
+				t.Fatal()
+			}
+			if !is(err, ErrDependencyNotFound) {
+				t.Fatal()
+			}
+			var typeInfo TypeInfo
+			if !as(err, &typeInfo) {
+				t.Fatal()
+			}
+			if typeInfo.Type != reflect.TypeOf((*string)(nil)).Elem() {
+				t.Fatal()
 			}
 		}()
 		scope.Call(func(string) {})
@@ -139,11 +154,27 @@ func TestPanic(t *testing.T) {
 			if p == nil {
 				t.Fatal("should panic")
 			}
-			if !strings.Contains(
-				fmt.Sprintf("%v", p),
-				"dependency not found: func(string) int32 requires string",
-			) {
-				t.Fatalf("unexpected: %v", p)
+			err, ok := p.(error)
+			if !ok {
+				t.Fatal()
+			}
+			if !is(err, ErrDependencyNotFound) {
+				t.Fatal()
+			}
+			var typeInfo TypeInfo
+			if !as(err, &typeInfo) {
+				t.Fatal()
+			}
+			if typeInfo.Type != reflect.TypeOf((*string)(nil)).Elem() {
+				t.Fatal()
+			}
+			var initInfo InitInfo
+			if !as(err, &initInfo) {
+				t.Fatal()
+			}
+			if reflect.TypeOf(initInfo.Value) !=
+				reflect.TypeOf((*func(string) int32)(nil)).Elem() {
+				t.Fatal()
 			}
 		}()
 		scope.Sub(
@@ -1075,12 +1106,11 @@ func TestUnset(t *testing.T) {
 		return Unset{}
 	})
 	_, err = s.Get(reflect.TypeOf((*int)(nil)).Elem())
-	var notFound ErrDependencyNotFound
-	if !as(err, &notFound) {
+	if !is(err, ErrDependencyNotFound) {
 		t.Fatal()
 	}
 	_, err = s.Pcall(func(int) {})
-	if !errors.As(err, &notFound) {
+	if !is(err, ErrDependencyNotFound) {
 		t.Fatalf("got %v", err)
 	}
 
@@ -1088,11 +1118,11 @@ func TestUnset(t *testing.T) {
 		return Unset{}
 	})
 	_, err = s.Get(reflect.TypeOf((*string)(nil)).Elem())
-	if !as(err, &notFound) {
+	if !is(err, ErrDependencyNotFound) {
 		t.Fatal()
 	}
 	_, err = s.Pcall(func(string) {})
-	if !errors.As(err, &notFound) {
+	if !is(err, ErrDependencyNotFound) {
 		t.Fatalf("got %v", err)
 	}
 

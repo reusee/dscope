@@ -8,19 +8,7 @@ import (
 
 var ErrDependencyLoop = errors.New("dependency loop")
 
-type ErrDependencyNotFound struct {
-	Type reflect.Type
-	By   any
-}
-
-var _ error = ErrDependencyNotFound{}
-
-func (e ErrDependencyNotFound) Error() string {
-	if e.By != nil {
-		return fmt.Sprintf("dependency not found: %T requires %v", e.By, e.Type)
-	}
-	return fmt.Sprintf("dependency not found: %v", e.Type)
-}
+var ErrDependencyNotFound = errors.New("dependency not found")
 
 type ErrBadArgument struct {
 	Value  any

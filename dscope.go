@@ -322,10 +322,16 @@ func (s Scope) Psub(
 				id2 := getTypeID(requiredType)
 				decls2, ok := declarationsTemplate.Load(id2)
 				if !ok {
-					return ErrDependencyNotFound{
-						Type: requiredType,
-						By:   decl.Init,
-					}
+					return we(
+						ErrDependencyNotFound,
+						e4.With(TypeInfo{
+							Type: requiredType,
+						}),
+						e4.With(InitInfo{
+							Value: decl.Init,
+							Name:  decl.InitName,
+						}),
+					)
 				}
 				downstreams[id2] = append(
 					downstreams[id2],
@@ -608,14 +614,20 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 	if _, ok := scope.reducers[id]; !ok {
 		decl, ok := scope.declarations.LoadOne(id)
 		if !ok {
-			return ret, ErrDependencyNotFound{
-				Type: t,
-			}
+			return ret, we(
+				ErrDependencyNotFound,
+				e4.With(TypeInfo{
+					Type: t,
+				}),
+			)
 		}
 		if decl.IsUnset {
-			return ret, ErrDependencyNotFound{
-				Type: t,
-			}
+			return ret, we(
+				ErrDependencyNotFound,
+				e4.With(TypeInfo{
+					Type: t,
+				}),
+			)
 		}
 		var values []reflect.Value
 		values, err = decl.Get.Func(scope.appendPath(t))
@@ -639,17 +651,23 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 	} else {
 		decls, ok := scope.declarations.Load(id)
 		if !ok {
-			return ret, ErrDependencyNotFound{
-				Type: t,
-			}
+			return ret, we(
+				ErrDependencyNotFound,
+				e4.With(TypeInfo{
+					Type: t,
+				}),
+			)
 		}
 		var vs []reflect.Value
 		var names InitNames
 		for _, decl := range decls {
 			if decl.IsUnset {
-				return ret, ErrDependencyNotFound{
-					Type: t,
-				}
+				return ret, we(
+					ErrDependencyNotFound,
+					e4.With(TypeInfo{
+						Type: t,
+					}),
+				)
 			}
 			var values []reflect.Value
 			values, err = decl.Get.Func(scope.appendPath(t))
