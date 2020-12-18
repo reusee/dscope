@@ -1,20 +1,12 @@
 package dscope
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 )
 
-type ErrDependencyLoop struct {
-	Value any
-	Path  []reflect.Type
-}
-
-var _ error = ErrDependencyLoop{}
-
-func (e ErrDependencyLoop) Error() string {
-	return fmt.Sprintf("dependency loop: %T by %+v", e.Value, e.Path)
-}
+var ErrDependencyLoop = errors.New("dependency loop")
 
 type ErrDependencyNotFound struct {
 	Type reflect.Type

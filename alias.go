@@ -3,6 +3,8 @@ package dscope
 import (
 	"errors"
 	"fmt"
+
+	"github.com/reusee/e4"
 )
 
 type (
@@ -12,4 +14,6 @@ type (
 var (
 	pt = fmt.Printf
 	as = errors.As
+	is = errors.Is
+	we = e4.DefaultWrap
 )

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/reusee/e4"
 )
 
 type _Decl struct {
@@ -42,7 +44,7 @@ type Scope struct {
 	signature    string
 	subFuncKey   string
 	declarations _UnionMap
-	path         []reflect.Type
+	path         Path
 	ID           int64
 	ParentID     int64
 }
@@ -74,10 +76,11 @@ func cachedInit(init any) _Get {
 				last := scope.path[len(scope.path)-1]
 				for _, elem := range scope.path[:len(scope.path)-1] {
 					if elem == last {
-						return nil, ErrDependencyLoop{
-							Value: init,
-							Path:  scope.path,
-						}
+						return nil, we(
+							ErrDependencyLoop,
+							e4.With(InitInfo{Value: init}),
+							e4.With(scope.path),
+						)
 					}
 				}
 			}
@@ -293,10 +296,11 @@ func (s Scope) Psub(
 		id := decls[0].TypeID
 		color := colors[id]
 		if color == 1 {
-			return ErrDependencyLoop{
-				Value: decls[0].Init,
-				Path:  append(path, decls[0].Type),
-			}
+			return we(
+				ErrDependencyLoop,
+				e4.With(InitInfo{Value: decls[0].Init}),
+				e4.With(Path(append(path, decls[0].Type))),
+			)
 		} else if color == 2 {
 			return nil
 		}

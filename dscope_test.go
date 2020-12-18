@@ -159,15 +159,12 @@ func TestPanic(t *testing.T) {
 			if p == nil {
 				t.Fatal("should panic")
 			}
-			err, ok := p.(ErrDependencyLoop)
+			err, ok := p.(error)
 			if !ok {
 				t.Fatal()
 			}
-			if !strings.Contains(
-				err.Error(),
-				"dependency loop",
-			) {
-				t.Fatalf("unexpected: %v", p)
+			if !is(err, ErrDependencyLoop) {
+				t.Fatal()
 			}
 		}()
 		scope = scope.Sub(
@@ -1423,8 +1420,7 @@ func TestRuntimeLoop(t *testing.T) {
 		func(s Scope) int {
 			var i int
 			err := s.PAssign(&i)
-			var errDepLoop ErrDependencyLoop
-			if !errors.As(err, &errDepLoop) {
+			if !is(err, ErrDependencyLoop) {
 				t.Fatal()
 			}
 			return 42
