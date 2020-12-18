@@ -24,12 +24,17 @@ func (t TypeInfo) Error() string {
 }
 
 type ArgInfo struct {
-	Value  any
-	Reason string
+	Value any
 }
 
 func (a ArgInfo) Error() string {
-	return fmt.Sprintf("arg: %s: %#v", a.Reason, a.Value)
+	return fmt.Sprintf("arg: %#v", a.Value)
+}
+
+type Reason string
+
+func (r Reason) Error() string {
+	return "reason: " + string(r)
 }
 
 type Path []reflect.Type

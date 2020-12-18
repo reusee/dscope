@@ -177,9 +177,9 @@ func (s Scope) Psub(
 				return badScope, we(
 					ErrBadArgument,
 					e4.With(ArgInfo{
-						Value:  initializer,
-						Reason: "function returns nothing",
+						Value: initializer,
 					}),
+					e4.With(Reason("function returns nothing")),
 				)
 			}
 			var numDecls int
@@ -271,9 +271,9 @@ func (s Scope) Psub(
 			return badScope, we(
 				ErrBadArgument,
 				e4.With(ArgInfo{
-					Value:  initializer,
-					Reason: "not a function or a pointer",
+					Value: initializer,
 				}),
+				e4.With(Reason("not a function or a pointer")),
 			)
 		}
 	}
@@ -596,9 +596,9 @@ func (scope Scope) PAssign(objs ...any) error {
 			return we(
 				ErrBadArgument,
 				e4.With(ArgInfo{
-					Value:  o,
-					Reason: "must be a pointer",
+					Value: o,
 				}),
+				e4.With(Reason("must be a pointer")),
 			)
 		}
 		t := v.Type().Elem()
@@ -820,9 +820,9 @@ func (scope Scope) PcallValue(fnValue reflect.Value, retArgs ...any) ([]reflect.
 				return nil, we(
 					ErrBadArgument,
 					e4.With(ArgInfo{
-						Value:  retArg,
-						Reason: "must be a pointer",
+						Value: retArg,
 					}),
+					e4.With(Reason("must be a pointer")),
 				)
 			}
 			if i, ok := m[t.Elem()]; ok {

@@ -66,7 +66,11 @@ func TestPanic(t *testing.T) {
 			if reflect.TypeOf(argInfo.Value) != reflect.TypeOf((*func(int))(nil)).Elem() {
 				t.Fatal()
 			}
-			if argInfo.Reason != "function returns nothing" {
+			var reason Reason
+			if !as(err, &reason) {
+				t.Fatal()
+			}
+			if reason != "function returns nothing" {
 				t.Fatal()
 			}
 		}()
@@ -98,7 +102,11 @@ func TestPanic(t *testing.T) {
 			if reflect.TypeOf(argInfo.Value) != reflect.TypeOf((*int)(nil)).Elem() {
 				t.Fatal()
 			}
-			if argInfo.Reason != "not a function or a pointer" {
+			var reason Reason
+			if !as(err, &reason) {
+				t.Fatal()
+			}
+			if reason != "not a function or a pointer" {
 				t.Fatal()
 			}
 		}()
@@ -125,7 +133,11 @@ func TestPanic(t *testing.T) {
 			if reflect.TypeOf(argInfo.Value) != reflect.TypeOf((*int)(nil)).Elem() {
 				t.Fatal()
 			}
-			if argInfo.Reason != "must be a pointer" {
+			var reason Reason
+			if !as(err, &reason) {
+				t.Fatal()
+			}
+			if reason != "must be a pointer" {
 				t.Fatal()
 			}
 		}()
@@ -644,8 +656,12 @@ func TestCallReturn(t *testing.T) {
 			if reflect.TypeOf(argInfo.Value) != reflect.TypeOf((*int)(nil)).Elem() {
 				t.Fatal()
 			}
-			if argInfo.Reason != "must be a pointer" {
-				t.Fatalf("got %s", argInfo.Reason)
+			var reason Reason
+			if !as(err, &reason) {
+				t.Fatal()
+			}
+			if reason != "must be a pointer" {
+				t.Fatal()
 			}
 		}()
 		scope.Call(func() (int, error) {
