@@ -174,10 +174,13 @@ func (s Scope) Psub(
 		case reflect.Func:
 			numOut := initType.NumOut()
 			if numOut == 0 {
-				return badScope, ErrBadArgument{
-					Value:  initializer,
-					Reason: "function returns nothing",
-				}
+				return badScope, we(
+					ErrBadArgument,
+					e4.With(ArgInfo{
+						Value:  initializer,
+						Reason: "function returns nothing",
+					}),
+				)
 			}
 			var numDecls int
 			for i := 0; i < numOut; i++ {
@@ -265,10 +268,13 @@ func (s Scope) Psub(
 			changedTypes[t] = struct{}{}
 
 		default:
-			return badScope, ErrBadArgument{
-				Value:  initializer,
-				Reason: "not a function or a pointer",
-			}
+			return badScope, we(
+				ErrBadArgument,
+				e4.With(ArgInfo{
+					Value:  initializer,
+					Reason: "not a function or a pointer",
+				}),
+			)
 		}
 	}
 	type posAtTemplate int
@@ -587,10 +593,13 @@ func (scope Scope) PAssign(objs ...any) error {
 	for _, o := range objs {
 		v := reflect.ValueOf(o)
 		if v.Kind() != reflect.Ptr {
-			panic(ErrBadArgument{
-				Value:  o,
-				Reason: "must be a pointer",
-			})
+			return we(
+				ErrBadArgument,
+				e4.With(ArgInfo{
+					Value:  o,
+					Reason: "must be a pointer",
+				}),
+			)
 		}
 		t := v.Type().Elem()
 		value, err := scope.Get(t)
@@ -808,10 +817,13 @@ func (scope Scope) PcallValue(fnValue reflect.Value, retArgs ...any) ([]reflect.
 			v := reflect.ValueOf(retArg)
 			t := v.Type()
 			if t.Kind() != reflect.Ptr {
-				panic(ErrBadArgument{
-					Value:  retArg,
-					Reason: "must be a pointer",
-				})
+				return nil, we(
+					ErrBadArgument,
+					e4.With(ArgInfo{
+						Value:  retArg,
+						Reason: "must be a pointer",
+					}),
+				)
 			}
 			if i, ok := m[t.Elem()]; ok {
 				v.Elem().Set(retValues[i])

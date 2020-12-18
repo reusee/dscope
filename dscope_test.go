@@ -52,11 +52,22 @@ func TestPanic(t *testing.T) {
 			if p == nil {
 				t.Fatal("should panic")
 			}
-			if !strings.Contains(
-				fmt.Sprintf("%v", p),
-				"function returns nothing: func(int)",
-			) {
-				t.Fatalf("unexpected: %v", p)
+			err, ok := p.(error)
+			if !ok {
+				t.Fatal()
+			}
+			if !is(err, ErrBadArgument) {
+				t.Fatal()
+			}
+			var argInfo ArgInfo
+			if !as(err, &argInfo) {
+				t.Fatal()
+			}
+			if reflect.TypeOf(argInfo.Value) != reflect.TypeOf((*func(int))(nil)).Elem() {
+				t.Fatal()
+			}
+			if argInfo.Reason != "function returns nothing" {
+				t.Fatal()
 			}
 		}()
 		New(
@@ -73,11 +84,22 @@ func TestPanic(t *testing.T) {
 			if p == nil {
 				t.Fatal("should panic")
 			}
-			if !strings.Contains(
-				fmt.Sprintf("%v", p),
-				"not a function or a pointer: int",
-			) {
-				t.Fatalf("unexpected: %v", p)
+			err, ok := p.(error)
+			if !ok {
+				t.Fatal()
+			}
+			if !is(err, ErrBadArgument) {
+				t.Fatal()
+			}
+			var argInfo ArgInfo
+			if !as(err, &argInfo) {
+				t.Fatal()
+			}
+			if reflect.TypeOf(argInfo.Value) != reflect.TypeOf((*int)(nil)).Elem() {
+				t.Fatal()
+			}
+			if argInfo.Reason != "not a function or a pointer" {
+				t.Fatal()
 			}
 		}()
 		scope.Sub(42)
@@ -89,11 +111,22 @@ func TestPanic(t *testing.T) {
 			if p == nil {
 				t.Fatal("should panic")
 			}
-			if !strings.Contains(
-				fmt.Sprintf("%v", p),
-				"must be a pointer",
-			) {
-				t.Fatalf("unexpected: %v", p)
+			err, ok := p.(error)
+			if !ok {
+				t.Fatal()
+			}
+			if !is(err, ErrBadArgument) {
+				t.Fatal()
+			}
+			var argInfo ArgInfo
+			if !as(err, &argInfo) {
+				t.Fatal()
+			}
+			if reflect.TypeOf(argInfo.Value) != reflect.TypeOf((*int)(nil)).Elem() {
+				t.Fatal()
+			}
+			if argInfo.Reason != "must be a pointer" {
+				t.Fatal()
 			}
 		}()
 		scope.Assign(42)
@@ -597,11 +630,22 @@ func TestCallReturn(t *testing.T) {
 			if p == nil {
 				t.Fatal("should panic")
 			}
-			if !strings.Contains(
-				fmt.Sprintf("%v", p),
-				"bad argument, must be a pointer: int",
-			) {
-				t.Fatalf("unexpected: %v", p)
+			err, ok := p.(error)
+			if !ok {
+				t.Fatal()
+			}
+			if !is(err, ErrBadArgument) {
+				t.Fatal()
+			}
+			var argInfo ArgInfo
+			if !as(err, &argInfo) {
+				t.Fatal()
+			}
+			if reflect.TypeOf(argInfo.Value) != reflect.TypeOf((*int)(nil)).Elem() {
+				t.Fatal()
+			}
+			if argInfo.Reason != "must be a pointer" {
+				t.Fatalf("got %s", argInfo.Reason)
 			}
 		}()
 		scope.Call(func() (int, error) {

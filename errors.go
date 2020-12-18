@@ -10,16 +10,7 @@ var ErrDependencyLoop = errors.New("dependency loop")
 
 var ErrDependencyNotFound = errors.New("dependency not found")
 
-type ErrBadArgument struct {
-	Value  any
-	Reason string
-}
-
-var _ error = ErrBadArgument{}
-
-func (e ErrBadArgument) Error() string {
-	return fmt.Sprintf("bad argument, %s: %T", e.Reason, e.Value)
-}
+var ErrBadArgument = errors.New("bad argument")
 
 type ErrBadDeclaration struct {
 	Type   reflect.Type
