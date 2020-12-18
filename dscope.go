@@ -382,10 +382,13 @@ func (s Scope) Psub(
 		if len(decls) > 1 {
 			reducers[decls[0].TypeID] = struct{}{}
 			if !decls[0].Type.Implements(reducerType) {
-				return ErrBadDeclaration{
-					Type:   decls[0].Type,
-					Reason: "non-reducer type has multiple declarations",
-				}
+				return we(
+					ErrBadDeclaration,
+					e4.With(TypeInfo{
+						Type: decls[0].Type,
+					}),
+					e4.With(Reason("non-reducer type has multiple declarations")),
+				)
 			}
 		}
 
@@ -644,15 +647,18 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 			return ret, err
 		}
 		if decl.ValueIndex >= len(values) {
-			err = ErrBadDeclaration{
-				Type: t,
-				Reason: fmt.Sprintf(
+			err = we(
+				ErrBadDeclaration,
+				e4.With(TypeInfo{
+					Type: t,
+				}),
+				e4.With(Reason(fmt.Sprintf(
 					"get %v from %T at %d",
 					t,
 					decl.Init,
 					decl.ValueIndex,
-				),
-			}
+				))),
+			)
 			return
 		}
 		return values[decl.ValueIndex], nil
@@ -684,15 +690,18 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 				return ret, err
 			}
 			if decl.ValueIndex >= len(values) {
-				err = ErrBadDeclaration{
-					Type: t,
-					Reason: fmt.Sprintf(
+				err = we(
+					ErrBadDeclaration,
+					e4.With(TypeInfo{
+						Type: t,
+					}),
+					e4.With(Reason(fmt.Sprintf(
 						"get %v from %T at %d",
 						t,
 						decl.Init,
 						decl.ValueIndex,
-					),
-				}
+					))),
+				)
 				return
 			}
 			vs = append(vs, values[decl.ValueIndex])
@@ -836,10 +845,13 @@ func (scope Scope) PcallValue(fnValue reflect.Value, retArgs ...any) ([]reflect.
 
 func (s Scope) Extend(t reflect.Type, inits ...any) Scope {
 	if !t.Implements(reducerType) {
-		panic(ErrBadDeclaration{
-			Type:   t,
-			Reason: "not a reducer type",
-		})
+		panic(we(
+			ErrBadDeclaration,
+			e4.With(TypeInfo{
+				Type: t,
+			}),
+			e4.With(Reason("not a reducer type")),
+		))
 	}
 	decls, _ := s.declarations.Load(getTypeID(t))
 	for _, decl := range decls {

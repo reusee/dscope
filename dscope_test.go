@@ -258,11 +258,26 @@ func TestPanic(t *testing.T) {
 			if p == nil {
 				t.Fatal("should panic")
 			}
-			if !strings.Contains(
-				fmt.Sprintf("%v", p),
-				"bad declaration, non-reducer type has multiple declarations: int",
-			) {
-				t.Fatalf("unexpected: %v", p)
+			err, ok := p.(error)
+			if !ok {
+				t.Fatal()
+			}
+			if !is(err, ErrBadDeclaration) {
+				t.Fatal()
+			}
+			var typeInfo TypeInfo
+			if !as(err, &typeInfo) {
+				t.Fatal()
+			}
+			if typeInfo.Type != reflect.TypeOf((*int)(nil)).Elem() {
+				t.Fatal()
+			}
+			var reason Reason
+			if !as(err, &reason) {
+				t.Fatal()
+			}
+			if reason != "non-reducer type has multiple declarations" {
+				t.Fatal()
 			}
 		}()
 		New(
