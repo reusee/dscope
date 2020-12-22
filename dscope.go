@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -687,39 +688,65 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 				}),
 			)
 		}
-		var vs []reflect.Value
-		var names InitNames
-		for _, decl := range decls {
-			if decl.IsUnset {
-				return ret, we(
-					ErrDependencyNotFound,
-					e4.With(TypeInfo{
-						Type: t,
-					}),
-				)
-			}
-			var values []reflect.Value
-			values, err = decl.Get.Func(scope.appendPath(t))
-			if err != nil { // NOCOVER
-				return ret, err
-			}
-			if decl.ValueIndex >= len(values) {
-				err = we(
-					ErrBadDeclaration,
-					e4.With(TypeInfo{
-						Type: t,
-					}),
-					e4.With(Reason(fmt.Sprintf(
-						"get %v from %T at %d",
-						t,
-						decl.Init,
-						decl.ValueIndex,
-					))),
-				)
-				return
-			}
-			vs = append(vs, values[decl.ValueIndex])
-			names = append(names, decl.InitName)
+		vs := make([]reflect.Value, len(decls))
+		names := make(InitNames, len(decls))
+		errCh := make(chan error, 1)
+		sem := make(chan struct{}, runtime.NumCPU())
+		for i, decl := range decls {
+			i := i
+			decl := decl
+			sem <- struct{}{}
+			go func() {
+				defer func() {
+					<-sem
+				}()
+				if decl.IsUnset {
+					select {
+					case errCh <- we(
+						ErrDependencyNotFound,
+						e4.With(TypeInfo{
+							Type: t,
+						}),
+					):
+					default:
+					}
+					return
+				}
+				var values []reflect.Value
+				values, err = decl.Get.Func(scope.appendPath(t))
+				if err != nil { // NOCOVER
+					select {
+					case errCh <- err:
+					default:
+					}
+					return
+				}
+				if decl.ValueIndex >= len(values) {
+					err = we(
+						ErrBadDeclaration,
+						e4.With(TypeInfo{
+							Type: t,
+						}),
+						e4.With(Reason(fmt.Sprintf(
+							"get %v from %T at %d",
+							t,
+							decl.Init,
+							decl.ValueIndex,
+						))),
+					)
+					return
+				}
+				vs[i] = values[decl.ValueIndex]
+				names[i] = decl.InitName
+			}()
+		}
+		for i := 0; i < cap(sem); i++ {
+			sem <- struct{}{}
+		}
+		select {
+		case err := <-errCh:
+			return ret, err
+		default:
 		}
 		scope = scope.Sub(&names)
 		ret = vs[0].Interface().(Reducer).Reduce(scope, vs)
