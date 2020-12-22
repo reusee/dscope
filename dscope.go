@@ -688,6 +688,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 				}),
 			)
 		}
+		pathScope := scope.appendPath(t)
 		vs := make([]reflect.Value, len(decls))
 		names := make(InitNames, len(decls))
 		errCh := make(chan error, 1)
@@ -713,7 +714,8 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 					return
 				}
 				var values []reflect.Value
-				values, err = decl.Get.Func(scope.appendPath(t))
+				var err error
+				values, err = decl.Get.Func(pathScope)
 				if err != nil { // NOCOVER
 					select {
 					case errCh <- err:
