@@ -2,12 +2,14 @@ package dscope
 
 import (
 	"fmt"
+	"os"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/reusee/e4"
 )
@@ -64,6 +66,8 @@ func New(
 
 var nextGetID int64 = 42
 
+var logInit = os.Getenv("DSCOPE_LOG_INIT") != ""
+
 func cachedInit(init any, name string) _Get {
 	var once sync.Once
 	var values []reflect.Value
@@ -88,6 +92,16 @@ func cachedInit(init any, name string) _Get {
 				}
 			}
 			once.Do(func() {
+				if logInit {
+					t0 := time.Now()
+					defer func() {
+						id := name
+						if id == "" {
+							id = fmt.Sprintf("%T", init)
+						}
+						debugLog("[DSCOPE] run %s in %v\n", id, time.Since(t0))
+					}()
+				}
 				values, err = scope.Pcall(init)
 			})
 			return values, err
