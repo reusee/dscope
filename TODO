@@ -1,0 +1,9 @@
+support cyclic decl
+
+checker:
+  scoped variable captured by closure
+
+dscope的并发更新
+一，直接堆叠union map，不复制
+一，直接生成多个scope，需要的时候再合并
+
