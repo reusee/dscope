@@ -15,7 +15,9 @@ type CallResult struct {
 func (c CallResult) Sub() Scope {
 	var decls []any
 	for _, value := range c.Values {
-		decls = append(decls, value.Addr().Interface())
+		v := reflect.New(value.Type())
+		v.Elem().Set(value)
+		decls = append(decls, v.Interface())
 	}
 	return c.Scope.Sub(decls...)
 }

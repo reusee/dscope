@@ -1511,3 +1511,15 @@ func TestExtendOnce(t *testing.T) {
 		t.Fatalf("got %d", n)
 	}
 }
+
+func TestCallResultSub(t *testing.T) {
+	var i int
+	New(func() int {
+		return 42
+	}).Call(func(i int) int {
+		return i * 2
+	}).Sub().Assign(&i)
+	if i != 84 {
+		t.Fatal()
+	}
+}
