@@ -7,6 +7,6 @@ import (
 	"os"
 )
 
-func debugLog(format string, args ...any) {
+func debugLog(format string, args ...any) { // NOCOVER
 	fmt.Fprintf(os.Stderr, format, args...)
 }

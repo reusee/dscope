@@ -164,6 +164,9 @@ func TestPanic(t *testing.T) {
 			if typeInfo.Type != reflect.TypeOf((*string)(nil)).Elem() {
 				t.Fatal()
 			}
+			if typeInfo.Error() != "type: string" {
+				t.Fatal()
+			}
 		}()
 		var s string
 		scope.Assign(&s)
@@ -671,12 +674,18 @@ func TestCallReturn(t *testing.T) {
 			if reflect.TypeOf(argInfo.Value) != reflect.TypeOf((*int)(nil)).Elem() {
 				t.Fatal()
 			}
+			if s := argInfo.Error(); s != "arg: 42" {
+				t.Fatalf("got %s", s)
+			}
 			var reason Reason
 			if !as(err, &reason) {
 				t.Fatal()
 			}
 			if reason != "must be a pointer" {
 				t.Fatal()
+			}
+			if s := reason.Error(); s != "reason: must be a pointer" {
+				t.Fatalf("got %s", s)
 			}
 		}()
 		scope.Call(func() (int, error) {
