@@ -758,7 +758,7 @@ func TestCallReturn(t *testing.T) {
 		var s string
 		scope.Call(func() (int, error) {
 			return 42, nil
-		}).Assign(&s)
+		}).Extract(&s)
 	}()
 
 }
@@ -1558,7 +1558,7 @@ func TestCallResultSub(t *testing.T) {
 		return 42
 	}).Call(func(i int) int {
 		return i * 2
-	}).Sub().Assign(&i)
+	}).Extract(&i)
 	if i != 84 {
 		t.Fatal()
 	}

@@ -698,8 +698,9 @@ func (scope Scope) GetArgs(fnType reflect.Type, args []reflect.Value) (int, erro
 	return getArgs(scope, args)
 }
 
+var fnRetTypes sync.Map
+
 func (scope Scope) PcallValue(fnValue reflect.Value) (res CallResult, err error) {
-	res.Scope = scope
 	fnType := fnValue.Type()
 	args := make([]reflect.Value, fnType.NumIn())
 	n, err := scope.GetArgs(fnType, args)
@@ -707,6 +708,18 @@ func (scope Scope) PcallValue(fnValue reflect.Value) (res CallResult, err error)
 		return
 	}
 	res.Values = fnValue.Call(args[:n])
+	v, ok := fnRetTypes.Load(fnType)
+	if !ok {
+		m := make(map[reflect.Type]int)
+		for i := 0; i < fnType.NumOut(); i++ {
+			t := fnType.Out(i)
+			m[t] = i
+		}
+		res.positionsByType = m
+		fnRetTypes.Store(fnType, m)
+	} else {
+		res.positionsByType = v.(map[reflect.Type]int)
+	}
 	return
 }
 

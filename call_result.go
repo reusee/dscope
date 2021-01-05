@@ -8,21 +8,11 @@ import (
 )
 
 type CallResult struct {
-	Scope  Scope
-	Values []reflect.Value
+	positionsByType map[reflect.Type]int
+	Values          []reflect.Value
 }
 
-func (c CallResult) Sub() Scope {
-	var decls []any
-	for _, value := range c.Values {
-		v := reflect.New(value.Type())
-		v.Elem().Set(value)
-		decls = append(decls, v.Interface())
-	}
-	return c.Scope.Sub(decls...)
-}
-
-func (c CallResult) Assign(targets ...any) {
+func (c CallResult) Extract(targets ...any) {
 	for i, target := range targets {
 		if target == nil {
 			continue
@@ -49,5 +39,28 @@ func (c CallResult) Assign(targets ...any) {
 			))
 		}
 		targetValue.Elem().Set(c.Values[i])
+	}
+}
+
+func (c CallResult) Assign(targets ...any) {
+	for _, target := range targets {
+		if target == nil {
+			continue
+		}
+		targetValue := reflect.ValueOf(target)
+		if targetValue.Kind() != reflect.Ptr {
+			panic(we(
+				ErrBadArgument,
+				e4.With(ArgInfo{
+					Value: target,
+				}),
+				e4.With(Reason("must be a pointer")),
+			))
+		}
+		pos, ok := c.positionsByType[targetValue.Type().Elem()]
+		if !ok {
+			continue
+		}
+		targetValue.Elem().Set(c.Values[pos])
 	}
 }
