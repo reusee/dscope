@@ -94,7 +94,9 @@ func cachedInit(init any, name string) _Get {
 						debugLog("[DSCOPE] run %s in %v\n", id, time.Since(t0))
 					}()
 				}
-				values, err = scope.Pcall(init)
+				var result CallResult
+				result, err = scope.Pcall(init)
+				values = result.Values
 			})
 			return values, err
 		},
@@ -647,22 +649,16 @@ func (scope Scope) Get(t reflect.Type) (
 	return scope.get(getTypeID(t), t)
 }
 
-func (scope Scope) Call(fn any, rets ...any) []reflect.Value {
-	return scope.CallValue(
-		reflect.ValueOf(fn),
-		rets...,
-	)
+func (scope Scope) Call(fn any) CallResult {
+	return scope.CallValue(reflect.ValueOf(fn))
 }
 
-func (scope Scope) Pcall(fn any, rets ...any) ([]reflect.Value, error) {
-	return scope.PcallValue(
-		reflect.ValueOf(fn),
-		rets...,
-	)
+func (scope Scope) Pcall(fn any) (CallResult, error) {
+	return scope.PcallValue(reflect.ValueOf(fn))
 }
 
-func (scope Scope) CallValue(fnValue reflect.Value, retArgs ...any) []reflect.Value {
-	rets, err := scope.PcallValue(fnValue, retArgs...)
+func (scope Scope) CallValue(fnValue reflect.Value) CallResult {
+	rets, err := scope.PcallValue(fnValue)
 	if err != nil {
 		panic(err)
 	}
@@ -672,21 +668,6 @@ func (scope Scope) CallValue(fnValue reflect.Value, retArgs ...any) []reflect.Va
 const maxPooledArgsSize = 500
 
 const pooledArgsSizeStep = 5
-
-var argsPools = func() []sync.Pool {
-	numPools := maxPooledArgsSize / pooledArgsSizeStep
-	var pools []sync.Pool
-	for i := 0; i < numPools; i++ {
-		size := (i + 1) * pooledArgsSizeStep
-		pools = append(pools, sync.Pool{
-			New: func() any {
-				slice := make([]reflect.Value, size)
-				return &slice
-			},
-		})
-	}
-	return pools
-}()
 
 func (scope Scope) GetArgs(fnType reflect.Type, args []reflect.Value) (int, error) {
 	var getArgs func(Scope, []reflect.Value) (int, error)
@@ -717,56 +698,16 @@ func (scope Scope) GetArgs(fnType reflect.Type, args []reflect.Value) (int, erro
 	return getArgs(scope, args)
 }
 
-func (scope Scope) PcallValue(fnValue reflect.Value, retArgs ...any) ([]reflect.Value, error) {
+func (scope Scope) PcallValue(fnValue reflect.Value) (res CallResult, err error) {
+	res.Scope = scope
 	fnType := fnValue.Type()
-
-	var args []reflect.Value
-	numIn := fnType.NumIn()
-	i := numIn / pooledArgsSizeStep
-	if i < len(argsPools) {
-		args = *argsPools[i].Get().(*[]reflect.Value)
-		defer argsPools[i].Put(&args)
-	} else { // NOCOVER
-		args = make([]reflect.Value, numIn)
-	}
-
+	args := make([]reflect.Value, fnType.NumIn())
 	n, err := scope.GetArgs(fnType, args)
 	if err != nil {
-		return nil, err
+		return
 	}
-	retValues := fnValue.Call(args[:n])
-
-	if len(retValues) > 0 && len(retArgs) > 0 {
-		var m map[reflect.Type]int
-		v, ok := returnTypeMap.Load(fnType)
-		if !ok {
-			m = make(map[reflect.Type]int)
-			for i := 0; i < fnType.NumOut(); i++ {
-				m[fnType.Out(i)] = i
-			}
-			returnTypeMap.Store(fnType, m)
-		} else {
-			m = v.(map[reflect.Type]int)
-		}
-		for _, retArg := range retArgs {
-			v := reflect.ValueOf(retArg)
-			t := v.Type()
-			if t.Kind() != reflect.Ptr {
-				return nil, we(
-					ErrBadArgument,
-					e4.With(ArgInfo{
-						Value: retArg,
-					}),
-					e4.With(Reason("must be a pointer")),
-				)
-			}
-			if i, ok := m[t.Elem()]; ok {
-				v.Elem().Set(retValues[i])
-			}
-		}
-	}
-
-	return retValues, nil
+	res.Values = fnValue.Call(args[:n])
+	return
 }
 
 func (s Scope) Extend(t reflect.Type, inits ...any) Scope {

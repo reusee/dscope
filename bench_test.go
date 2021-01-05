@@ -255,6 +255,7 @@ func BenchmarkCall(b *testing.B) {
 				t21,
 				t22
 		},
+		).Assign(
 			&t1,
 			&t2,
 			&t3,
@@ -423,6 +424,7 @@ func BenchmarkCallPointerProvider(b *testing.B) {
 				t21,
 				t22
 		},
+		).Assign(
 			&r1,
 			&r2,
 			&r3,
@@ -459,7 +461,7 @@ func BenchmarkSimpleCall(b *testing.B) {
 			f Foo,
 		) Foo {
 			return f
-		}, &ret)
+		}).Assign(&ret)
 	}
 }
 

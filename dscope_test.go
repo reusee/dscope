@@ -358,16 +358,16 @@ func TestCall(t *testing.T) {
 			return 42
 		},
 	)
-	rets := scope.Call(func(i int, f float64) int {
+	res := scope.Call(func(i int, f float64) int {
 		return 42 + i + int(f)
 	})
-	if len(rets) != 1 {
+	if len(res.Values) != 1 {
 		t.Fatalf("bad returns")
 	}
-	if rets[0].Kind() != reflect.Int {
+	if res.Values[0].Kind() != reflect.Int {
 		t.Fatalf("bad return type")
 	}
-	if rets[0].Int() != 126 {
+	if res.Values[0].Int() != 126 {
 		t.Fatalf("bad return")
 	}
 }
@@ -663,7 +663,7 @@ func TestCallReturn(t *testing.T) {
 		err error,
 	) (int, error) {
 		return i, err
-	}, &err, &i)
+	}).Assign(&i, &err)
 	if i != 42 {
 		t.Fatal()
 	}
@@ -677,7 +677,7 @@ func TestCallReturn(t *testing.T) {
 		err error,
 	) (int, error) {
 		return i, err
-	}, &i2)
+	}).Assign(&i2)
 	if i != 42 {
 		t.Fatal()
 	}
@@ -718,7 +718,7 @@ func TestCallReturn(t *testing.T) {
 		}()
 		scope.Call(func() (int, error) {
 			return 42, nil
-		}, 42)
+		}).Assign(42)
 	}()
 
 }
@@ -1175,17 +1175,6 @@ func TestPointerProvider(t *testing.T) {
 		}
 	})
 
-}
-
-func TestAssignNotExistsReturn(t *testing.T) {
-	var foo int
-	var s string
-	New().Call(func() string {
-		return "42"
-	}, &foo, &s)
-	if s != "42" {
-		t.Fatal()
-	}
 }
 
 func TestRacyCall(t *testing.T) {
