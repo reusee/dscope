@@ -32,10 +32,6 @@ type _Get struct {
 
 type _TypeID int
 
-type Reset struct{}
-
-var resetTypeID = getTypeID(reflect.TypeOf((*Reset)(nil)).Elem())
-
 type Scope struct {
 	reducers     map[_TypeID]struct{}
 	ChangedTypes map[reflect.Type]struct{}
@@ -163,7 +159,6 @@ func (s Scope) Psub(
 	// collect new decls
 	var newDeclsTemplate []_Decl
 	shadowedIDs := make(map[_TypeID]struct{})
-	explicitResetIDs := make(map[_TypeID]struct{})
 	initNumDecls := make([]int, 0, len(initializers))
 	initKinds := make([]reflect.Kind, 0, len(initializers))
 	changedTypes := make(map[reflect.Type]struct{})
@@ -197,32 +192,20 @@ func (s Scope) Psub(
 				t := initType.Out(i)
 				id := getTypeID(t)
 
-				if id == resetTypeID {
-					// reset decl
-					numIn := initType.NumIn()
-					for i := 0; i < numIn; i++ {
-						in := initType.In(i)
-						inID := getTypeID(in)
-						explicitResetIDs[inID] = struct{}{}
-						changedTypes[in] = struct{}{}
+				newDeclsTemplate = append(newDeclsTemplate, _Decl{
+					Kind:     reflect.Func,
+					Type:     t,
+					TypeID:   id,
+					Init:     initValue,
+					InitName: initName,
+				})
+				numDecls++
+				if t != scopeType {
+					if _, ok := s.declarations.LoadOne(id); ok {
+						shadowedIDs[id] = struct{}{}
 					}
-
-				} else {
-					newDeclsTemplate = append(newDeclsTemplate, _Decl{
-						Kind:     reflect.Func,
-						Type:     t,
-						TypeID:   id,
-						Init:     initValue,
-						InitName: initName,
-					})
-					numDecls++
-					if t != scopeType {
-						if _, ok := s.declarations.LoadOne(id); ok {
-							shadowedIDs[id] = struct{}{}
-						}
-					}
-					changedTypes[t] = struct{}{}
 				}
+				changedTypes[t] = struct{}{}
 
 			}
 			initNumDecls = append(initNumDecls, numDecls)
@@ -406,38 +389,6 @@ func (s Scope) Psub(
 
 	for id := range shadowedIDs {
 		resetDownstream(id)
-	}
-
-	var reset func(id _TypeID)
-	reset = func(id _TypeID) {
-		decls, ok := s.declarations.Load(id)
-		if !ok {
-			return
-		}
-		if _, ok := set[id]; !ok {
-			resetIDs = append(resetIDs, id)
-			set[id] = struct{}{}
-		} else {
-			return
-		}
-		resetDownstream(id)
-		// reset types of the same init funcs
-		for _, decl := range decls {
-			if decl.Kind != reflect.Func {
-				continue
-			}
-			fnType := reflect.TypeOf(decl.Init)
-			for i := 0; i < fnType.NumOut(); i++ {
-				t := fnType.Out(i)
-				if t == decl.Type {
-					continue
-				}
-				reset(getTypeID(t))
-			}
-		}
-	}
-	for id := range explicitResetIDs {
-		reset(id)
 	}
 
 	sort.Slice(resetIDs, func(i, j int) bool {

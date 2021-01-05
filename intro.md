@@ -1,5 +1,4 @@
 ### TODO
-* Reset
 * Reducer
 * trick: cache Reducer results  
 

@@ -1310,60 +1310,6 @@ func TestPcallValueArgs(t *testing.T) {
 	}
 }
 
-func TestReset(t *testing.T) {
-	count := 0
-	count2 := 0
-	s := New(func() int {
-		count++
-		return 42
-	}, func(i int) int32 {
-		count2++
-		return int32(i)
-	})
-
-	var i int
-	s.Assign(&i)
-	if i != 42 {
-		t.Fatal()
-	}
-	if count != 1 {
-		t.Fatal()
-	}
-	var i32 int32
-	s.Assign(&i32)
-	if i32 != 42 {
-		t.Fatal()
-	}
-	if count2 != 1 {
-		t.Fatal()
-	}
-
-	s.Assign(&i)
-	if count != 1 {
-		t.Fatal()
-	}
-
-	s = s.Sub(func(int, string) (_ Reset) { return })
-	s.Assign(&i)
-	if count != 2 {
-		t.Fatal()
-	}
-	s.Assign(&i32)
-	if count2 != 2 {
-		t.Fatal()
-	}
-
-	s.Assign(&i)
-	if count != 2 {
-		t.Fatal()
-	}
-	s.Assign(&i32)
-	if count2 != 2 {
-		t.Fatal()
-	}
-
-}
-
 type acc int
 
 var _ Reducer = acc(0)
@@ -1503,29 +1449,6 @@ func TestRuntimeLoop(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal()
-	}
-}
-
-func TestResetOnce(t *testing.T) {
-	n := 0
-	s := New(
-		func() (int, string) {
-			n++
-			return 42, "foo"
-		},
-	)
-	s = s.Sub(func(string) (_ Reset) { return })
-	var i int
-	var str string
-	s.Assign(&i, &str)
-	if i != 42 {
-		t.Fatal()
-	}
-	if str != "foo" {
-		t.Fatal()
-	}
-	if n != 1 {
-		t.Fatalf("got %d", n)
 	}
 }
 
