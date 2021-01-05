@@ -1,6 +1,7 @@
 package dscope
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -12,9 +13,11 @@ type Reducer interface {
 
 var reducerType = reflect.TypeOf((*Reducer)(nil)).Elem()
 
+var ErrNoValues = errors.New("no values")
+
 func Reduce(vs []reflect.Value) reflect.Value {
 	if len(vs) == 0 {
-		panic("no values")
+		panic(ErrNoValues)
 	}
 
 	t := vs[0].Type()
@@ -68,7 +71,7 @@ func Reduce(vs []reflect.Value) reflect.Value {
 		ret = reflect.New(t).Elem()
 		ret.SetInt(i)
 
-	default:
+	default: // NOCOVER
 		panic(fmt.Errorf("don't know how to reduce %v", t))
 	}
 
