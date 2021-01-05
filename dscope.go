@@ -23,7 +23,6 @@ type _Decl struct {
 	Kind       reflect.Kind
 	ValueIndex int
 	TypeID     _TypeID
-	IsUnset    bool
 }
 
 type _Get struct {
@@ -32,10 +31,6 @@ type _Get struct {
 }
 
 type _TypeID int
-
-type Unset struct{}
-
-var unsetTypeID = getTypeID(reflect.TypeOf((*Unset)(nil)).Elem())
 
 type Reset struct{}
 
@@ -202,38 +197,7 @@ func (s Scope) Psub(
 				t := initType.Out(i)
 				id := getTypeID(t)
 
-				if id == unsetTypeID {
-					// unset decl
-					numIn := initType.NumIn()
-					for i := 0; i < numIn; i++ {
-						in := initType.In(i)
-						inID := getTypeID(in)
-						newDeclsTemplate = append(newDeclsTemplate, _Decl{
-							Kind:   reflect.Func,
-							Type:   in,
-							TypeID: inID,
-							Init: reflect.MakeFunc(
-								reflect.FuncOf(
-									[]reflect.Type{},
-									[]reflect.Type{
-										in,
-									},
-									false,
-								),
-								nil,
-							).Interface(),
-							IsUnset: true,
-						})
-						numDecls++
-						if in != scopeType {
-							if _, ok := s.declarations.LoadOne(inID); ok {
-								shadowedIDs[inID] = struct{}{}
-							}
-						}
-						changedTypes[in] = struct{}{}
-					}
-
-				} else if id == resetTypeID {
+				if id == resetTypeID {
 					// reset decl
 					numIn := initType.NumIn()
 					for i := 0; i < numIn; i++ {
@@ -244,7 +208,6 @@ func (s Scope) Psub(
 					}
 
 				} else {
-					// non-unset
 					newDeclsTemplate = append(newDeclsTemplate, _Decl{
 						Kind:     reflect.Func,
 						Type:     t,
@@ -531,10 +494,6 @@ func (s Scope) Psub(
 				for i := 0; i < numDecls; i++ {
 					info := newDeclsTemplate[n]
 					initFunc := initValue
-					if info.IsUnset {
-						// use made func for unset decls
-						initFunc = info.Init
-					}
 					newDecls[posesAtSorted[n]] = _Decl{
 						Kind:       info.Kind,
 						Init:       initFunc,
@@ -543,7 +502,6 @@ func (s Scope) Psub(
 						ValueIndex: i,
 						Type:       info.Type,
 						TypeID:     info.TypeID,
-						IsUnset:    info.IsUnset,
 					}
 					n++
 				}
@@ -563,7 +521,6 @@ func (s Scope) Psub(
 					ValueIndex: 0,
 					Type:       info.Type,
 					TypeID:     info.TypeID,
-					IsUnset:    info.IsUnset,
 				}
 				n++
 			}
@@ -648,14 +605,6 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 				}),
 			)
 		}
-		if decl.IsUnset {
-			return ret, we(
-				ErrDependencyNotFound,
-				e4.With(TypeInfo{
-					Type: t,
-				}),
-			)
-		}
 		var values []reflect.Value
 		values, err = decl.Get.Func(scope.appendPath(t))
 		if err != nil { // NOCOVER
@@ -701,18 +650,6 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 				defer func() {
 					<-sem
 				}()
-				if decl.IsUnset {
-					select {
-					case errCh <- we(
-						ErrDependencyNotFound,
-						e4.With(TypeInfo{
-							Type: t,
-						}),
-					):
-					default:
-					}
-					return
-				}
 				var values []reflect.Value
 				var err error
 				values, err = decl.Get.Func(pathScope)

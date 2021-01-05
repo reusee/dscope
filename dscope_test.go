@@ -1163,46 +1163,6 @@ func TestRacyCall(t *testing.T) {
 	}
 }
 
-func TestUnset(t *testing.T) {
-	s := New(
-		func() int {
-			return 42
-		},
-		func() string {
-			return "foo"
-		},
-	)
-	_, err := s.Get(reflect.TypeOf((*int)(nil)).Elem())
-	if err != nil {
-		t.Fatal()
-	}
-
-	s = s.Sub(func(int) Unset {
-		return Unset{}
-	})
-	_, err = s.Get(reflect.TypeOf((*int)(nil)).Elem())
-	if !is(err, ErrDependencyNotFound) {
-		t.Fatal()
-	}
-	_, err = s.Pcall(func(int) {})
-	if !is(err, ErrDependencyNotFound) {
-		t.Fatalf("got %v", err)
-	}
-
-	s = s.Sub(func(string) Unset {
-		return Unset{}
-	})
-	_, err = s.Get(reflect.TypeOf((*string)(nil)).Elem())
-	if !is(err, ErrDependencyNotFound) {
-		t.Fatal()
-	}
-	_, err = s.Pcall(func(string) {})
-	if !is(err, ErrDependencyNotFound) {
-		t.Fatalf("got %v", err)
-	}
-
-}
-
 func TestSubFunc(t *testing.T) {
 	type I int
 	type J int
