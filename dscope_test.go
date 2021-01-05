@@ -702,7 +702,7 @@ func TestCallReturn(t *testing.T) {
 			if reflect.TypeOf(argInfo.Value) != reflect.TypeOf((*int)(nil)).Elem() {
 				t.Fatal()
 			}
-			if s := argInfo.Error(); s != "arg: 42" {
+			if s := argInfo.Error(); s != "arg: int" {
 				t.Fatalf("got %s", s)
 			}
 			var reason Reason
@@ -719,6 +719,46 @@ func TestCallReturn(t *testing.T) {
 		scope.Call(func() (int, error) {
 			return 42, nil
 		}).Assign(42)
+	}()
+
+	func() {
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			err, ok := p.(error)
+			if !ok {
+				t.Fatal()
+			}
+			if !is(err, ErrBadArgument) {
+				t.Fatal()
+			}
+			var argInfo ArgInfo
+			if !as(err, &argInfo) {
+				t.Fatal()
+			}
+			if reflect.TypeOf(argInfo.Value) != reflect.TypeOf((**string)(nil)).Elem() {
+				t.Fatal()
+			}
+			if s := argInfo.Error(); s != "arg: *string" {
+				t.Fatalf("got %s", s)
+			}
+			var reason Reason
+			if !as(err, &reason) {
+				t.Fatal()
+			}
+			if reason != "must be pointer to string" {
+				t.Fatal()
+			}
+			if s := reason.Error(); s != "reason: must be pointer to string" {
+				t.Fatalf("got %s", s)
+			}
+		}()
+		var s string
+		scope.Call(func() (int, error) {
+			return 42, nil
+		}).Assign(&s)
 	}()
 
 }
@@ -1520,6 +1560,18 @@ func TestCallResultSub(t *testing.T) {
 		return i * 2
 	}).Sub().Assign(&i)
 	if i != 84 {
+		t.Fatal()
+	}
+}
+
+func TestCallResultAssign(t *testing.T) {
+	var i int
+	New(func() int {
+		return 42
+	}).Call(func(i int) (int, int) {
+		return 42, 1
+	}).Assign(nil, &i)
+	if i != 1 {
 		t.Fatal()
 	}
 }

@@ -37,7 +37,7 @@ type ArgInfo struct {
 }
 
 func (a ArgInfo) Error() string {
-	return fmt.Sprintf("arg: %#v", a.Value)
+	return fmt.Sprintf("arg: %T", a.Value)
 }
 
 type Reason string

@@ -44,7 +44,7 @@ func (c CallResult) Assign(targets ...any) {
 					Value: target,
 				}),
 				e4.With(Reason(
-					fmt.Sprintf("must be %v", targetValue.Type().Elem().String()),
+					fmt.Sprintf("must be pointer to %v", targetValue.Type().Elem().String()),
 				)),
 			))
 		}
