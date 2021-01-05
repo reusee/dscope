@@ -84,7 +84,7 @@ func cachedInit(init any, name string) _Get {
 				}
 			}
 			once.Do(func() {
-				if logInit {
+				if logInit { // NOCOVER
 					t0 := time.Now()
 					defer func() {
 						id := name
@@ -412,7 +412,7 @@ func (s Scope) Psub(
 			if err := s.declarations.Range(func(ds []_Decl) error {
 				decls = append(decls, ds...)
 				return nil
-			}); err != nil {
+			}); err != nil { // NOCOVER
 				return badScope, err
 			}
 			sort.Slice(decls, func(i, j int) bool {
@@ -426,7 +426,7 @@ func (s Scope) Psub(
 
 		newDecls := make([]_Decl, len(newDeclsTemplate))
 		n := 0
-		initializers[len(initializers)-1] = func() Scope {
+		initializers[len(initializers)-1] = func() Scope { // NOCOVER
 			panic("impposible")
 		}
 		for idx, initializer := range initializers {
@@ -561,7 +561,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 		if err != nil { // NOCOVER
 			return ret, err
 		}
-		if decl.ValueIndex >= len(values) {
+		if decl.ValueIndex >= len(values) { // NOCOVER
 			err = we(
 				ErrBadDeclaration,
 				e4.With(TypeInfo{
@@ -580,13 +580,8 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 
 	} else {
 		decls, ok := scope.declarations.Load(id)
-		if !ok {
-			return ret, we(
-				ErrDependencyNotFound,
-				e4.With(TypeInfo{
-					Type: t,
-				}),
-			)
+		if !ok { // NOCOVER
+			panic("impossible")
 		}
 		pathScope := scope.appendPath(t)
 		vs := make([]reflect.Value, len(decls))
@@ -611,7 +606,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 					}
 					return
 				}
-				if decl.ValueIndex >= len(values) {
+				if decl.ValueIndex >= len(values) { // NOCOVER
 					err = we(
 						ErrBadDeclaration,
 						e4.With(TypeInfo{
@@ -634,7 +629,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 			sem <- struct{}{}
 		}
 		select {
-		case err := <-errCh:
+		case err := <-errCh: // NOCOVER
 			return ret, err
 		default:
 		}
@@ -775,7 +770,7 @@ func (scope Scope) PcallValue(fnValue reflect.Value, retArgs ...any) ([]reflect.
 }
 
 func (s Scope) Extend(t reflect.Type, inits ...any) Scope {
-	if !t.Implements(reducerType) {
+	if !t.Implements(reducerType) { // NOCOVER
 		panic(we(
 			ErrBadDeclaration,
 			e4.With(TypeInfo{

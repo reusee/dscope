@@ -189,6 +189,34 @@ func TestPanic(t *testing.T) {
 			if !as(err, &typeInfo) {
 				t.Fatal()
 			}
+			if typeInfo.Type != reflect.TypeOf((*acc)(nil)).Elem() {
+				t.Fatal()
+			}
+			if typeInfo.Error() != "type: dscope.acc" {
+				t.Fatal()
+			}
+		}()
+		var a acc
+		scope.Assign(&a)
+	}()
+
+	func() {
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			err, ok := p.(error)
+			if !ok {
+				t.Fatal()
+			}
+			if !is(err, ErrDependencyNotFound) {
+				t.Fatal()
+			}
+			var typeInfo TypeInfo
+			if !as(err, &typeInfo) {
+				t.Fatal()
+			}
 			if typeInfo.Type != reflect.TypeOf((*string)(nil)).Elem() {
 				t.Fatal()
 			}
