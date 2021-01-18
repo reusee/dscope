@@ -707,6 +707,7 @@ func (scope Scope) PcallValue(fnValue reflect.Value) (res CallResult, err error)
 	if err != nil {
 		return
 	}
+	//TODO optimize: generate hint for static call
 	res.Values = fnValue.Call(args[:n])
 	v, ok := fnRetTypes.Load(fnType)
 	if !ok {
