@@ -65,6 +65,10 @@ func cachedInit(init any, name string) _Get {
 	var values []reflect.Value
 	var err error
 	id := atomic.AddInt64(&nextGetID, 1)
+	fnName := name
+	if fnName == "" {
+		fnName = fmt.Sprintf("%T", init)
+	}
 	return _Get{
 		ID: id,
 		Func: func(scope Scope) ([]reflect.Value, error) {
@@ -87,15 +91,14 @@ func cachedInit(init any, name string) _Get {
 				if logInit { // NOCOVER
 					t0 := time.Now()
 					defer func() {
-						id := name
-						if id == "" {
-							id = fmt.Sprintf("%T", init)
-						}
-						debugLog("[DSCOPE] run %s in %v\n", id, time.Since(t0))
+						debugLog("[DSCOPE] run %s in %v\n", fnName, time.Since(t0))
 					}()
 				}
 				var result CallResult
-				result, err = scope.Pcall(init)
+				func() {
+					defer he(&err, e4.WithInfo("dscope: call %s", fnName))
+					result, err = scope.Pcall(init)
+				}()
 				values = result.Values
 			})
 			return values, err

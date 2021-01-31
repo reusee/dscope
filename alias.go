@@ -16,4 +16,5 @@ var (
 	as = errors.As
 	is = errors.Is
 	we = e4.DefaultWrap
+	he = e4.Handle
 )
