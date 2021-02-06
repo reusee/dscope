@@ -668,10 +668,6 @@ func (scope Scope) CallValue(fnValue reflect.Value) CallResult {
 	return rets
 }
 
-const maxPooledArgsSize = 500
-
-const pooledArgsSizeStep = 5
-
 func (scope Scope) GetArgs(fnType reflect.Type, args []reflect.Value) (int, error) {
 	var getArgs func(Scope, []reflect.Value) (int, error)
 	if v, ok := getArgsFunc.Load(fnType); !ok {
