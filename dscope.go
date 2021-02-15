@@ -740,6 +740,20 @@ func (s Scope) Extend(t reflect.Type, inits ...any) Scope {
 	return s.Sub(inits...)
 }
 
+func (s Scope) Range(
+	fn func(reflect.Type, reflect.Value) error,
+) error {
+	return s.declarations.Range(func(decls []_Decl) error {
+		t := decls[0].Type
+		v, err := s.get(decls[0].TypeID, decls[0].Type)
+		if err != nil {
+			return err
+		}
+		fn(t, v)
+		return nil
+	})
+}
+
 var returnTypeMap sync.Map
 
 var getArgsFunc sync.Map

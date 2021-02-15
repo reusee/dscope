@@ -1575,3 +1575,52 @@ func TestCallResultAssign(t *testing.T) {
 		t.Fatal()
 	}
 }
+
+func TestRange(t *testing.T) {
+	s := New(
+		func() int {
+			return 42
+		},
+		func() string {
+			return "foo"
+		},
+	)
+
+	m := make(map[reflect.Type]reflect.Value)
+	if err := s.Range(func(t reflect.Type, v reflect.Value) error {
+		m[t] = v
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(m) != 3 {
+		// Scope, int, string
+		t.Fatal()
+	}
+
+	v, ok := m[reflect.TypeOf((*int)(nil)).Elem()]
+	if !ok {
+		t.Fatal()
+	}
+	i, ok := v.Interface().(int)
+	if !ok {
+		t.Fatal()
+	}
+	if i != 42 {
+		t.Fatal()
+	}
+
+	v, ok = m[reflect.TypeOf((*string)(nil)).Elem()]
+	if !ok {
+		t.Fatal()
+	}
+	str, ok := v.Interface().(string)
+	if !ok {
+		t.Fatal()
+	}
+	if str != "foo" {
+		t.Fatal()
+	}
+
+}
