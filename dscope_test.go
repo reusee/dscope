@@ -1577,49 +1577,52 @@ func TestCallResultAssign(t *testing.T) {
 }
 
 func TestRange(t *testing.T) {
+	i := 42
+	str := "foo"
 	s := New(
-		func() int {
-			return 42
-		},
-		func() string {
-			return "foo"
-		},
+		&i,
+		&str,
 	)
 
-	m := make(map[reflect.Type]reflect.Value)
-	if err := s.Range(func(t reflect.Type, v reflect.Value) error {
-		m[t] = v
+	m := make(map[reflect.Type][]any)
+	if err := s.RangePtrValues(func(t reflect.Type, vs []any) error {
+		m[t] = vs
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	if len(m) != 3 {
-		// Scope, int, string
+	if len(m) != 2 {
+		t.Fatalf("got %d", len(m))
+	}
+
+	vs, ok := m[reflect.TypeOf((*int)(nil)).Elem()]
+	if !ok {
+		t.Fatal()
+	}
+	if len(vs) != 1 {
+		t.Fatal()
+	}
+	p, ok := vs[0].(*int)
+	if !ok {
+		t.Fatal()
+	}
+	if *p != 42 {
 		t.Fatal()
 	}
 
-	v, ok := m[reflect.TypeOf((*int)(nil)).Elem()]
+	vs, ok = m[reflect.TypeOf((*string)(nil)).Elem()]
 	if !ok {
 		t.Fatal()
 	}
-	i, ok := v.Interface().(int)
+	if len(vs) != 1 {
+		t.Fatal()
+	}
+	pStr, ok := vs[0].(*string)
 	if !ok {
 		t.Fatal()
 	}
-	if i != 42 {
-		t.Fatal()
-	}
-
-	v, ok = m[reflect.TypeOf((*string)(nil)).Elem()]
-	if !ok {
-		t.Fatal()
-	}
-	str, ok := v.Interface().(string)
-	if !ok {
-		t.Fatal()
-	}
-	if str != "foo" {
+	if *pStr != "foo" {
 		t.Fatal()
 	}
 

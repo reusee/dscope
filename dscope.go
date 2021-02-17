@@ -740,16 +740,21 @@ func (s Scope) Extend(t reflect.Type, inits ...any) Scope {
 	return s.Sub(inits...)
 }
 
-func (s Scope) Range(
-	fn func(reflect.Type, reflect.Value) error,
+func (s Scope) RangePtrValues(
+	fn func(reflect.Type, []any) error,
 ) error {
 	return s.declarations.Range(func(decls []_Decl) error {
 		t := decls[0].Type
-		v, err := s.get(decls[0].TypeID, decls[0].Type)
-		if err != nil {
-			return err
+		var vs []any
+		for _, decl := range decls {
+			if decl.Kind != reflect.Ptr {
+				continue
+			}
+			vs = append(vs, decl.Init)
 		}
-		fn(t, v)
+		if len(vs) > 0 {
+			fn(t, vs)
+		}
 		return nil
 	})
 }
