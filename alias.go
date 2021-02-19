@@ -12,9 +12,10 @@ type (
 )
 
 var (
-	pt = fmt.Printf
-	as = errors.As
-	is = errors.Is
-	we = e4.DefaultWrap
-	he = e4.Handle
+	pt    = fmt.Printf
+	as    = errors.As
+	is    = errors.Is
+	we    = e4.DefaultWrap
+	he    = e4.Handle
+	throw = e4.Throw
 )

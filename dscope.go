@@ -516,7 +516,7 @@ func (s Scope) Psub(
 
 func (scope Scope) Assign(objs ...any) {
 	if err := scope.PAssign(objs...); err != nil {
-		panic(err)
+		throw(err)
 	}
 }
 
@@ -663,7 +663,7 @@ func (scope Scope) Pcall(fn any) (CallResult, error) {
 func (scope Scope) CallValue(fnValue reflect.Value) CallResult {
 	rets, err := scope.PcallValue(fnValue)
 	if err != nil {
-		panic(err)
+		throw(err)
 	}
 	return rets
 }
