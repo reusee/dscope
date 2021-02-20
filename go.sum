@@ -2,6 +2,11 @@ github.com/reusee/e4 v0.0.0-20201218045600-4f28edae664c h1:MiKOo3VGojGKoSyUkVG6h
 github.com/reusee/e4 v0.0.0-20201218045600-4f28edae664c/go.mod h1:uKxRTtwTi6F66Mzc+Lk/cEPBGwv0W1Macn9it1OXVE4=
 github.com/reusee/e4 v0.0.0-20201218072924-87f538a3e17a h1:AFWpu2lfKTEYDFF7B/RbSbpaB98IjB4aNSGxMXBiJLI=
 github.com/reusee/e4 v0.0.0-20201218072924-87f538a3e17a/go.mod h1:uKxRTtwTi6F66Mzc+Lk/cEPBGwv0W1Macn9it1OXVE4=
+github.com/reusee/e4 v0.0.0-20210219021733-9f9ca7ec1cea h1:NY9ONPWpVWlzbvU/OfOmZ1ymevjbtiVupEATbstOmJ8=
+github.com/reusee/e4 v0.0.0-20210219021733-9f9ca7ec1cea/go.mod h1:Zfo0mBaNabtnbCtT4+HG9734x9G1VDT3Dwrqhp4wMfE=
+github.com/reusee/e4 v0.0.0-20210219130211-84749b2251b1 h1:0hSswxOQYljE0E+KIkZEI8VBdrdun0eur3IMBNGblkU=
+github.com/reusee/e4 v0.0.0-20210219130211-84749b2251b1/go.mod h1:Zfo0mBaNabtnbCtT4+HG9734x9G1VDT3Dwrqhp4wMfE=
+github.com/reusee/pr v0.0.0-20210102140014-3c32e4f45182/go.mod h1:yDr3ReZyWYFsHDC9Gxj8Udlcd1Fxm0N+QGMWkI5G5xE=
 github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
 golang.org/x/crypto v0.0.0-20191011191535-87dc89f01550/go.mod h1:yigFU9vqHzYiE8UmvKecakEJjdnWj3jj499lnFckfCI=
