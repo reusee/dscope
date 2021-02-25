@@ -34,13 +34,13 @@ type _TypeID int
 
 type Scope struct {
 	reducers     map[_TypeID]struct{}
-	ChangedTypes map[reflect.Type]struct{}
+	ChangedTypes map[reflect.Type]struct{} //TODO delete
 	signature    string
 	subFuncKey   string
 	declarations _UnionMap
 	path         Path
 	ID           int64
-	ParentID     int64
+	ParentID     int64 //TODO delete
 }
 
 var nextID int64 = 42
@@ -402,6 +402,8 @@ func (s Scope) Psub(
 
 	// fn
 	fn := func(s Scope, initializers []any) (Scope, error) {
+
+		// new scope
 		scope := Scope{
 			signature:    signature,
 			ID:           atomic.AddInt64(&nextID, 1),
@@ -410,6 +412,8 @@ func (s Scope) Psub(
 			subFuncKey:   key,
 			reducers:     reducers,
 		}
+
+		// declarations
 		var declarations _UnionMap
 		if len(s.declarations) > 32 {
 			// flatten
@@ -429,6 +433,7 @@ func (s Scope) Psub(
 			copy(declarations, s.declarations)
 		}
 
+		// new decls
 		newDecls := make([]_Decl, len(newDeclsTemplate))
 		n := 0
 		initializers[len(initializers)-1] = func() Scope { // NOCOVER
@@ -483,6 +488,7 @@ func (s Scope) Psub(
 		}
 		declarations = append(declarations, newDecls)
 
+		// reset decls
 		if len(resetIDs) > 0 {
 			resetDecls := make([]_Decl, 0, len(resetIDs))
 			gets := make(map[int64]_Get)
