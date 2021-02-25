@@ -1,5 +1,7 @@
 package dscope
 
+//TODO reducer也只计算一次
+
 import (
 	"fmt"
 	"os"
