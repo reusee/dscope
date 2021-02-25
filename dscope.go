@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -543,6 +542,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 	}
 
 	if _, ok := scope.reducers[id]; !ok {
+		// non-reducer
 		decl, ok := scope.declarations.LoadOne(id)
 		if !ok {
 			return ret, we(
@@ -575,6 +575,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 		return values[decl.ValueIndex], nil
 
 	} else {
+		// reducer
 		decls, ok := scope.declarations.Load(id)
 		if !ok { // NOCOVER
 			panic("impossible")
@@ -582,52 +583,29 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 		pathScope := scope.appendPath(t)
 		vs := make([]reflect.Value, len(decls))
 		names := make(InitNames, len(decls))
-		errCh := make(chan error, 1)
-		sem := make(chan struct{}, runtime.NumCPU())
 		for i, decl := range decls {
-			i := i
-			decl := decl
-			sem <- struct{}{}
-			go func() {
-				defer func() {
-					<-sem
-				}()
-				var values []reflect.Value
-				var err error
-				values, err = decl.Get.Func(pathScope)
-				if err != nil { // NOCOVER
-					select {
-					case errCh <- err:
-					default:
-					}
-					return
-				}
-				if decl.ValueIndex >= len(values) { // NOCOVER
-					err = we(
-						ErrBadDeclaration,
-						e4.With(TypeInfo{
-							Type: t,
-						}),
-						e4.With(Reason(fmt.Sprintf(
-							"get %v from %T at %d",
-							t,
-							decl.Init,
-							decl.ValueIndex,
-						))),
-					)
-					return
-				}
-				vs[i] = values[decl.ValueIndex]
-				names[i] = decl.InitName
-			}()
-		}
-		for i := 0; i < cap(sem); i++ {
-			sem <- struct{}{}
-		}
-		select {
-		case err := <-errCh: // NOCOVER
-			return ret, err
-		default:
+			var values []reflect.Value
+			values, err = decl.Get.Func(pathScope)
+			if err != nil { // NOCOVER
+				return
+			}
+			if decl.ValueIndex >= len(values) { // NOCOVER
+				err = we(
+					ErrBadDeclaration,
+					e4.With(TypeInfo{
+						Type: t,
+					}),
+					e4.With(Reason(fmt.Sprintf(
+						"get %v from %T at %d",
+						t,
+						decl.Init,
+						decl.ValueIndex,
+					))),
+				)
+				return
+			}
+			vs[i] = values[decl.ValueIndex]
+			names[i] = decl.InitName
 		}
 		scope = scope.Sub(&names)
 		ret = vs[0].Interface().(Reducer).Reduce(scope, vs)
