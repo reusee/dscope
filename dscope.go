@@ -34,21 +34,13 @@ type _TypeID int
 
 type Scope struct {
 	reducers     map[_TypeID]struct{}
-	ChangedTypes map[reflect.Type]struct{} //TODO delete
 	signature    string
 	subFuncKey   string
 	declarations _UnionMap
 	path         Path
-	ID           int64
-	ParentID     int64 //TODO delete
 }
 
-var nextID int64 = 42
-
-var Universe = Scope{
-	ID:           0,
-	ChangedTypes: make(map[reflect.Type]struct{}),
-}
+var Universe = Scope{}
 
 func New(
 	inits ...any,
@@ -166,7 +158,6 @@ func (s Scope) Psub(
 	shadowedIDs := make(map[_TypeID]struct{})
 	initNumDecls := make([]int, 0, len(initializers))
 	initKinds := make([]reflect.Kind, 0, len(initializers))
-	changedTypes := make(map[reflect.Type]struct{})
 	for _, initializer := range initializers {
 		var initValue any
 		var initName string
@@ -210,7 +201,6 @@ func (s Scope) Psub(
 						shadowedIDs[id] = struct{}{}
 					}
 				}
-				changedTypes[t] = struct{}{}
 
 			}
 			initNumDecls = append(initNumDecls, numDecls)
@@ -231,7 +221,6 @@ func (s Scope) Psub(
 				}
 			}
 			initNumDecls = append(initNumDecls, 1)
-			changedTypes[t] = struct{}{}
 
 		default:
 			return badScope, we(
@@ -384,7 +373,6 @@ func (s Scope) Psub(
 			}
 			if _, ok := set[downstream.TypeID]; !ok {
 				resetIDs = append(resetIDs, downstream.TypeID)
-				changedTypes[downstream.Type] = struct{}{}
 				set[downstream.TypeID] = struct{}{}
 			}
 			resetDownstream(downstream.TypeID)
@@ -405,12 +393,9 @@ func (s Scope) Psub(
 
 		// new scope
 		scope := Scope{
-			signature:    signature,
-			ID:           atomic.AddInt64(&nextID, 1),
-			ParentID:     s.ID,
-			ChangedTypes: changedTypes,
-			subFuncKey:   key,
-			reducers:     reducers,
+			signature:  signature,
+			subFuncKey: key,
+			reducers:   reducers,
 		}
 
 		// declarations
