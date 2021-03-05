@@ -15,10 +15,8 @@ type GetLatest func() Scope
 func NewDeriving(
 	decls ...any,
 ) Scope {
-	scope := New(decls...)
 
 	var ptr unsafe.Pointer
-	ptr = unsafe.Pointer(&scope)
 
 	getLatest := GetLatest(func() Scope {
 		return *(*Scope)(atomic.LoadPointer(&ptr))
@@ -63,11 +61,9 @@ func NewDeriving(
 		return derived
 	})
 
-	scope = scope.Sub(
-		&getLatest,
-		&deriveCall,
-		&derive,
-	)
+	decls = append(decls, &getLatest, &deriveCall, &derive)
+	scope := New(decls...)
+	ptr = unsafe.Pointer(&scope)
 
 	return scope
 }
