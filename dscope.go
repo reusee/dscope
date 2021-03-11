@@ -610,14 +610,6 @@ func (scope Scope) Call(fn any) CallResult {
 	return scope.CallValue(reflect.ValueOf(fn))
 }
 
-func (scope Scope) CallValue(fnValue reflect.Value) CallResult {
-	rets, err := scope.PcallValue(fnValue)
-	if err != nil {
-		throw(err)
-	}
-	return rets
-}
-
 func (scope Scope) GetArgs(fnType reflect.Type, args []reflect.Value) (int, error) {
 	var getArgs func(Scope, []reflect.Value) (int, error)
 	if v, ok := getArgsFunc.Load(fnType); !ok {
@@ -649,12 +641,12 @@ func (scope Scope) GetArgs(fnType reflect.Type, args []reflect.Value) (int, erro
 
 var fnRetTypes sync.Map
 
-func (scope Scope) PcallValue(fnValue reflect.Value) (res CallResult, err error) {
+func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 	fnType := fnValue.Type()
 	args := make([]reflect.Value, fnType.NumIn())
 	n, err := scope.GetArgs(fnType, args)
 	if err != nil {
-		return
+		throw(err)
 	}
 	//TODO optimize: generate hint for static call
 	res.Values = fnValue.Call(args[:n])
