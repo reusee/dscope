@@ -1487,11 +1487,18 @@ func TestMultipleDispatch(t *testing.T) {
 func TestRuntimeLoop(t *testing.T) {
 	s := New(
 		func(s Scope) int {
+			var err error
+			defer func() {
+				if err == nil {
+					t.Fatal()
+				}
+				if !is(err, ErrDependencyLoop) {
+					t.Fatal()
+				}
+			}()
+			defer he(&err)
 			var i int
-			err := s.PAssign(&i)
-			if !is(err, ErrDependencyLoop) {
-				t.Fatal()
-			}
+			s.Assign(&i)
 			return 42
 		},
 	)

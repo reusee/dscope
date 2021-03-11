@@ -117,21 +117,11 @@ func dumbScopeProvider() (_ Scope) { // NOCOVER
 
 var subFns sync.Map
 
-func (s Scope) Sub(
-	inits ...any,
-) Scope {
-	scope, err := s.Psub(inits...)
-	if err != nil {
-		panic(err)
-	}
-	return scope
-}
-
 var badScope = Scope{}
 
-func (s Scope) Psub(
+func (s Scope) Sub(
 	initializers ...any,
-) (Scope, error) {
+) Scope {
 
 	initializers = append(initializers, dumbScopeProvider)
 
@@ -151,7 +141,7 @@ func (s Scope) Psub(
 	key := buf.String()
 
 	if value, ok := subFns.Load(key); ok {
-		return value.(func(Scope, []any) (Scope, error))(s, initializers)
+		return value.(func(Scope, []any) Scope)(s, initializers)
 	}
 
 	// collect new decls
@@ -176,13 +166,13 @@ func (s Scope) Psub(
 		case reflect.Func:
 			numOut := initType.NumOut()
 			if numOut == 0 {
-				return badScope, we(
+				throw(we(
 					ErrBadArgument,
 					e4.With(ArgInfo{
 						Value: initializer,
 					}),
 					e4.With(Reason("function returns nothing")),
-				)
+				))
 			}
 			var numDecls int
 			for i := 0; i < numOut; i++ {
@@ -224,13 +214,13 @@ func (s Scope) Psub(
 			initNumDecls = append(initNumDecls, 1)
 
 		default:
-			return badScope, we(
+			throw(we(
 				ErrBadArgument,
 				e4.With(ArgInfo{
 					Value: initializer,
 				}),
 				e4.With(Reason("not a function or a pointer")),
-			)
+			))
 		}
 	}
 	type posAtTemplate int
@@ -350,7 +340,7 @@ func (s Scope) Psub(
 
 		return nil
 	}); err != nil {
-		return badScope, err
+		throw(err)
 	}
 	buf.Reset()
 	for _, id := range initTypeIDs {
@@ -390,7 +380,7 @@ func (s Scope) Psub(
 	})
 
 	// fn
-	fn := func(s Scope, initializers []any) (Scope, error) {
+	fn := func(s Scope, initializers []any) Scope {
 
 		// new scope
 		scope := Scope{
@@ -408,7 +398,7 @@ func (s Scope) Psub(
 				decls = append(decls, ds...)
 				return nil
 			}); err != nil { // NOCOVER
-				return badScope, err
+				throw(err)
 			}
 			sort.Slice(decls, func(i, j int) bool {
 				return decls[i].TypeID < decls[j].TypeID
@@ -498,7 +488,7 @@ func (s Scope) Psub(
 
 		scope.declarations = declarations
 
-		return scope, nil
+		return scope
 	}
 
 	subFns.Store(key, fn)
@@ -507,31 +497,24 @@ func (s Scope) Psub(
 }
 
 func (scope Scope) Assign(objs ...any) {
-	if err := scope.PAssign(objs...); err != nil {
-		throw(err)
-	}
-}
-
-func (scope Scope) PAssign(objs ...any) error {
 	for _, o := range objs {
 		v := reflect.ValueOf(o)
 		if v.Kind() != reflect.Ptr {
-			return we(
+			throw(we(
 				ErrBadArgument,
 				e4.With(ArgInfo{
 					Value: o,
 				}),
 				e4.With(Reason("must be a pointer")),
-			)
+			))
 		}
 		t := v.Type().Elem()
 		value, err := scope.Get(t)
 		if err != nil {
-			return err
+			throw(err)
 		}
 		v.Elem().Set(value)
 	}
-	return nil
 }
 
 func (scope Scope) get(id _TypeID, t reflect.Type) (
