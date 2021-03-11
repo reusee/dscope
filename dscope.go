@@ -90,7 +90,7 @@ func cachedInit(init any, name string) _Get {
 				var result CallResult
 				func() {
 					defer he(&err, e4.WithInfo("dscope: call %s", fnName))
-					result, err = scope.Pcall(init)
+					result = scope.Call(init)
 				}()
 				values = result.Values
 			})
@@ -608,10 +608,6 @@ func (scope Scope) Get(t reflect.Type) (
 
 func (scope Scope) Call(fn any) CallResult {
 	return scope.CallValue(reflect.ValueOf(fn))
-}
-
-func (scope Scope) Pcall(fn any) (CallResult, error) {
-	return scope.PcallValue(reflect.ValueOf(fn))
 }
 
 func (scope Scope) CallValue(fnValue reflect.Value) CallResult {
