@@ -667,7 +667,7 @@ func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 
 func (s Scope) Extend(t reflect.Type, inits ...any) Scope {
 	if !t.Implements(reducerType) { // NOCOVER
-		panic(we(
+		throw(we(
 			ErrBadDeclaration,
 			e4.With(TypeInfo{
 				Type: t,
