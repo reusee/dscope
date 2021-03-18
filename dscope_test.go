@@ -1626,3 +1626,56 @@ func TestRange(t *testing.T) {
 	}
 
 }
+
+type noShadowInt int
+
+var _ NoShadow = noShadowInt(42)
+
+func (_ noShadowInt) IsNoShadow() {}
+
+func TestNoShadow(t *testing.T) {
+	i := noShadowInt(42)
+	s := New(&i)
+
+	check := func(fn func()) {
+		func() {
+			var err error
+			defer func() {
+				if err == nil {
+					t.Fatal("should error")
+				}
+				if !is(err, ErrBadShadow) {
+					t.Fatal()
+				}
+				var typeInfo TypeInfo
+				if !as(err, &typeInfo) {
+					t.Fatal()
+				}
+				if typeInfo.Type != reflect.TypeOf((*noShadowInt)(nil)).Elem() {
+					t.Fatal()
+				}
+				var argInfo ArgInfo
+				if !as(err, &argInfo) {
+					t.Fatal()
+				}
+				var reason Reason
+				if !as(err, &reason) {
+					t.Fatal()
+				}
+			}()
+			defer he(&err)
+			fn()
+		}()
+	}
+
+	check(func() {
+		s.Sub(&i)
+	})
+
+	check(func() {
+		s.Sub(func() noShadowInt {
+			return 42
+		})
+	})
+
+}

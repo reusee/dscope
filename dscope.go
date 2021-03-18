@@ -189,6 +189,20 @@ func (s Scope) Sub(
 				numDecls++
 				if t != scopeType {
 					if _, ok := s.declarations.LoadOne(id); ok {
+						if t.Implements(noShadowType) {
+							throw(we(
+								ErrBadShadow,
+								e4.With(ArgInfo{
+									Value: initializer,
+								}),
+								e4.With(TypeInfo{
+									Type: t,
+								}),
+								e4.With(Reason(
+									fmt.Sprintf("should not shadow %v", t),
+								)),
+							))
+						}
 						shadowedIDs[id] = struct{}{}
 					}
 				}
@@ -208,6 +222,20 @@ func (s Scope) Sub(
 			})
 			if t != scopeType {
 				if _, ok := s.declarations.LoadOne(id); ok {
+					if t.Implements(noShadowType) {
+						throw(we(
+							ErrBadShadow,
+							e4.With(ArgInfo{
+								Value: initializer,
+							}),
+							e4.With(TypeInfo{
+								Type: t,
+							}),
+							e4.With(Reason(
+								fmt.Sprintf("should not shadow %v", t),
+							)),
+						))
+					}
 					shadowedIDs[id] = struct{}{}
 				}
 			}
