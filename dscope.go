@@ -108,7 +108,8 @@ func (s Scope) appendPath(t reflect.Type) Scope {
 }
 
 var (
-	scopeType = reflect.TypeOf((*Scope)(nil)).Elem()
+	scopeType   = reflect.TypeOf((*Scope)(nil)).Elem()
+	scopeTypeID = getTypeID(scopeType)
 )
 
 func dumbScopeProvider() (_ Scope) { // NOCOVER
@@ -399,6 +400,7 @@ func (s Scope) Sub(
 		colors[id] = 1
 	}
 
+	shadowedIDs[scopeTypeID] = struct{}{}
 	for id := range shadowedIDs {
 		resetDownstream(id)
 	}

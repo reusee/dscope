@@ -1679,3 +1679,30 @@ func TestNoShadow(t *testing.T) {
 	})
 
 }
+
+func TestScopeAsDependency(t *testing.T) {
+	s := New(
+		func(
+			scope Scope,
+		) int64 {
+			var i int32
+			scope.Assign(&i)
+			return int64(i)
+		},
+		func() int32 {
+			return 42
+		},
+	)
+	var i64 int64
+	s.Assign(&i64)
+	if i64 != 42 {
+		t.Fatal()
+	}
+	s = s.Sub(func() int32 {
+		return 2
+	})
+	s.Assign(&i64)
+	if i64 != 2 {
+		t.Fatal()
+	}
+}
