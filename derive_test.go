@@ -32,9 +32,9 @@ func TestDeriveCall(t *testing.T) {
 	wg.Wait()
 
 	scope.Call(func(
-		latest GetLatest,
+		get Get,
 	) {
-		scope = latest()
+		scope = get()
 		var i int
 		scope.Assign(&i)
 		if i != (n*(n+1))/2 {
