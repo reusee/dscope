@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/reusee/e4"
+	"github.com/reusee/pr"
 )
 
 type _Decl struct {
@@ -671,9 +673,25 @@ func (scope Scope) GetArgs(fnType reflect.Type, args []reflect.Value) (int, erro
 
 var fnRetTypes sync.Map
 
+const reflectValuesPoolMaxLen = 64
+
+var reflectValuesPool = pr.NewPool(
+	int32(runtime.NumCPU()),
+	func() any {
+		return make([]reflect.Value, reflectValuesPoolMaxLen)
+	},
+)
+
 func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 	fnType := fnValue.Type()
-	args := make([]reflect.Value, fnType.NumIn())
+	var args []reflect.Value
+	if nArgs := fnType.NumIn(); nArgs <= reflectValuesPoolMaxLen {
+		v, put := reflectValuesPool.Get()
+		defer put()
+		args = v.([]reflect.Value)
+	} else {
+		args = make([]reflect.Value, nArgs)
+	}
 	n, err := scope.GetArgs(fnType, args)
 	if err != nil {
 		throw(err)
