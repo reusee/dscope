@@ -1737,10 +1737,27 @@ func TestReducerRunOnce(t *testing.T) {
 	if n != 1 {
 		t.Fatal()
 	}
+	if a != 3 {
+		t.Fatal()
+	}
 
 	var b acc
 	scope.Assign(&b)
 	if n != 1 {
+		t.Fatal()
+	}
+
+	var a2 acc2
+	scope.Assign(&a2)
+	if a2 != 3 {
+		t.Fatal()
+	}
+
+	scope = scope.Sub(func() acc {
+		return 42
+	})
+	scope.Assign(&a)
+	if a != 42 {
 		t.Fatal()
 	}
 

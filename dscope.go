@@ -411,18 +411,22 @@ func (s Scope) Sub(
 
 	// reducer infos
 	type ReducerInfo struct {
+		TypeID     _TypeID
+		Type       reflect.Type
 		MarkType   reflect.Type
 		MarkTypeID _TypeID
 		GetFunc    func() _Get
 	}
 
-	reducerInfos := make(map[_TypeID]ReducerInfo)
+	var reducerInfos []ReducerInfo
 	for id, t := range reducers {
 		id := id
 		t := t
 		markType := getReducerMarkType(t)
 
-		reducerInfos[id] = ReducerInfo{
+		reducerInfos = append(reducerInfos, ReducerInfo{
+			TypeID:     id,
+			Type:       t,
 			MarkType:   markType,
 			MarkTypeID: getTypeID(markType),
 
@@ -484,8 +488,12 @@ func (s Scope) Sub(
 					},
 				}
 			},
-		}
+		})
 	}
+
+	sort.Slice(reducerInfos, func(i, j int) bool {
+		return reducerInfos[i].TypeID < reducerInfos[j].TypeID
+	})
 
 	// fn
 	fn := func(s Scope, initializers []any) Scope {
@@ -597,9 +605,8 @@ func (s Scope) Sub(
 		// reducers
 		if len(reducers) > 0 {
 			reducerDecls := make([]_Decl, 0, len(reducers))
-			for id := range reducers {
-				id := id
-				info := reducerInfos[id]
+			for _, info := range reducerInfos {
+				info := info
 				reducerDecls = append(reducerDecls, _Decl{
 					Init: func() { // NOCOVER
 						panic("should not be called")
