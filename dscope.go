@@ -1,7 +1,5 @@
 package dscope
 
-//TODO reducer也只计算一次
-
 import (
 	"fmt"
 	"os"
@@ -36,7 +34,7 @@ type _Get struct {
 type _TypeID int
 
 type Scope struct {
-	reducers     map[_TypeID]struct{}
+	reducers     map[_TypeID]reflect.Type
 	signature    string
 	subFuncKey   string
 	declarations _UnionMap
@@ -330,7 +328,7 @@ func (s Scope) Sub(
 	}
 
 	initTypeIDs := make([]_TypeID, 0, declarationsTemplate.Len())
-	reducers := make(map[_TypeID]struct{})
+	reducers := make(map[_TypeID]reflect.Type)
 	if err := declarationsTemplate.Range(func(decls []_Decl) error {
 		if err := traverse(decls, nil); err != nil {
 			return err
@@ -357,7 +355,7 @@ func (s Scope) Sub(
 		}
 
 		if len(decls) > 1 {
-			reducers[decls[0].TypeID] = struct{}{}
+			reducers[decls[0].TypeID] = decls[0].Type
 			if !decls[0].Type.Implements(reducerType) {
 				return we(
 					ErrBadDeclaration,
@@ -410,6 +408,82 @@ func (s Scope) Sub(
 	sort.Slice(resetIDs, func(i, j int) bool {
 		return resetIDs[i] < resetIDs[j]
 	})
+
+	// reducer infos
+	type ReducerInfo struct {
+		MarkType   reflect.Type
+		MarkTypeID _TypeID
+		GetFunc    func() _Get
+	}
+
+	reducerInfos := make(map[_TypeID]ReducerInfo)
+	for id, t := range reducers {
+		markType := getReducerMarkType(t)
+
+		reducerInfos[id] = ReducerInfo{
+			MarkType:   markType,
+			MarkTypeID: getTypeID(markType),
+
+			GetFunc: func() _Get {
+				var once sync.Once
+				var values []reflect.Value
+				var err error
+				getID := atomic.AddInt64(&nextGetID, 1)
+				fnName := fmt.Sprintf("reducerOf%v", t)
+				return _Get{
+					ID: getID,
+
+					Func: func(scope Scope) ([]reflect.Value, error) {
+						once.Do(func() {
+							if logInit { // NOCOVER
+								t0 := time.Now()
+								defer func() {
+									debugLog("[DSCOPE] run %s in %v\n", fnName, time.Since(t0))
+								}()
+							}
+
+							decls, ok := scope.declarations.Load(id)
+							if !ok { // NOCOVER
+								panic("impossible")
+							}
+							pathScope := scope.appendPath(t)
+							vs := make([]reflect.Value, len(decls))
+							names := make(InitNames, len(decls))
+							for i, decl := range decls {
+								var values []reflect.Value
+								values, err = decl.Get.Func(pathScope)
+								if err != nil { // NOCOVER
+									return
+								}
+								if decl.ValueIndex >= len(values) { // NOCOVER
+									err = we(
+										ErrBadDeclaration,
+										e4.With(TypeInfo{
+											Type: t,
+										}),
+										e4.With(Reason(fmt.Sprintf(
+											"get %v from %T at %d",
+											t,
+											decl.Init,
+											decl.ValueIndex,
+										))),
+									)
+									return
+								}
+								vs[i] = values[decl.ValueIndex]
+								names[i] = decl.InitName
+							}
+							scope = scope.Sub(&names)
+							values = []reflect.Value{
+								vs[0].Interface().(Reducer).Reduce(scope, vs),
+							}
+						})
+						return values, err
+					},
+				}
+			},
+		}
+	}
 
 	// fn
 	fn := func(s Scope, initializers []any) Scope {
@@ -518,6 +592,25 @@ func (s Scope) Sub(
 			declarations = append(declarations, resetDecls)
 		}
 
+		// reducers
+		if len(reducers) > 0 {
+			reducerDecls := make([]_Decl, 0, len(reducers))
+			for id := range reducers {
+				info := reducerInfos[id]
+				reducerDecls = append(reducerDecls, _Decl{
+					Init: func() { // NOCOVER
+						panic("should not be called")
+					},
+					Type:       info.MarkType,
+					Get:        info.GetFunc(),
+					Kind:       reflect.Func,
+					ValueIndex: 0,
+					TypeID:     info.MarkTypeID,
+				})
+			}
+			declarations = append(declarations, reducerDecls)
+		}
+
 		scope.declarations = declarations
 
 		return scope
@@ -593,40 +686,11 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 
 	} else {
 		// reducer
-		decls, ok := scope.declarations.Load(id)
-		if !ok { // NOCOVER
-			panic("impossible")
-		}
-		pathScope := scope.appendPath(t)
-		vs := make([]reflect.Value, len(decls))
-		names := make(InitNames, len(decls))
-		for i, decl := range decls {
-			var values []reflect.Value
-			values, err = decl.Get.Func(pathScope)
-			if err != nil { // NOCOVER
-				return
-			}
-			if decl.ValueIndex >= len(values) { // NOCOVER
-				err = we(
-					ErrBadDeclaration,
-					e4.With(TypeInfo{
-						Type: t,
-					}),
-					e4.With(Reason(fmt.Sprintf(
-						"get %v from %T at %d",
-						t,
-						decl.Init,
-						decl.ValueIndex,
-					))),
-				)
-				return
-			}
-			vs[i] = values[decl.ValueIndex]
-			names[i] = decl.InitName
-		}
-		scope = scope.Sub(&names)
-		ret = vs[0].Interface().(Reducer).Reduce(scope, vs)
-		return
+		markType := getReducerMarkType(t)
+		return scope.get(
+			getTypeID(markType),
+			markType,
+		)
 	}
 
 }

@@ -1706,3 +1706,30 @@ func TestScopeAsDependency(t *testing.T) {
 		t.Fatal()
 	}
 }
+
+func TestReducerRunOnce(t *testing.T) {
+	n := 0
+	scope := New(func() acc {
+		n++
+		return 1
+	}, func() acc {
+		return 2
+	})
+
+	var a acc
+	scope.Assign(&a)
+	if n != 1 {
+		t.Fatal()
+	}
+	scope.Assign(&a)
+	if n != 1 {
+		t.Fatal()
+	}
+
+	var b acc
+	scope.Assign(&b)
+	if n != 1 {
+		t.Fatal()
+	}
+
+}

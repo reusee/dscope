@@ -5,11 +5,16 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 )
 
 type Reducer interface {
 	Reduce(Scope, []reflect.Value) reflect.Value
 }
+
+type reducerMark struct{}
+
+var reducerMarkType = reflect.TypeOf((*reducerMark)(nil)).Elem()
 
 var reducerType = reflect.TypeOf((*Reducer)(nil)).Elem()
 
@@ -76,4 +81,23 @@ func Reduce(vs []reflect.Value) reflect.Value {
 	}
 
 	return ret
+}
+
+var reducerMarkTypes sync.Map
+
+func getReducerMarkType(t reflect.Type) reflect.Type {
+	if v, ok := reducerMarkTypes.Load(t); ok {
+		return v.(reflect.Type)
+	}
+	markType := reflect.FuncOf(
+		[]reflect.Type{
+			reducerMarkType,
+		},
+		[]reflect.Type{
+			t,
+		},
+		false,
+	)
+	reducerMarkTypes.Store(t, markType)
+	return markType
 }

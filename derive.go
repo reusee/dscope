@@ -47,7 +47,7 @@ func NewDeriving(
 	derive := Derive(func(decls ...any) Scope {
 		numRedo := 0
 	derive:
-		if numRedo > 1024 {
+		if numRedo > 1024 { // NOCOVER
 			panic("derive loop or too much contention")
 		}
 		from := atomic.LoadPointer(&ptr)
