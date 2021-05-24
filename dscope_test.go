@@ -1707,12 +1707,24 @@ func TestScopeAsDependency(t *testing.T) {
 	}
 }
 
+type acc2 int
+
+var _ Reducer = acc2(0)
+
+func (_ acc2) Reduce(scope Scope, vs []reflect.Value) reflect.Value {
+	return Reduce(vs)
+}
+
 func TestReducerRunOnce(t *testing.T) {
 	n := 0
 	scope := New(func() acc {
 		n++
 		return 1
 	}, func() acc {
+		return 2
+	}, func() acc2 {
+		return 1
+	}, func() acc2 {
 		return 2
 	})
 

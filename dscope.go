@@ -418,6 +418,8 @@ func (s Scope) Sub(
 
 	reducerInfos := make(map[_TypeID]ReducerInfo)
 	for id, t := range reducers {
+		id := id
+		t := t
 		markType := getReducerMarkType(t)
 
 		reducerInfos[id] = ReducerInfo{
@@ -596,6 +598,7 @@ func (s Scope) Sub(
 		if len(reducers) > 0 {
 			reducerDecls := make([]_Decl, 0, len(reducers))
 			for id := range reducers {
+				id := id
 				info := reducerInfos[id]
 				reducerDecls = append(reducerDecls, _Decl{
 					Init: func() { // NOCOVER
