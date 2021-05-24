@@ -1717,12 +1717,14 @@ func (_ acc2) Reduce(scope Scope, vs []reflect.Value) reflect.Value {
 
 func TestReducerRunOnce(t *testing.T) {
 	n := 0
+	m := 0
 	scope := New(func() acc {
 		n++
 		return 1
 	}, func() acc {
 		return 2
 	}, func() acc2 {
+		m++
 		return 1
 	}, func() acc2 {
 		return 2
@@ -1752,12 +1754,45 @@ func TestReducerRunOnce(t *testing.T) {
 	if a2 != 3 {
 		t.Fatal()
 	}
+	if m != 1 {
+		t.Fatal()
+	}
 
 	scope = scope.Sub(func() acc {
 		return 42
 	})
 	scope.Assign(&a)
 	if a != 42 {
+		t.Fatal()
+	}
+
+	scope.Assign(&a2)
+	if a2 != 3 {
+		t.Fatal()
+	}
+	if m != 1 {
+		t.Fatal()
+	}
+
+}
+
+func TestReducerIndirectUpdate(t *testing.T) {
+	scope := New(func() acc {
+		return 1
+	}, func(a acc) acc2 {
+		return acc2(a)
+	})
+	var a2 acc2
+	scope.Assign(&a2)
+	if a2 != 1 {
+		t.Fatal()
+	}
+
+	scope = scope.Sub(func() acc {
+		return 2
+	})
+	scope.Assign(&a2)
+	if a2 != 2 {
 		t.Fatal()
 	}
 
