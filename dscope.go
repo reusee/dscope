@@ -673,6 +673,10 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 		// non-reducer
 		decl, ok := scope.declarations.LoadOne(id)
 		if !ok {
+			// try get pre-defined
+			if v := scope.getPredefined(t); v.IsValid() {
+				return v, nil
+			}
 			return ret, we(
 				ErrDependencyNotFound,
 				e4.With(TypeInfo{
