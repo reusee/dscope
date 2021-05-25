@@ -112,9 +112,14 @@ var (
 	scopeTypeID = getTypeID(scopeType)
 )
 
-func dumbScopeProvider() (_ Scope) { // NOCOVER
-	return
-}
+type predefinedProvider func() (
+	_ Scope,
+	_ Sub,
+	_ Assign,
+	_ Get,
+	_ Call,
+	_ CallValue,
+)
 
 var subFns sync.Map
 
@@ -128,7 +133,7 @@ func (s Scope) Sub(
 	initializers ...any,
 ) Scope {
 
-	initializers = append(initializers, dumbScopeProvider)
+	initializers = append(initializers, predefinedProvider(nil))
 
 	var buf strings.Builder
 	buf.WriteString(s.signature)
@@ -532,9 +537,6 @@ func (s Scope) Sub(
 		// new decls
 		newDecls := make([]_Decl, len(newDeclsTemplate))
 		n := 0
-		initializers[len(initializers)-1] = func() Scope { // NOCOVER
-			panic("impposible")
-		}
 		for idx, initializer := range initializers {
 			var initValue any
 			var initName string
@@ -665,18 +667,26 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 	err error,
 ) {
 
-	if t == scopeType {
+	// pre-defined
+	switch t {
+	case scopeType:
 		return reflect.ValueOf(scope), nil
+	case subType:
+		return reflect.ValueOf(scope.Sub), nil
+	case assignType:
+		return reflect.ValueOf(scope.Assign), nil
+	case getType:
+		return reflect.ValueOf(scope.Get), nil
+	case callType:
+		return reflect.ValueOf(scope.Call), nil
+	case callValueType:
+		return reflect.ValueOf(scope.CallValue), nil
 	}
 
 	if _, ok := scope.reducers[id]; !ok {
 		// non-reducer
 		decl, ok := scope.declarations.LoadOne(id)
 		if !ok {
-			// try get pre-defined
-			if v := scope.getPredefined(t); v.IsValid() {
-				return v, nil
-			}
 			return ret, we(
 				ErrDependencyNotFound,
 				e4.With(TypeInfo{

@@ -48,4 +48,11 @@ func TestPredefined(t *testing.T) {
 
 		})
 	})
+
+	New(func(
+		sub Sub,
+	) int {
+		return 42
+	})
+
 }
