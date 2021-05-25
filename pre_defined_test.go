@@ -55,4 +55,34 @@ func TestPredefined(t *testing.T) {
 		return 42
 	})
 
+	New(func() int {
+		return 1
+	}).Call(func(
+		assign Assign,
+		sub Sub,
+	) {
+
+		sub(func() int {
+			return 2
+		}).Call(func(
+			assign2 Assign,
+		) {
+
+			var i int
+			assign(&i)
+			if i != 1 {
+				t.Fatal()
+			}
+			assign2(&i)
+			if i != 2 {
+				t.Fatal()
+			}
+			assign(&i)
+			if i != 1 {
+				t.Fatal()
+			}
+
+		})
+	})
+
 }
