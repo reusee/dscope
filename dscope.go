@@ -108,8 +108,7 @@ func (s Scope) appendPath(t reflect.Type) Scope {
 }
 
 var (
-	scopeType   = reflect.TypeOf((*Scope)(nil)).Elem()
-	scopeTypeID = getTypeID(scopeType)
+	scopeType = reflect.TypeOf((*Scope)(nil)).Elem()
 )
 
 type predefinedProvider func() (
@@ -120,6 +119,16 @@ type predefinedProvider func() (
 	_ Call,
 	_ CallValue,
 )
+
+var predefinedTypeIDs = func() map[_TypeID]struct{} {
+	m := make(map[_TypeID]struct{})
+	t := reflect.TypeOf(predefinedProvider(nil))
+	for i := 0; i < t.NumOut(); i++ {
+		out := t.Out(i)
+		m[getTypeID(out)] = struct{}{}
+	}
+	return m
+}()
 
 var subFns sync.Map
 
@@ -409,7 +418,9 @@ func (s Scope) Sub(
 		colors[id] = 1
 	}
 
-	shadowedIDs[scopeTypeID] = struct{}{}
+	for id := range predefinedTypeIDs {
+		shadowedIDs[id] = struct{}{}
+	}
 	for id := range shadowedIDs {
 		resetDownstream(id)
 	}
