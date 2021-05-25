@@ -120,6 +120,10 @@ var subFns sync.Map
 
 var badScope = Scope{}
 
+type Sub func(...any) Scope
+
+var subType = reflect.TypeOf((*Sub)(nil)).Elem()
+
 func (s Scope) Sub(
 	initializers ...any,
 ) Scope {
@@ -631,6 +635,10 @@ func (s Scope) Sub(
 	return fn(s, initializers)
 }
 
+type Assign func(...any)
+
+var assignType = reflect.TypeOf((*Assign)(nil)).Elem()
+
 func (scope Scope) Assign(objs ...any) {
 	for _, o := range objs {
 		v := reflect.ValueOf(o)
@@ -705,6 +713,10 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 
 }
 
+type Get func(reflect.Type) (reflect.Value, error)
+
+var getType = reflect.TypeOf((*Get)(nil)).Elem()
+
 func (scope Scope) Get(t reflect.Type) (
 	ret reflect.Value,
 	err error,
@@ -712,11 +724,15 @@ func (scope Scope) Get(t reflect.Type) (
 	return scope.get(getTypeID(t), t)
 }
 
+type Call func(any) CallResult
+
+var callType = reflect.TypeOf((*Call)(nil)).Elem()
+
 func (scope Scope) Call(fn any) CallResult {
 	return scope.CallValue(reflect.ValueOf(fn))
 }
 
-func (scope Scope) GetArgs(fnType reflect.Type, args []reflect.Value) (int, error) {
+func (scope Scope) getArgs(fnType reflect.Type, args []reflect.Value) (int, error) {
 	var getArgs func(Scope, []reflect.Value) (int, error)
 	if v, ok := getArgsFunc.Load(fnType); !ok {
 		var types []reflect.Type
@@ -756,6 +772,10 @@ var reflectValuesPool = pr.NewPool(
 	},
 )
 
+type CallValue func(reflect.Value) CallResult
+
+var callValueType = reflect.TypeOf((*CallValue)(nil)).Elem()
+
 func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 	fnType := fnValue.Type()
 	var args []reflect.Value
@@ -766,7 +786,7 @@ func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 	} else {
 		args = make([]reflect.Value, nArgs)
 	}
-	n, err := scope.GetArgs(fnType, args)
+	n, err := scope.getArgs(fnType, args)
 	if err != nil {
 		throw(err)
 	}
@@ -785,42 +805,6 @@ func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 		res.positionsByType = v.(map[reflect.Type]int)
 	}
 	return
-}
-
-func (s Scope) Extend(t reflect.Type, inits ...any) Scope {
-	if !t.Implements(reducerType) { // NOCOVER
-		throw(we(
-			ErrBadDeclaration,
-			e4.With(TypeInfo{
-				Type: t,
-			}),
-			e4.With(Reason("not a reducer type")),
-		))
-	}
-	decls, _ := s.declarations.Load(getTypeID(t))
-	for _, decl := range decls {
-		inits = append(inits, decl.Init)
-	}
-	return s.Sub(inits...)
-}
-
-func (s Scope) RangePtrValues(
-	fn func(reflect.Type, []any) error,
-) error {
-	return s.declarations.Range(func(decls []_Decl) error {
-		t := decls[0].Type
-		var vs []any
-		for _, decl := range decls {
-			if decl.Kind != reflect.Ptr {
-				continue
-			}
-			vs = append(vs, decl.Init)
-		}
-		if len(vs) > 0 {
-			fn(t, vs)
-		}
-		return nil
-	})
 }
 
 var returnTypeMap sync.Map

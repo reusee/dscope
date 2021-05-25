@@ -10,7 +10,7 @@ type DeriveCall func(fn any) Scope
 
 type Derive func(decls ...any) Scope
 
-type Get func() Scope
+type GetScope func() Scope
 
 func NewDeriving(
 	decls ...any,
@@ -18,7 +18,7 @@ func NewDeriving(
 
 	var ptr unsafe.Pointer
 
-	get := Get(func() Scope {
+	get := GetScope(func() Scope {
 		return *(*Scope)(atomic.LoadPointer(&ptr))
 	})
 

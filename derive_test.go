@@ -32,7 +32,7 @@ func TestDeriveCall(t *testing.T) {
 	wg.Wait()
 
 	scope.Call(func(
-		get Get,
+		get GetScope,
 	) {
 		scope = get()
 		var i int

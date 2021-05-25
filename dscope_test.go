@@ -1426,29 +1426,6 @@ func TestReducer(t *testing.T) {
 
 }
 
-func TestExtend(t *testing.T) {
-	s := New(func() acc {
-		return 1
-	}, func() acc {
-		return 2
-	})
-	var a acc
-	s.Assign(&a)
-	if a != 3 {
-		t.Fatal()
-	}
-	s = s.Extend(
-		reflect.TypeOf(a),
-		func() acc {
-			return 3
-		},
-	)
-	s.Assign(&a)
-	if a != 6 {
-		t.Fatal()
-	}
-}
-
 type testFunc func(*int)
 
 var _ Reducer = testFunc(nil)
@@ -1523,34 +1500,6 @@ func (_ extendAcc) Reduce(_ Scope, vs []reflect.Value) reflect.Value {
 	return Reduce(vs)
 }
 
-func TestExtendOnce(t *testing.T) {
-	n := 0
-	s := New(
-		func() (extendAcc, string) {
-			n++
-			return 42, "foo"
-		},
-	)
-	s = s.Extend(
-		reflect.TypeOf((*extendAcc)(nil)).Elem(),
-		func() extendAcc {
-			return 1
-		},
-	)
-	var acc extendAcc
-	var str string
-	s.Assign(&acc, &str)
-	if acc != 43 {
-		t.Fatalf("got %d\n", acc)
-	}
-	if str != "foo" {
-		t.Fatal()
-	}
-	if n != 1 {
-		t.Fatalf("got %d", n)
-	}
-}
-
 func TestCallResultSub(t *testing.T) {
 	var i int
 	New(func() int {
@@ -1573,58 +1522,6 @@ func TestCallResultAssign(t *testing.T) {
 	if i != 1 {
 		t.Fatal()
 	}
-}
-
-func TestRange(t *testing.T) {
-	i := 42
-	str := "foo"
-	s := New(
-		&i,
-		&str,
-	)
-
-	m := make(map[reflect.Type][]any)
-	if err := s.RangePtrValues(func(t reflect.Type, vs []any) error {
-		m[t] = vs
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	if len(m) != 2 {
-		t.Fatalf("got %d", len(m))
-	}
-
-	vs, ok := m[reflect.TypeOf((*int)(nil)).Elem()]
-	if !ok {
-		t.Fatal()
-	}
-	if len(vs) != 1 {
-		t.Fatal()
-	}
-	p, ok := vs[0].(*int)
-	if !ok {
-		t.Fatal()
-	}
-	if *p != 42 {
-		t.Fatal()
-	}
-
-	vs, ok = m[reflect.TypeOf((*string)(nil)).Elem()]
-	if !ok {
-		t.Fatal()
-	}
-	if len(vs) != 1 {
-		t.Fatal()
-	}
-	pStr, ok := vs[0].(*string)
-	if !ok {
-		t.Fatal()
-	}
-	if *pStr != "foo" {
-		t.Fatal()
-	}
-
 }
 
 type noShadowInt int
