@@ -1577,14 +1577,11 @@ func TestNoShadow(t *testing.T) {
 
 }
 
-func TestAlwaysReset(t *testing.T) {
-	n := 0
+func TestScopeAsDependency(t *testing.T) {
 	s := New(
 		func(
 			scope Scope,
-			_ AlwaysReset,
 		) int64 {
-			n++
 			var i int32
 			scope.Assign(&i)
 			return int64(i)
@@ -1598,47 +1595,11 @@ func TestAlwaysReset(t *testing.T) {
 	if i64 != 42 {
 		t.Fatal()
 	}
-	if n != 1 {
-		t.Fatal()
-	}
 	s = s.Sub(func() int32 {
 		return 2
 	})
 	s.Assign(&i64)
 	if i64 != 2 {
-		t.Fatal()
-	}
-	if n != 2 {
-		t.Fatal()
-	}
-	s = s.Sub(func() string {
-		return "42"
-	})
-	s.Assign(&i64)
-	if i64 != 2 {
-		t.Fatal()
-	}
-	if n != 3 {
-		t.Fatal()
-	}
-}
-
-func TestDependOnScope(t *testing.T) {
-	n := 0
-	s := New(func(_ Scope) int {
-		n++
-		return 42
-	})
-	var i int
-	s.Assign(&i)
-	if n != 1 {
-		t.Fatal()
-	}
-	s = s.Sub(func() string {
-		return "42"
-	})
-	s.Assign(&i)
-	if n != 1 {
 		t.Fatal()
 	}
 }

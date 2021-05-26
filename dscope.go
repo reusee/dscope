@@ -118,16 +118,17 @@ type predefinedProvider func() (
 	_ Get,
 	_ Call,
 	_ CallValue,
-	_ AlwaysReset,
 )
 
-type AlwaysReset struct{}
-
-var alwaysResetType = reflect.TypeOf((*AlwaysReset)(nil)).Elem()
-
-var alwaysResetID = getTypeID(reflect.TypeOf(AlwaysReset{}))
-
-var alwaysResetValue = reflect.ValueOf(AlwaysReset{})
+var predefinedTypeIDs = func() map[_TypeID]struct{} {
+	m := make(map[_TypeID]struct{})
+	t := reflect.TypeOf(predefinedProvider(nil))
+	for i := 0; i < t.NumOut(); i++ {
+		out := t.Out(i)
+		m[getTypeID(out)] = struct{}{}
+	}
+	return m
+}()
 
 var subFns sync.Map
 
@@ -417,7 +418,9 @@ func (s Scope) Sub(
 		colors[id] = 1
 	}
 
-	shadowedIDs[alwaysResetID] = struct{}{}
+	for id := range predefinedTypeIDs {
+		shadowedIDs[id] = struct{}{}
+	}
 	for id := range shadowedIDs {
 		resetDownstream(id)
 	}
@@ -689,8 +692,6 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 		return reflect.ValueOf(scope.Call), nil
 	case callValueType:
 		return reflect.ValueOf(scope.CallValue), nil
-	case alwaysResetType:
-		return alwaysResetValue, nil
 	}
 
 	if _, ok := scope.reducers[id]; !ok {
