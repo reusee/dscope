@@ -2,6 +2,7 @@ package dscope
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
 	"reflect"
 	"runtime"
@@ -847,7 +848,7 @@ var (
 		return v
 	}()
 	typeIDLock sync.Mutex
-	nextTypeID _TypeID // guarded by typeIDLock
+	ids        = make(map[int64]struct{})
 )
 
 func getTypeID(t reflect.Type) (r _TypeID) {
@@ -865,10 +866,15 @@ func getTypeID(t reflect.Type) (r _TypeID) {
 	for k, v := range m {
 		newM[k] = v
 	}
-	nextTypeID++
-	id := nextTypeID
-	newM[t] = id
+	for {
+		id := rand.Int63()
+		if _, ok := ids[id]; ok {
+			continue
+		}
+		newM[t] = _TypeID(id)
+		break
+	}
 	typeIDMap.Store(newM)
 	typeIDLock.Unlock()
-	return id
+	return newM[t]
 }
