@@ -513,7 +513,7 @@ func (s Scope) Sub(
 	}
 
 	sort.Slice(reducerInfos, func(i, j int) bool {
-		return reducerInfos[i].TypeID < reducerInfos[j].TypeID
+		return reducerInfos[i].MarkTypeID < reducerInfos[j].MarkTypeID
 	})
 
 	// fn
