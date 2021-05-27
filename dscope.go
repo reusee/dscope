@@ -152,8 +152,6 @@ func (s Scope) Sub(
 	initializers ...any,
 ) Scope {
 
-	initializers = append(initializers, predefinedProvider(nil))
-
 	var buf strings.Builder
 	buf.WriteString(s.signature)
 	buf.WriteByte('-')
@@ -329,25 +327,28 @@ func (s Scope) Sub(
 			for i := 0; i < numIn; i++ {
 				requiredType := initType.In(i)
 				id2 := getTypeID(requiredType)
-				decls2, ok := declarationsTemplate.Load(id2)
-				if !ok {
-					return we(
-						ErrDependencyNotFound,
-						e4.With(TypeInfo{
-							Type: requiredType,
-						}),
-						e4.With(InitInfo{
-							Value: decl.Init,
-							Name:  decl.InitName,
-						}),
-					)
-				}
 				downstreams[id2] = append(
 					downstreams[id2],
 					decl,
 				)
-				if err := traverse(decls2, append(path, decl.Type)); err != nil {
-					return err
+				if _, ok := predefinedTypeIDs[id2]; !ok {
+					// not pre-defined
+					decls2, ok := declarationsTemplate.Load(id2)
+					if !ok {
+						return we(
+							ErrDependencyNotFound,
+							e4.With(TypeInfo{
+								Type: requiredType,
+							}),
+							e4.With(InitInfo{
+								Value: decl.Init,
+								Name:  decl.InitName,
+							}),
+						)
+					}
+					if err := traverse(decls2, append(path, decl.Type)); err != nil {
+						return err
+					}
 				}
 			}
 		}
