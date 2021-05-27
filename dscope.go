@@ -152,6 +152,7 @@ func (s Scope) Sub(
 	initializers ...any,
 ) Scope {
 
+	// get transition signature
 	var buf strings.Builder
 	buf.WriteString(s.signature)
 	buf.WriteByte('-')
@@ -214,7 +215,7 @@ func (s Scope) Sub(
 					InitName: initName,
 				})
 				numDecls++
-				if t != scopeType {
+				if _, ok := predefinedTypeIDs[id]; !ok {
 					if _, ok := s.declarations.LoadOne(id); ok {
 						if t.Implements(noShadowType) {
 							throw(we(
@@ -247,7 +248,7 @@ func (s Scope) Sub(
 				Init:     initValue,
 				InitName: initName,
 			})
-			if t != scopeType {
+			if _, ok := predefinedTypeIDs[id]; !ok {
 				if _, ok := s.declarations.LoadOne(id); ok {
 					if t.Implements(noShadowType) {
 						throw(we(
@@ -266,6 +267,7 @@ func (s Scope) Sub(
 					shadowedIDs[id] = struct{}{}
 				}
 			}
+
 			initNumDecls = append(initNumDecls, 1)
 
 		default:
@@ -276,6 +278,7 @@ func (s Scope) Sub(
 				}),
 				e4.With(Reason("not a function or a pointer")),
 			))
+
 		}
 	}
 	type posAtTemplate int
