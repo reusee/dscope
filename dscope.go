@@ -868,7 +868,7 @@ func getTypeID(t reflect.Type) (r _TypeID) {
 	}
 	for {
 		id := rand.Int63()
-		if _, ok := ids[id]; ok {
+		if _, ok := ids[id]; ok { // NOCOVER
 			continue
 		}
 		newM[t] = _TypeID(id)

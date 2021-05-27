@@ -1694,3 +1694,12 @@ func TestReducerIndirectUpdate(t *testing.T) {
 	}
 
 }
+
+func TestCallManyArgs(t *testing.T) {
+	New(func() int {
+		return 42
+	}).Call(func(
+		_ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int,
+	) {
+	})
+}
