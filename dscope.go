@@ -112,8 +112,17 @@ var (
 	scopeType = reflect.TypeOf((*Scope)(nil)).Elem()
 )
 
+type DependentScope struct {
+	Scope
+}
+
+var dependentScopeType = reflect.TypeOf((*DependentScope)(nil)).Elem()
+
+var dependentScopeTypeID = getTypeID(dependentScopeType)
+
 type predefinedProvider func() (
 	_ Scope,
+	_ DependentScope,
 	_ Sub,
 	_ Assign,
 	_ Get,
@@ -419,9 +428,7 @@ func (s Scope) Sub(
 		colors[id] = 1
 	}
 
-	for id := range predefinedTypeIDs {
-		shadowedIDs[id] = struct{}{}
-	}
+	shadowedIDs[dependentScopeTypeID] = struct{}{}
 	for id := range shadowedIDs {
 		resetDownstream(id)
 	}
@@ -693,6 +700,10 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 		return reflect.ValueOf(scope.Call), nil
 	case callValueType:
 		return reflect.ValueOf(scope.CallValue), nil
+	case dependentScopeType:
+		return reflect.ValueOf(DependentScope{
+			Scope: scope,
+		}), nil
 	}
 
 	if _, ok := scope.reducers[id]; !ok {

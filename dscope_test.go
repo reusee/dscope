@@ -1580,7 +1580,7 @@ func TestNoShadow(t *testing.T) {
 func TestScopeAsDependency(t *testing.T) {
 	s := New(
 		func(
-			scope Scope,
+			scope DependentScope,
 		) int64 {
 			var i int32
 			scope.Assign(&i)
