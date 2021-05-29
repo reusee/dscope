@@ -108,3 +108,39 @@ func TestDeriveLoop(t *testing.T) {
 		}()
 	})
 }
+
+func BenchmarkDeriveGet(b *testing.B) {
+	s := NewDeriving()
+	for i := 0; i < b.N; i++ {
+		s.Call(func(
+			get GetScope,
+		) {
+			get()
+		})
+	}
+}
+
+func BenchmarkDerive(b *testing.B) {
+	s := NewDeriving()
+	for i := 0; i < b.N; i++ {
+		s.Call(func(
+			derive Derive,
+		) {
+			i := 42
+			derive(&i)
+		})
+	}
+}
+func BenchmarkDeriveCall(b *testing.B) {
+	s := NewDeriving()
+	for i := 0; i < b.N; i++ {
+		s.Call(func(
+			deriveCall DeriveCall,
+		) {
+			deriveCall(func() *int {
+				i := 42
+				return &i
+			})
+		})
+	}
+}
