@@ -1,10 +1,10 @@
 package dscope
 
-type _UnionMap [][]_Decl
+type _StackedMap [][]_Decl
 
 // Load loads decls with specified id
 // MUST NOT modify returned slice
-func (u _UnionMap) Load(id _TypeID) ([]_Decl, bool) {
+func (u _StackedMap) Load(id _TypeID) ([]_Decl, bool) {
 	var left, right, idx, l uint
 	var start, end int
 	var id2 _TypeID
@@ -52,7 +52,7 @@ func (u _UnionMap) Load(id _TypeID) ([]_Decl, bool) {
 	return nil, false
 }
 
-func (u _UnionMap) LoadOne(id _TypeID) (ret _Decl, ok bool) {
+func (u _StackedMap) LoadOne(id _TypeID) (ret _Decl, ok bool) {
 	var left, right, idx uint
 	var id2 _TypeID
 	var m []_Decl
@@ -77,7 +77,7 @@ func (u _UnionMap) LoadOne(id _TypeID) (ret _Decl, ok bool) {
 
 // Range iterates all decls
 // MUST NOT modify []_Decl argument in callback function
-func (u _UnionMap) Range(fn func([]_Decl) error) error {
+func (u _StackedMap) Range(fn func([]_Decl) error) error {
 	keys := make(map[_TypeID]struct{})
 	var m []_Decl
 	var start, end int
@@ -105,7 +105,7 @@ func (u _UnionMap) Range(fn func([]_Decl) error) error {
 	return nil
 }
 
-func (u _UnionMap) Len() int {
+func (u _StackedMap) Len() int {
 	ret := 0
 	for _, decls := range u {
 		ret += len(decls)

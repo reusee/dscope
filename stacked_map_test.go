@@ -2,8 +2,8 @@ package dscope
 
 import "testing"
 
-func TestUnionMap(t *testing.T) {
-	var m _UnionMap
+func TestStackedMap(t *testing.T) {
+	var m _StackedMap
 	m = append(m, []_Decl{
 		{TypeID: 1, ValueIndex: 1},
 		{TypeID: 2, ValueIndex: 2},

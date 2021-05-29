@@ -38,7 +38,7 @@ type Scope struct {
 	reducers     map[_TypeID]reflect.Type
 	signature    string
 	subFuncKey   string
-	declarations _UnionMap
+	declarations _StackedMap
 	path         Path
 }
 
@@ -538,7 +538,7 @@ func (s Scope) Sub(
 		}
 
 		// declarations
-		var declarations _UnionMap
+		var declarations _StackedMap
 		if len(s.declarations) > 32 {
 			// flatten
 			var decls []_Decl
@@ -551,9 +551,9 @@ func (s Scope) Sub(
 			sort.Slice(decls, func(i, j int) bool {
 				return decls[i].TypeID < decls[j].TypeID
 			})
-			declarations = _UnionMap{decls}
+			declarations = _StackedMap{decls}
 		} else {
-			declarations = make(_UnionMap, len(s.declarations), len(s.declarations)+2)
+			declarations = make(_StackedMap, len(s.declarations), len(s.declarations)+2)
 			copy(declarations, s.declarations)
 		}
 
