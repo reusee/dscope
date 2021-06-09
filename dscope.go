@@ -90,7 +90,13 @@ func cachedInit(init any, name string) _Get {
 				}
 				var result CallResult
 				func() {
-					defer he(&err, e4.WithInfo("dscope: call %s", fnName))
+					defer he(&err, e4.NewInfo("dscope: call %s", fnName))
+					defer func() {
+						if p := recover(); p != nil {
+							pt("func: %s\n", fnName)
+							panic(p)
+						}
+					}()
 					result = scope.Call(init)
 				}()
 				values = result.Values
