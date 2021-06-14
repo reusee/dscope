@@ -1,9 +1,0 @@
-accumulator
-  sub重定义时，并不覆盖原来的值，而是保留成指针定义
-  也就是保留父scope的值，例如一些扫尾回调，就需要保证sub后仍然生效
-
-support cyclic decl
-
-checker:
-  scoped variable captured by closure
-
