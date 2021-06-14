@@ -6,13 +6,13 @@ import (
 	"unsafe"
 )
 
-type DeriveCall func(fn any) Scope
+type MutateCall func(fn any) Scope
 
-type Derive func(decls ...any) Scope
+type Mutate func(decls ...any) Scope
 
 type GetScope func() Scope
 
-func NewDeriving(
+func NewMutable(
 	decls ...any,
 ) Scope {
 
@@ -22,11 +22,11 @@ func NewDeriving(
 		return *(*Scope)(atomic.LoadPointer(&ptr))
 	})
 
-	deriveCall := DeriveCall(func(fn any) Scope {
+	mutateCall := MutateCall(func(fn any) Scope {
 		numRedo := 0
-	derive:
+	mutate:
 		if numRedo > 1024 {
-			panic("derive loop or too much contention")
+			panic("dependency loop or too much contention")
 		}
 		from := atomic.LoadPointer(&ptr)
 		cur := *(*Scope)(from)
@@ -35,33 +35,33 @@ func NewDeriving(
 		for _, v := range res.Values {
 			decls = append(decls, v.Interface())
 		}
-		derived := cur.Sub(decls...)
-		derivedPtr := unsafe.Pointer(&derived)
-		if !atomic.CompareAndSwapPointer(&ptr, from, derivedPtr) {
+		mutated := cur.Sub(decls...)
+		mutatedPtr := unsafe.Pointer(&mutated)
+		if !atomic.CompareAndSwapPointer(&ptr, from, mutatedPtr) {
 			numRedo++
-			goto derive
+			goto mutate
 		}
-		return derived
+		return mutated
 	})
 
-	derive := Derive(func(decls ...any) Scope {
+	mutate := Mutate(func(decls ...any) Scope {
 		numRedo := 0
-	derive:
+	mutate:
 		if numRedo > 1024 { // NOCOVER
-			panic("derive loop or too much contention")
+			panic("dependency loop or too much contention")
 		}
 		from := atomic.LoadPointer(&ptr)
 		cur := *(*Scope)(from)
-		derived := cur.Sub(decls...)
-		derivedPtr := unsafe.Pointer(&derived)
-		if !atomic.CompareAndSwapPointer(&ptr, from, derivedPtr) {
+		mutated := cur.Sub(decls...)
+		mutatedPtr := unsafe.Pointer(&mutated)
+		if !atomic.CompareAndSwapPointer(&ptr, from, mutatedPtr) {
 			numRedo++
-			goto derive
+			goto mutate
 		}
-		return derived
+		return mutated
 	})
 
-	decls = append(decls, &get, &deriveCall, &derive)
+	decls = append(decls, &get, &mutateCall, &mutate)
 	scope := New(decls...)
 	ptr = unsafe.Pointer(&scope)
 

@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-func TestDeriveCall(t *testing.T) {
-	scope := NewDeriving(func() int {
+func TestMutateCall(t *testing.T) {
+	scope := NewMutable(func() int {
 		return 0
 	})
 
@@ -20,9 +20,9 @@ func TestDeriveCall(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			scope.Call(func(
-				derive DeriveCall,
+				call MutateCall,
 			) {
-				derive(func(n int) *int {
+				call(func(n int) *int {
 					n += i + 1
 					return &n
 				})
@@ -44,8 +44,8 @@ func TestDeriveCall(t *testing.T) {
 
 }
 
-func TestDerive(t *testing.T) {
-	scope := NewDeriving()
+func TestMutate(t *testing.T) {
+	scope := NewMutable()
 
 	n := 100
 	var wg sync.WaitGroup
@@ -56,9 +56,9 @@ func TestDerive(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			scope.Call(func(
-				derive Derive,
+				mutate Mutate,
 			) {
-				s := derive(&i)
+				s := mutate(&i)
 				var x int
 				s.Assign(&x)
 				if x != i {
@@ -79,10 +79,10 @@ func TestDerive(t *testing.T) {
 
 }
 
-func TestDeriveLoop(t *testing.T) {
-	s := NewDeriving()
+func TestMutateLoop(t *testing.T) {
+	s := NewMutable()
 	s.Call(func(
-		derive DeriveCall,
+		call MutateCall,
 	) {
 		func() {
 			defer func() {
@@ -94,13 +94,13 @@ func TestDeriveLoop(t *testing.T) {
 				if !ok {
 					t.Fatal("should be string")
 				}
-				if !strings.Contains(s, "derive loop") {
+				if !strings.Contains(s, "dependency loop") {
 					t.Fatal()
 				}
 			}()
 
-			derive(func() {
-				derive(func() *int {
+			call(func() {
+				call(func() *int {
 					i := 1
 					return &i
 				})
@@ -109,8 +109,8 @@ func TestDeriveLoop(t *testing.T) {
 	})
 }
 
-func BenchmarkDeriveGet(b *testing.B) {
-	s := NewDeriving()
+func BenchmarkMutatableGet(b *testing.B) {
+	s := NewMutable()
 	for i := 0; i < b.N; i++ {
 		s.Call(func(
 			get GetScope,
@@ -120,24 +120,24 @@ func BenchmarkDeriveGet(b *testing.B) {
 	}
 }
 
-func BenchmarkDerive(b *testing.B) {
-	s := NewDeriving()
+func BenchmarkMutable(b *testing.B) {
+	s := NewMutable()
 	for i := 0; i < b.N; i++ {
 		s.Call(func(
-			derive Derive,
+			mutate Mutate,
 		) {
 			i := 42
-			derive(&i)
+			mutate(&i)
 		})
 	}
 }
-func BenchmarkDeriveCall(b *testing.B) {
-	s := NewDeriving()
+func BenchmarkMutateCall(b *testing.B) {
+	s := NewMutable()
 	for i := 0; i < b.N; i++ {
 		s.Call(func(
-			deriveCall DeriveCall,
+			call MutateCall,
 		) {
-			deriveCall(func() *int {
+			call(func() *int {
 				i := 42
 				return &i
 			})
