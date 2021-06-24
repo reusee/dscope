@@ -15,7 +15,7 @@ var (
 	pt    = fmt.Printf
 	as    = errors.As
 	is    = errors.Is
-	we    = e4.DefaultWrap
 	he    = e4.Handle
+	we    = e4.Wrap
 	throw = e4.Throw
 )
