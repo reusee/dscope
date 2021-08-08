@@ -54,7 +54,12 @@ var nextGetID int64 = 42
 
 var logInit = os.Getenv("DSCOPE_LOG_INIT") != ""
 
-func cachedInit(init any, name string) _Get {
+func cachedGet(
+	init any,
+	name string,
+	isReducer bool,
+) _Get {
+
 	var once sync.Once
 	var values []reflect.Value
 	var err error
@@ -63,8 +68,13 @@ func cachedInit(init any, name string) _Get {
 	if fnName == "" {
 		fnName = fmt.Sprintf("%T", init)
 	}
+	if isReducer {
+		fnName = "reducer(" + fnName + ")"
+	}
+
 	return _Get{
 		ID: id,
+
 		Func: func(scope Scope) ([]reflect.Value, error) {
 			if len(scope.path) > 1 {
 				last := scope.path[len(scope.path)-1]
@@ -81,6 +91,7 @@ func cachedInit(init any, name string) _Get {
 					}
 				}
 			}
+
 			once.Do(func() {
 				if logInit { // NOCOVER
 					t0 := time.Now()
@@ -88,19 +99,73 @@ func cachedInit(init any, name string) _Get {
 						debugLog("[DSCOPE] run %s in %v\n", fnName, time.Since(t0))
 					}()
 				}
-				var result CallResult
-				func() {
-					defer he(&err, e4.NewInfo("dscope: call %s", fnName))
-					defer func() {
-						if p := recover(); p != nil {
-							pt("func: %s\n", fnName)
-							panic(p)
+
+				// reducer
+				if isReducer {
+					typ := init.(reflect.Type)
+					typeID := getTypeID(typ)
+					decls, ok := scope.declarations.Load(typeID)
+					if !ok { // NOCOVER
+						panic("impossible")
+					}
+					pathScope := scope.appendPath(typ)
+					vs := make([]reflect.Value, len(decls))
+					names := make(InitNames, len(decls))
+					for i, decl := range decls {
+						var values []reflect.Value
+						values, err = decl.Get.Func(pathScope)
+						if err != nil { // NOCOVER
+							return
 						}
+						if decl.ValueIndex >= len(values) { // NOCOVER
+							err = we(
+								ErrBadDeclaration,
+								e4.With(TypeInfo{
+									Type: typ,
+								}),
+								e4.With(Reason(fmt.Sprintf(
+									"get %v from %T at %d",
+									typ,
+									decl.Init,
+									decl.ValueIndex,
+								))),
+							)
+							return
+						}
+						vs[i] = values[decl.ValueIndex]
+						names[i] = decl.InitName
+					}
+					scope = scope.Sub(&names)
+					values = []reflect.Value{
+						vs[0].Interface().(Reducer).Reduce(scope, vs),
+					}
+					return
+				}
+
+				// non-reducer
+				initValue := reflect.ValueOf(init)
+				initKind := initValue.Kind()
+
+				if initKind == reflect.Func {
+					var result CallResult
+					func() {
+						defer he(&err, e4.NewInfo("dscope: call %s", fnName))
+						defer func() {
+							if p := recover(); p != nil {
+								pt("func: %s\n", fnName)
+								panic(p)
+							}
+						}()
+						result = scope.Call(init)
 					}()
-					result = scope.Call(init)
-				}()
-				values = result.Values
+					values = result.Values
+
+				} else if initKind == reflect.Ptr {
+					values = []reflect.Value{initValue.Elem()}
+				}
+
 			})
+
 			return values, err
 		},
 	}
@@ -453,7 +518,6 @@ func (s Scope) Sub(
 		Type       reflect.Type
 		MarkType   reflect.Type
 		MarkTypeID _TypeID
-		GetFunc    func() _Get
 	}
 
 	var reducerInfos []ReducerInfo
@@ -467,65 +531,6 @@ func (s Scope) Sub(
 			Type:       t,
 			MarkType:   markType,
 			MarkTypeID: getTypeID(markType),
-
-			GetFunc: func() _Get {
-				var once sync.Once
-				var values []reflect.Value
-				var err error
-				getID := atomic.AddInt64(&nextGetID, 1)
-				fnName := fmt.Sprintf("reducerOf%v", t)
-				return _Get{
-					ID: getID,
-
-					Func: func(scope Scope) ([]reflect.Value, error) {
-						once.Do(func() {
-							if logInit { // NOCOVER
-								t0 := time.Now()
-								defer func() {
-									debugLog("[DSCOPE] run %s in %v\n", fnName, time.Since(t0))
-								}()
-							}
-
-							decls, ok := scope.declarations.Load(id)
-							if !ok { // NOCOVER
-								panic("impossible")
-							}
-							pathScope := scope.appendPath(t)
-							vs := make([]reflect.Value, len(decls))
-							names := make(InitNames, len(decls))
-							for i, decl := range decls {
-								var values []reflect.Value
-								values, err = decl.Get.Func(pathScope)
-								if err != nil { // NOCOVER
-									return
-								}
-								if decl.ValueIndex >= len(values) { // NOCOVER
-									err = we(
-										ErrBadDeclaration,
-										e4.With(TypeInfo{
-											Type: t,
-										}),
-										e4.With(Reason(fmt.Sprintf(
-											"get %v from %T at %d",
-											t,
-											decl.Init,
-											decl.ValueIndex,
-										))),
-									)
-									return
-								}
-								vs[i] = values[decl.ValueIndex]
-								names[i] = decl.InitName
-							}
-							scope = scope.Sub(&names)
-							values = []reflect.Value{
-								vs[0].Interface().(Reducer).Reduce(scope, vs),
-							}
-						})
-						return values, err
-					},
-				}
-			},
 		})
 	}
 
@@ -577,7 +582,7 @@ func (s Scope) Sub(
 			}
 			switch initKinds[idx] {
 			case reflect.Func:
-				get := cachedInit(initValue, initName)
+				get := cachedGet(initValue, initName, false)
 				numDecls := initNumDecls[idx]
 				for i := 0; i < numDecls; i++ {
 					info := newDeclsTemplate[n]
@@ -595,17 +600,12 @@ func (s Scope) Sub(
 				}
 			case reflect.Ptr:
 				info := newDeclsTemplate[n]
-				v := reflect.ValueOf(initValue).Elem()
+				get := cachedGet(initValue, initName, false)
 				newDecls[posesAtSorted[n]] = _Decl{
-					Kind:     info.Kind,
-					Init:     initValue,
-					InitName: initName,
-					Get: _Get{
-						ID: atomic.AddInt64(&nextGetID, 1),
-						Func: func(scope Scope) ([]reflect.Value, error) {
-							return []reflect.Value{v}, nil
-						},
-					},
+					Kind:       info.Kind,
+					Init:       initValue,
+					InitName:   initName,
+					Get:        get,
 					ValueIndex: 0,
 					Type:       info.Type,
 					TypeID:     info.TypeID,
@@ -627,7 +627,9 @@ func (s Scope) Sub(
 				for _, decl := range decls {
 					get, ok := gets[decl.Get.ID]
 					if !ok {
-						get = cachedInit(decl.Init, decl.InitName)
+						get = cachedGet(decl.Init, decl.InitName,
+							// no reducer type in resetIDs
+							false)
 						gets[decl.Get.ID] = get
 					}
 					decl.Get = get
@@ -647,7 +649,7 @@ func (s Scope) Sub(
 						panic("should not be called")
 					},
 					Type:       info.MarkType,
-					Get:        info.GetFunc(),
+					Get:        cachedGet(info.Type, "", true),
 					Kind:       reflect.Func,
 					ValueIndex: 0,
 					TypeID:     info.MarkTypeID,
