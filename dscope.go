@@ -901,33 +901,35 @@ func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 	return
 }
 
-func (s *Scope) SetProxy(provideFunc any) {
-	fnValue := reflect.ValueOf(provideFunc)
-	fnType := fnValue.Type()
-	if fnType.NumOut() == 0 {
-		panic(fmt.Errorf("bad proxy func: %v", fnType))
-	}
-	for i := 0; i < fnType.NumOut(); i++ {
-		typ := fnType.Out(i)
-		typeID := getTypeID(typ)
-		n := sort.Search(len(s.proxy), func(i int) bool {
-			return s.proxy[i].TypeID >= typeID
-		})
-		if n >= len(s.proxy) {
-			s.proxy = append(s.proxy, proxyEntry{
-				TypeID: typeID,
-				Func:   fnValue,
+func (s *Scope) SetProxy(provideFuncs ...any) {
+	for _, provideFunc := range provideFuncs {
+		fnValue := reflect.ValueOf(provideFunc)
+		fnType := fnValue.Type()
+		if fnType.NumOut() == 0 {
+			panic(fmt.Errorf("bad proxy func: %v", fnType))
+		}
+		for i := 0; i < fnType.NumOut(); i++ {
+			typ := fnType.Out(i)
+			typeID := getTypeID(typ)
+			n := sort.Search(len(s.proxy), func(i int) bool {
+				return s.proxy[i].TypeID >= typeID
 			})
-		} else {
-			if s.proxy[n].TypeID == typeID {
-				panic(fmt.Errorf("duplicated proxy type: %v, by %v", typ, fnType))
-			} else {
-				entry := proxyEntry{
+			if n >= len(s.proxy) {
+				s.proxy = append(s.proxy, proxyEntry{
 					TypeID: typeID,
 					Func:   fnValue,
+				})
+			} else {
+				if s.proxy[n].TypeID == typeID {
+					panic(fmt.Errorf("duplicated proxy type: %v, by %v", typ, fnType))
+				} else {
+					entry := proxyEntry{
+						TypeID: typeID,
+						Func:   fnValue,
+					}
+					s.proxy = append(s.proxy[:n],
+						append([]proxyEntry{entry}, s.proxy[n:]...)...)
 				}
-				s.proxy = append(s.proxy[:n],
-					append([]proxyEntry{entry}, s.proxy[n:]...)...)
 			}
 		}
 	}
