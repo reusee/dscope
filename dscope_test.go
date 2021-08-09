@@ -1703,3 +1703,34 @@ func TestCallManyArgs(t *testing.T) {
 	) {
 	})
 }
+
+func TestProxy(t *testing.T) {
+	s := New(func() int {
+		return 42
+	})
+	s.SetProxy(func(
+		i int,
+	) int {
+		return i * 2
+	})
+	var i int
+	s.Assign(&i)
+	if i != 84 {
+		t.Fatalf("got %d\n", i)
+	}
+
+	s = s.Sub(func() string {
+		return "foo"
+	})
+	s.SetProxy(func(
+		i int,
+		s string,
+	) string {
+		return fmt.Sprintf("%s-%d", s, i)
+	})
+	var str string
+	s.Assign(&str)
+	if str != "foo-84" {
+		t.Fatal()
+	}
+}

@@ -40,6 +40,13 @@ type Scope struct {
 	subFuncKey   string
 	declarations _StackedMap
 	path         Path
+	proxy        []proxyEntry
+	proxyPath    Path
+}
+
+type proxyEntry struct {
+	TypeID _TypeID
+	Func   reflect.Value
 }
 
 var Universe = Scope{}
@@ -172,10 +179,18 @@ func cachedGet(
 }
 
 func (s Scope) appendPath(t reflect.Type) Scope {
-	s.path = append(
-		append(s.path[:0:0], s.path...),
-		t,
-	)
+	path := make(Path, len(s.path), len(s.path)+1)
+	copy(path, s.path)
+	path = append(path, t)
+	s.path = path
+	return s
+}
+
+func (s Scope) appendProxyPath(t reflect.Type) Scope {
+	path := make(Path, len(s.proxyPath), len(s.proxyPath)+1)
+	copy(path, s.proxyPath)
+	path = append(path, t)
+	s.proxyPath = path
 	return s
 }
 
@@ -547,6 +562,11 @@ func (s Scope) Sub(
 			subFuncKey: key,
 			reducers:   reducers,
 		}
+		if len(s.proxy) > 0 {
+			proxy := make([]proxyEntry, len(s.proxy))
+			copy(proxy, s.proxy)
+			scope.proxy = proxy
+		}
 
 		// declarations
 		var declarations _StackedMap
@@ -697,6 +717,32 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 	ret reflect.Value,
 	err error,
 ) {
+
+	// proxy
+	if len(scope.proxy) > 0 {
+		for _, elem := range scope.proxyPath {
+			if elem == t {
+				goto skip_proxy
+			}
+		}
+		n := sort.Search(len(scope.proxy), func(i int) bool {
+			return scope.proxy[i].TypeID >= id
+		})
+		if n < len(scope.proxy) {
+			entry := scope.proxy[n]
+			if entry.TypeID == id {
+				// proxied
+				scope = scope.appendProxyPath(t)
+				result := scope.CallValue(entry.Func)
+				pos, ok := result.positionsByType[t]
+				if !ok {
+					panic("impossible")
+				}
+				return result.Values[pos], nil
+			}
+		}
+	}
+skip_proxy:
 
 	// pre-defined
 	switch t {
@@ -853,6 +899,38 @@ func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 		res.positionsByType = v.(map[reflect.Type]int)
 	}
 	return
+}
+
+func (s *Scope) SetProxy(provideFunc any) {
+	fnValue := reflect.ValueOf(provideFunc)
+	fnType := fnValue.Type()
+	if fnType.NumOut() == 0 {
+		panic(fmt.Errorf("bad proxy func: %v", fnType))
+	}
+	for i := 0; i < fnType.NumOut(); i++ {
+		typ := fnType.Out(i)
+		typeID := getTypeID(typ)
+		n := sort.Search(len(s.proxy), func(i int) bool {
+			return s.proxy[i].TypeID >= typeID
+		})
+		if n >= len(s.proxy) {
+			s.proxy = append(s.proxy, proxyEntry{
+				TypeID: typeID,
+				Func:   fnValue,
+			})
+		} else {
+			if s.proxy[n].TypeID == typeID {
+				panic(fmt.Errorf("duplicated proxy type: %v, by %v", typ, fnType))
+			} else {
+				entry := proxyEntry{
+					TypeID: typeID,
+					Func:   fnValue,
+				}
+				s.proxy = append(s.proxy[:n],
+					append([]proxyEntry{entry}, s.proxy[n:]...)...)
+			}
+		}
+	}
 }
 
 var returnTypeMap sync.Map
