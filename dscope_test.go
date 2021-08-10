@@ -1734,3 +1734,43 @@ func TestProxy(t *testing.T) {
 		t.Fatal()
 	}
 }
+
+func TestProxy2(t *testing.T) {
+	type Foo func(fn any)
+	type Bar func(int) int
+	s := New(
+		func(
+			scope Scope,
+		) Foo {
+			return func(fn any) {
+				scope.Sub(
+					func() int {
+						return 42
+					},
+				).Call(fn)
+			}
+		},
+		func() Bar {
+			return func(i int) int {
+				return i + 1
+			}
+		},
+	)
+	s.SetProxy(func(
+		foo Foo,
+	) Bar {
+		return func(i int) (ret int) {
+			foo(func(
+				bar Bar,
+			) {
+				ret = bar(i) * 2
+			})
+			return
+		}
+	})
+	var b Bar
+	s.Assign(&b)
+	if b(42) != 86 {
+		t.Fatal()
+	}
+}

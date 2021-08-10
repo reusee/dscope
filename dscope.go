@@ -566,6 +566,9 @@ func (s Scope) Sub(
 			proxy := make([]proxyEntry, len(s.proxy))
 			copy(proxy, s.proxy)
 			scope.proxy = proxy
+			proxyPath := make(Path, len(s.proxyPath))
+			copy(proxyPath, s.proxyPath)
+			scope.proxyPath = proxyPath
 		}
 
 		// declarations
