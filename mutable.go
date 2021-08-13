@@ -3,7 +3,6 @@ package dscope
 import (
 	"reflect"
 	"sync/atomic"
-	"unsafe"
 )
 
 type MutateCall func(fn any) Scope
@@ -16,10 +15,10 @@ func NewMutable(
 	decls ...any,
 ) Scope {
 
-	var ptr unsafe.Pointer
+	var scope atomic.Value
 
 	get := GetScope(func() Scope {
-		return *(*Scope)(atomic.LoadPointer(&ptr))
+		return *scope.Load().(*Scope)
 	})
 
 	mutateCall := MutateCall(func(fn any) Scope {
@@ -28,16 +27,16 @@ func NewMutable(
 		if numRedo > 1024 {
 			panic("dependency loop or too much contention")
 		}
-		from := atomic.LoadPointer(&ptr)
-		cur := *(*Scope)(from)
+		from := scope.Load().(*Scope)
+		cur := *from
 		res := cur.CallValue(reflect.ValueOf(fn))
 		var decls []any
 		for _, v := range res.Values {
 			decls = append(decls, v.Interface())
 		}
 		mutated := cur.Sub(decls...)
-		mutatedPtr := unsafe.Pointer(&mutated)
-		if !atomic.CompareAndSwapPointer(&ptr, from, mutatedPtr) {
+		mutatedPtr := &mutated
+		if !scope.CompareAndSwap(from, mutatedPtr) {
 			numRedo++
 			goto mutate
 		}
@@ -50,11 +49,11 @@ func NewMutable(
 		if numRedo > 1024 { // NOCOVER
 			panic("dependency loop or too much contention")
 		}
-		from := atomic.LoadPointer(&ptr)
-		cur := *(*Scope)(from)
+		from := scope.Load().(*Scope)
+		cur := *from
 		mutated := cur.Sub(decls...)
-		mutatedPtr := unsafe.Pointer(&mutated)
-		if !atomic.CompareAndSwapPointer(&ptr, from, mutatedPtr) {
+		mutatedPtr := &mutated
+		if !scope.CompareAndSwap(from, mutatedPtr) {
 			numRedo++
 			goto mutate
 		}
@@ -62,8 +61,8 @@ func NewMutable(
 	})
 
 	decls = append(decls, &get, &mutateCall, &mutate)
-	scope := New(decls...)
-	ptr = unsafe.Pointer(&scope)
+	s := New(decls...)
+	scope.Store(&s)
 
-	return scope
+	return s
 }
