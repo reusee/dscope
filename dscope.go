@@ -88,13 +88,14 @@ func cachedGet(
 				for _, elem := range scope.path[:len(scope.path)-1] {
 					if elem == last {
 						return nil, we(
-							ErrDependencyLoop,
 							e4.With(InitInfo{
 								Value: init,
 								Name:  name,
 							}),
 							e4.With(scope.path),
-						)
+						)(
+							ErrDependencyLoop,
+            )
 					}
 				}
 			}
@@ -126,7 +127,6 @@ func cachedGet(
 						}
 						if decl.ValueIndex >= len(values) { // NOCOVER
 							err = we(
-								ErrBadDeclaration,
 								e4.With(TypeInfo{
 									Type: typ,
 								}),
@@ -136,7 +136,9 @@ func cachedGet(
 									decl.Init,
 									decl.ValueIndex,
 								))),
-							)
+							)(
+								ErrBadDeclaration,
+              )
 							return
 						}
 						vs[i] = values[decl.ValueIndex]
@@ -281,12 +283,13 @@ func (s Scope) Sub(
 			numOut := initType.NumOut()
 			if numOut == 0 {
 				throw(we(
-					ErrBadArgument,
 					e4.With(ArgInfo{
 						Value: initializer,
 					}),
 					e4.With(Reason("function returns nothing")),
-				))
+				)(
+					ErrBadArgument,
+        ))
 			}
 			var numDecls int
 			for i := 0; i < numOut; i++ {
@@ -305,7 +308,6 @@ func (s Scope) Sub(
 					if _, ok := s.declarations.LoadOne(id); ok {
 						if t.Implements(noShadowType) {
 							throw(we(
-								ErrBadShadow,
 								e4.With(ArgInfo{
 									Value: initializer,
 								}),
@@ -315,7 +317,9 @@ func (s Scope) Sub(
 								e4.With(Reason(
 									fmt.Sprintf("should not shadow %v", t),
 								)),
-							))
+							)(
+								ErrBadShadow,
+              ))
 						}
 						shadowedIDs[id] = struct{}{}
 					}
@@ -338,7 +342,6 @@ func (s Scope) Sub(
 				if _, ok := s.declarations.LoadOne(id); ok {
 					if t.Implements(noShadowType) {
 						throw(we(
-							ErrBadShadow,
 							e4.With(ArgInfo{
 								Value: initializer,
 							}),
@@ -348,7 +351,9 @@ func (s Scope) Sub(
 							e4.With(Reason(
 								fmt.Sprintf("should not shadow %v", t),
 							)),
-						))
+						)(
+							ErrBadShadow,
+            ))
 					}
 					shadowedIDs[id] = struct{}{}
 				}
@@ -358,12 +363,13 @@ func (s Scope) Sub(
 
 		default:
 			throw(we(
-				ErrBadArgument,
 				e4.With(ArgInfo{
 					Value: initializer,
 				}),
 				e4.With(Reason("not a function or a pointer")),
-			))
+			)(
+				ErrBadArgument,
+      ))
 
 		}
 	}
@@ -396,13 +402,14 @@ func (s Scope) Sub(
 		color := colors[id]
 		if color == 1 {
 			return we(
-				ErrDependencyLoop,
 				e4.With(InitInfo{
 					Value: decls[0].Init,
 					Name:  decls[0].InitName,
 				}),
 				e4.With(Path(append(path, decls[0].Type))),
-			)
+			)(
+				ErrDependencyLoop,
+      )
 		} else if color == 2 {
 			return nil
 		}
@@ -425,7 +432,6 @@ func (s Scope) Sub(
 					decls2, ok := declarationsTemplate.Load(id2)
 					if !ok {
 						return we(
-							ErrDependencyNotFound,
 							e4.With(TypeInfo{
 								Type: requiredType,
 							}),
@@ -433,7 +439,9 @@ func (s Scope) Sub(
 								Value: decl.Init,
 								Name:  decl.InitName,
 							}),
-						)
+						)(
+							ErrDependencyNotFound,
+            )
 					}
 					if err := traverse(decls2, append(path, decl.Type)); err != nil {
 						return err
@@ -476,12 +484,13 @@ func (s Scope) Sub(
 			reducers[decls[0].TypeID] = decls[0].Type
 			if !decls[0].Type.Implements(reducerType) {
 				return we(
-					ErrBadDeclaration,
 					e4.With(TypeInfo{
 						Type: decls[0].Type,
 					}),
 					e4.With(Reason("non-reducer type has multiple declarations")),
-				)
+				)(
+					ErrBadDeclaration,
+        )
 			}
 		}
 
@@ -700,12 +709,13 @@ func (scope Scope) Assign(objs ...any) {
 		v := reflect.ValueOf(o)
 		if v.Kind() != reflect.Ptr {
 			throw(we(
-				ErrBadArgument,
 				e4.With(ArgInfo{
 					Value: o,
 				}),
 				e4.With(Reason("must be a pointer")),
-			))
+			)(
+				ErrBadArgument,
+      ))
 		}
 		t := v.Type().Elem()
 		value, err := scope.Get(t)
@@ -772,11 +782,12 @@ skip_proxy:
 		decl, ok := scope.declarations.LoadOne(id)
 		if !ok {
 			return ret, we(
-				ErrDependencyNotFound,
 				e4.With(TypeInfo{
 					Type: t,
 				}),
-			)
+			)(
+				ErrDependencyNotFound,
+      )
 		}
 		var values []reflect.Value
 		values, err = decl.Get.Func(scope.appendPath(t))
@@ -785,7 +796,6 @@ skip_proxy:
 		}
 		if decl.ValueIndex >= len(values) { // NOCOVER
 			err = we(
-				ErrBadDeclaration,
 				e4.With(TypeInfo{
 					Type: t,
 				}),
@@ -795,7 +805,9 @@ skip_proxy:
 					decl.Init,
 					decl.ValueIndex,
 				))),
-			)
+			)(
+				ErrBadDeclaration,
+      )
 			return
 		}
 		return values[decl.ValueIndex], nil
