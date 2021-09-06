@@ -95,7 +95,7 @@ func cachedGet(
 							e4.With(scope.path),
 						)(
 							ErrDependencyLoop,
-            )
+						)
 					}
 				}
 			}
@@ -138,7 +138,7 @@ func cachedGet(
 								))),
 							)(
 								ErrBadDeclaration,
-              )
+							)
 							return
 						}
 						vs[i] = values[decl.ValueIndex]
@@ -289,7 +289,7 @@ func (s Scope) Sub(
 					e4.With(Reason("function returns nothing")),
 				)(
 					ErrBadArgument,
-        ))
+				))
 			}
 			var numDecls int
 			for i := 0; i < numOut; i++ {
@@ -319,7 +319,7 @@ func (s Scope) Sub(
 								)),
 							)(
 								ErrBadShadow,
-              ))
+							))
 						}
 						shadowedIDs[id] = struct{}{}
 					}
@@ -353,7 +353,7 @@ func (s Scope) Sub(
 							)),
 						)(
 							ErrBadShadow,
-            ))
+						))
 					}
 					shadowedIDs[id] = struct{}{}
 				}
@@ -369,7 +369,7 @@ func (s Scope) Sub(
 				e4.With(Reason("not a function or a pointer")),
 			)(
 				ErrBadArgument,
-      ))
+			))
 
 		}
 	}
@@ -409,7 +409,7 @@ func (s Scope) Sub(
 				e4.With(Path(append(path, decls[0].Type))),
 			)(
 				ErrDependencyLoop,
-      )
+			)
 		} else if color == 2 {
 			return nil
 		}
@@ -441,7 +441,7 @@ func (s Scope) Sub(
 							}),
 						)(
 							ErrDependencyNotFound,
-            )
+						)
 					}
 					if err := traverse(decls2, append(path, decl.Type)); err != nil {
 						return err
@@ -490,7 +490,7 @@ func (s Scope) Sub(
 					e4.With(Reason("non-reducer type has multiple declarations")),
 				)(
 					ErrBadDeclaration,
-        )
+				)
 			}
 		}
 
@@ -715,7 +715,7 @@ func (scope Scope) Assign(objs ...any) {
 				e4.With(Reason("must be a pointer")),
 			)(
 				ErrBadArgument,
-      ))
+			))
 		}
 		t := v.Type().Elem()
 		value, err := scope.Get(t)
@@ -787,7 +787,7 @@ skip_proxy:
 				}),
 			)(
 				ErrDependencyNotFound,
-      )
+			)
 		}
 		var values []reflect.Value
 		values, err = decl.Get.Func(scope.appendPath(t))
@@ -807,7 +807,7 @@ skip_proxy:
 				))),
 			)(
 				ErrBadDeclaration,
-      )
+			)
 			return
 		}
 		return values[decl.ValueIndex], nil

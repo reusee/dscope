@@ -26,7 +26,7 @@ func (c CallResult) Extract(targets ...any) {
 				e4.With(Reason("must be a pointer")),
 			)(
 				ErrBadArgument,
-      ))
+			))
 		}
 		if targetValue.Type().Elem() != c.Values[i].Type() {
 			panic(we(
@@ -38,7 +38,7 @@ func (c CallResult) Extract(targets ...any) {
 				)),
 			)(
 				ErrBadArgument,
-      ))
+			))
 		}
 		targetValue.Elem().Set(c.Values[i])
 	}
@@ -58,7 +58,7 @@ func (c CallResult) Assign(targets ...any) {
 				e4.With(Reason("must be a pointer")),
 			)(
 				ErrBadArgument,
-      ))
+			))
 		}
 		pos, ok := c.positionsByType[targetValue.Type().Elem()]
 		if !ok {
