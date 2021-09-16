@@ -87,7 +87,7 @@ func cachedGet(
 				last := scope.path[len(scope.path)-1]
 				for _, elem := range scope.path[:len(scope.path)-1] {
 					if elem == last {
-						return nil, we(
+						return nil, we.With(
 							e4.With(InitInfo{
 								Value: init,
 								Name:  name,
@@ -126,7 +126,7 @@ func cachedGet(
 							return
 						}
 						if decl.ValueIndex >= len(values) { // NOCOVER
-							err = we(
+							err = we.With(
 								e4.With(TypeInfo{
 									Type: typ,
 								}),
@@ -282,7 +282,7 @@ func (s Scope) Sub(
 		case reflect.Func:
 			numOut := initType.NumOut()
 			if numOut == 0 {
-				throw(we(
+				throw(we.With(
 					e4.With(ArgInfo{
 						Value: initializer,
 					}),
@@ -307,7 +307,7 @@ func (s Scope) Sub(
 				if _, ok := predefinedTypeIDs[id]; !ok {
 					if _, ok := s.declarations.LoadOne(id); ok {
 						if t.Implements(noShadowType) {
-							throw(we(
+							throw(we.With(
 								e4.With(ArgInfo{
 									Value: initializer,
 								}),
@@ -341,7 +341,7 @@ func (s Scope) Sub(
 			if _, ok := predefinedTypeIDs[id]; !ok {
 				if _, ok := s.declarations.LoadOne(id); ok {
 					if t.Implements(noShadowType) {
-						throw(we(
+						throw(we.With(
 							e4.With(ArgInfo{
 								Value: initializer,
 							}),
@@ -362,7 +362,7 @@ func (s Scope) Sub(
 			initNumDecls = append(initNumDecls, 1)
 
 		default:
-			throw(we(
+			throw(we.With(
 				e4.With(ArgInfo{
 					Value: initializer,
 				}),
@@ -401,7 +401,7 @@ func (s Scope) Sub(
 		id := decls[0].TypeID
 		color := colors[id]
 		if color == 1 {
-			return we(
+			return we.With(
 				e4.With(InitInfo{
 					Value: decls[0].Init,
 					Name:  decls[0].InitName,
@@ -431,7 +431,7 @@ func (s Scope) Sub(
 					// not pre-defined
 					decls2, ok := declarationsTemplate.Load(id2)
 					if !ok {
-						return we(
+						return we.With(
 							e4.With(TypeInfo{
 								Type: requiredType,
 							}),
@@ -483,7 +483,7 @@ func (s Scope) Sub(
 		if len(decls) > 1 {
 			reducers[decls[0].TypeID] = decls[0].Type
 			if !decls[0].Type.Implements(reducerType) {
-				return we(
+				return we.With(
 					e4.With(TypeInfo{
 						Type: decls[0].Type,
 					}),
@@ -708,7 +708,7 @@ func (scope Scope) Assign(objs ...any) {
 	for _, o := range objs {
 		v := reflect.ValueOf(o)
 		if v.Kind() != reflect.Ptr {
-			throw(we(
+			throw(we.With(
 				e4.With(ArgInfo{
 					Value: o,
 				}),
@@ -781,7 +781,7 @@ skip_proxy:
 		// non-reducer
 		decl, ok := scope.declarations.LoadOne(id)
 		if !ok {
-			return ret, we(
+			return ret, we.With(
 				e4.With(TypeInfo{
 					Type: t,
 				}),
@@ -795,7 +795,7 @@ skip_proxy:
 			return ret, err
 		}
 		if decl.ValueIndex >= len(values) { // NOCOVER
-			err = we(
+			err = we.With(
 				e4.With(TypeInfo{
 					Type: t,
 				}),

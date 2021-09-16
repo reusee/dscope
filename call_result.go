@@ -19,7 +19,7 @@ func (c CallResult) Extract(targets ...any) {
 		}
 		targetValue := reflect.ValueOf(target)
 		if targetValue.Kind() != reflect.Ptr {
-			panic(we(
+			panic(we.With(
 				e4.With(ArgInfo{
 					Value: target,
 				}),
@@ -29,7 +29,7 @@ func (c CallResult) Extract(targets ...any) {
 			))
 		}
 		if targetValue.Type().Elem() != c.Values[i].Type() {
-			panic(we(
+			panic(we.With(
 				e4.With(ArgInfo{
 					Value: target,
 				}),
@@ -51,7 +51,7 @@ func (c CallResult) Assign(targets ...any) {
 		}
 		targetValue := reflect.ValueOf(target)
 		if targetValue.Kind() != reflect.Ptr {
-			panic(we(
+			panic(we.With(
 				e4.With(ArgInfo{
 					Value: target,
 				}),
