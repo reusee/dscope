@@ -950,6 +950,20 @@ func (s *Scope) SetProxy(provideFuncs ...any) {
 	}
 }
 
+func (s Scope) FillStruct(ptr any) {
+	v := reflect.ValueOf(ptr)
+	if v.Kind() != reflect.Ptr ||
+		v.Type().Elem().Kind() != reflect.Struct {
+		throw(we.With(
+			e4.NewInfo("expecting pointer to struct, got %T", ptr),
+		)(ErrBadArgument))
+	}
+	v = v.Elem()
+	for i, max := 0, v.NumField(); i < max; i++ {
+		s.Assign(v.Field(i).Addr().Interface())
+	}
+}
+
 var returnTypeMap sync.Map
 
 var getArgsFunc sync.Map

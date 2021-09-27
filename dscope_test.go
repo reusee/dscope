@@ -1774,3 +1774,25 @@ func TestProxy2(t *testing.T) {
 		t.Fatal()
 	}
 }
+
+func TestFillStruct(t *testing.T) {
+	s := New(
+		func() int {
+			return 42
+		},
+		func() string {
+			return "foo"
+		},
+	)
+	var foo struct {
+		S string
+		I int
+	}
+	s.FillStruct(&foo)
+	if foo.I != 42 {
+		t.Fatal()
+	}
+	if foo.S != "foo" {
+		t.Fatal()
+	}
+}
