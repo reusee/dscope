@@ -18,7 +18,7 @@ func TestAssign(t *testing.T) {
 	type IntC int
 
 	// New
-	scope := New().Sub(
+	scope := New().Fork(
 		func(b IntB) IntA {
 			return IntA(42 + b)
 		},
@@ -110,7 +110,7 @@ func TestPanic(t *testing.T) {
 				t.Fatal()
 			}
 		}()
-		scope.Sub(42)
+		scope.Fork(42)
 	}()
 
 	func() {
@@ -253,7 +253,7 @@ func TestPanic(t *testing.T) {
 				t.Fatal()
 			}
 		}()
-		scope.Sub(
+		scope.Fork(
 			func(string) int32 {
 				return 0
 			},
@@ -274,7 +274,7 @@ func TestPanic(t *testing.T) {
 				t.Fatal()
 			}
 		}()
-		scope = scope.Sub(
+		scope = scope.Fork(
 			func(s string) string {
 				return "42"
 			},
@@ -323,11 +323,11 @@ func TestPanic(t *testing.T) {
 
 }
 
-func TestSubScope(t *testing.T) {
+func TestForkScope(t *testing.T) {
 	type Foo int
 	type Bar int
 	type Baz int
-	scope := New().Sub(
+	scope := New().Fork(
 		func(scope Scope) Foo {
 			var bar Bar
 			var baz Baz
@@ -350,7 +350,7 @@ func TestSubScope(t *testing.T) {
 }
 
 func TestCall(t *testing.T) {
-	scope := New().Sub(
+	scope := New().Fork(
 		func() int {
 			return 42
 		},
@@ -372,12 +372,12 @@ func TestCall(t *testing.T) {
 	}
 }
 
-func TestSubScope2(t *testing.T) {
+func TestForkScope2(t *testing.T) {
 	scope := New()
-	scope1 := scope.Sub(func() int {
+	scope1 := scope.Fork(func() int {
 		return 42
 	})
-	scope2 := scope.Sub(func() int {
+	scope2 := scope.Fork(func() int {
 		return 36
 	})
 	var i int
@@ -394,7 +394,7 @@ func TestSubScope2(t *testing.T) {
 func TestLoadOnce(t *testing.T) {
 	type Setscope func(Scope)
 	var scope Scope
-	scope = New().Sub(
+	scope = New().Fork(
 		func() Setscope {
 			return func(c Scope) {
 				scope = c
@@ -404,10 +404,10 @@ func TestLoadOnce(t *testing.T) {
 
 	n := 0
 	type Foo int
-	scope = scope.Sub(
+	scope = scope.Fork(
 		func(scope Scope, setscope Setscope) Foo {
 			n++
-			setscope(scope.Sub(
+			setscope(scope.Fork(
 				func() Foo {
 					return 44
 				},
@@ -449,7 +449,7 @@ func TestLoadOnce(t *testing.T) {
 }
 
 func TestLoadFunc(t *testing.T) {
-	scope := New().Sub(
+	scope := New().Fork(
 		func() func() {
 			return func() {}
 		},
@@ -461,7 +461,7 @@ func TestLoadFunc(t *testing.T) {
 
 func TestOnce(t *testing.T) {
 	var numCalled int64
-	scope := New().Sub(
+	scope := New().Fork(
 		func() int {
 			atomic.AddInt64(&numCalled, 1)
 			return 42
@@ -503,7 +503,7 @@ func TestIndirectDependencyLoop(t *testing.T) {
 				t.Fatalf("unexpected: %v", p)
 			}
 		}()
-		New().Sub(
+		New().Fork(
 			func(a A) B {
 				return 42
 			},
@@ -518,11 +518,11 @@ func TestIndirectDependencyLoop(t *testing.T) {
 }
 
 func TestOverride(t *testing.T) {
-	scope := New().Sub(
+	scope := New().Fork(
 		func() int {
 			return 42
 		},
-	).Sub(
+	).Fork(
 		func() int {
 			return 24
 		},
@@ -536,7 +536,7 @@ func TestOverride(t *testing.T) {
 
 func TestOnceFunc(t *testing.T) {
 	var numCalled int64
-	scope := New().Sub(
+	scope := New().Fork(
 		func() func() int {
 			atomic.AddInt64(&numCalled, 1)
 			return func() int {
@@ -564,7 +564,7 @@ func TestOnceFunc(t *testing.T) {
 }
 
 func TestMultiProvide(t *testing.T) {
-	scope := New().Sub(
+	scope := New().Fork(
 		func() (int, string) {
 			return 42, "42"
 		},
@@ -574,9 +574,9 @@ func TestMultiProvide(t *testing.T) {
 	scope.Assign(&i, &s)
 }
 
-func TestSubLazyMulti(t *testing.T) {
+func TestForkLazyMulti(t *testing.T) {
 	var numCalled int64
-	scope := New().Sub(
+	scope := New().Fork(
 		func() (int, string) {
 			atomic.AddInt64(&numCalled, 1)
 			return 42, "42"
@@ -611,7 +611,7 @@ func TestSubLazyMulti(t *testing.T) {
 
 func TestDeclareInterface(t *testing.T) {
 	type Foo any
-	scope := New().Sub(
+	scope := New().Fork(
 		func() Foo {
 			return Foo(42)
 		},
@@ -622,32 +622,32 @@ func TestDeclareInterface(t *testing.T) {
 		t.Fatal()
 	}
 	type Bar any
-	sub := scope.Sub(
+	s := scope.Fork(
 		func() Bar {
 			return Bar(24)
 		},
 	)
 	var b Bar
-	sub.Assign(&b)
+	s.Assign(&b)
 	if b != 24 {
 		t.Fatal()
 	}
 }
 
 func TestBadOnceSharing(t *testing.T) {
-	scope := New().Sub(
+	scope := New().Fork(
 		func() int {
 			return 1
 		},
 	)
-	scope2 := scope.Sub()
+	scope2 := scope.Fork()
 	var a int
 	scope.Assign(&a)
 	scope2.Assign(&a)
 }
 
 func TestCallReturn(t *testing.T) {
-	scope := New().Sub(
+	scope := New().Fork(
 		func() int {
 			return 42
 		},
@@ -787,7 +787,7 @@ func TestGeneratedFunc(t *testing.T) {
 			}
 		},
 	).Interface()
-	scope := New().Sub(
+	scope := New().Fork(
 		func() int {
 			return 42
 		},
@@ -813,7 +813,7 @@ func TestRecalculate(t *testing.T) {
 	type Foo int
 	numFooCalled := 0
 
-	scope := New().Sub(
+	scope := New().Fork(
 		func() A {
 			return 1
 		},
@@ -852,7 +852,7 @@ func TestRecalculate(t *testing.T) {
 		t.Fatal()
 	}
 
-	scope2 := scope.Sub(
+	scope2 := scope.Fork(
 		func() A {
 			return 2
 		},
@@ -882,7 +882,7 @@ func TestRecalculate(t *testing.T) {
 	}
 
 	// partial update
-	scope3 := scope2.Sub(
+	scope3 := scope2.Fork(
 		func() B2 {
 			return 1
 		},
@@ -917,7 +917,7 @@ func TestRecalculate(t *testing.T) {
 				t.Fatalf("unexpected: %v", p)
 			}
 		}()
-		scope3.Sub(
+		scope3.Fork(
 			func(d D) A {
 				return A(d) + 1
 			},
@@ -931,7 +931,7 @@ func TestPartialOverride(t *testing.T) {
 	type B int
 	type C int
 
-	scope := New().Sub(
+	scope := New().Fork(
 		func() (A, B) {
 			return 1, 2
 		},
@@ -945,7 +945,7 @@ func TestPartialOverride(t *testing.T) {
 		t.Fatal()
 	}
 
-	scope2 := scope.Sub(
+	scope2 := scope.Fork(
 		func() A {
 			return 10
 		},
@@ -966,7 +966,7 @@ func TestRecalculateMultipleProvide(t *testing.T) {
 	type B int
 	type C int
 
-	scope := New().Sub(
+	scope := New().Fork(
 		func() A {
 			return 42
 		},
@@ -980,7 +980,7 @@ func TestRecalculateMultipleProvide(t *testing.T) {
 		t.Fatal()
 	}
 
-	scope2 := scope.Sub(
+	scope2 := scope.Fork(
 		func() A {
 			return 31
 		},
@@ -1018,13 +1018,13 @@ func TestRacing(t *testing.T) {
 	for i := 0; i < n; i++ {
 		go func() {
 			defer wg.Done()
-			sub := scope.Sub(
+			s := scope.Fork(
 				func() int {
 					return 42
 				},
 			)
 			var i int
-			sub.Assign(&i)
+			s.Assign(&i)
 		}()
 	}
 	wg.Wait()
@@ -1043,7 +1043,7 @@ func TestOverwrite(t *testing.T) {
 		},
 	)
 	n := 0
-	sub := scope.Sub(
+	s2 := scope.Fork(
 		func() (int, string) {
 			n++
 			return 24, "24"
@@ -1051,7 +1051,7 @@ func TestOverwrite(t *testing.T) {
 	)
 	var i int
 	var s string
-	sub.Assign(&i, &s)
+	s2.Assign(&i, &s)
 	if n != 1 {
 		t.Fatal()
 	}
@@ -1076,7 +1076,7 @@ func TestOverrideAndNewDep(t *testing.T) {
 			return "42"
 		},
 	)
-	scope = scope.Sub(
+	scope = scope.Fork(
 		func() string {
 			return "42"
 		},
@@ -1094,7 +1094,7 @@ func TestFlatten(t *testing.T) {
 	)
 	s := scope
 	for i := 0; i < 128; i++ {
-		s = s.Sub(
+		s = s.Fork(
 			func() int {
 				return 43
 			},
@@ -1120,7 +1120,7 @@ func TestOverwriteNew(t *testing.T) {
 			return strconv.Itoa(i)
 		},
 	)
-	scope = scope.Sub(
+	scope = scope.Fork(
 		func() int {
 			return 24
 		},
@@ -1170,7 +1170,7 @@ func TestPointerProvider(t *testing.T) {
 			return int(f)
 		},
 		&i,
-	).Sub(
+	).Fork(
 		func() int {
 			return 24
 		},
@@ -1188,7 +1188,7 @@ func TestPointerProvider(t *testing.T) {
 			return int(f)
 		},
 		&i,
-	).Sub(
+	).Fork(
 		func() float64 {
 			return 24
 		},
@@ -1203,7 +1203,7 @@ func TestPointerProvider(t *testing.T) {
 
 	scope = New(func() int {
 		return 42
-	}).Sub(func() *int {
+	}).Fork(func() *int {
 		i := 42
 		return &i
 	}())
@@ -1229,7 +1229,7 @@ func TestRacyCall(t *testing.T) {
 	}
 }
 
-func TestSubFunc(t *testing.T) {
+func TestForkFunc(t *testing.T) {
 	type I int
 	type J int
 	type K int
@@ -1250,17 +1250,17 @@ func TestSubFunc(t *testing.T) {
 		t.Fatal()
 	}
 
-	s1 = s1.Sub(func() K {
+	s1 = s1.Fork(func() K {
 		return 42
 	})
-	s2 = s2.Sub(func() K {
+	s2 = s2.Fork(func() K {
 		return 42
 	})
 
-	s2 = s2.Sub(func() I {
+	s2 = s2.Fork(func() I {
 		return 1
 	})
-	s1 = s1.Sub(func() I {
+	s1 = s1.Fork(func() I {
 		return 1
 	})
 
@@ -1271,45 +1271,45 @@ func TestSubFunc(t *testing.T) {
 
 }
 
-func TestSubFuncKey(t *testing.T) {
+func TestForkFuncKey(t *testing.T) {
 	s := New()
 	s1 := New()
-	if s.subFuncKey != s1.subFuncKey {
+	if s.forkFuncKey != s1.forkFuncKey {
 		t.Fatal()
 	}
 
-	s1 = s1.Sub(func() int {
+	s1 = s1.Fork(func() int {
 		return 42
 	})
-	s = s.Sub(func() int {
+	s = s.Fork(func() int {
 		return 42
 	})
-	if s.subFuncKey != s1.subFuncKey {
+	if s.forkFuncKey != s1.forkFuncKey {
 		t.Fatal()
 	}
 
-	s1 = s1.Sub(func() string {
+	s1 = s1.Fork(func() string {
 		return "foo"
 	})
-	s = s.Sub(func() int {
+	s = s.Fork(func() int {
 		return 42
 	})
-	if s.subFuncKey == s1.subFuncKey {
+	if s.forkFuncKey == s1.forkFuncKey {
 		t.Fatal()
 	}
 }
 
 func TestSignature(t *testing.T) {
-	s := New().Sub(
+	s := New().Fork(
 		func() int {
 			return 42
 		},
-	).Sub(
+	).Fork(
 		func() string {
 			return "foo"
 		},
 	)
-	s2 := New().Sub(
+	s2 := New().Fork(
 		func() int {
 			return 42
 		},
@@ -1321,10 +1321,10 @@ func TestSignature(t *testing.T) {
 		t.Fatal()
 	}
 
-	s = s.Sub(func() int {
+	s = s.Fork(func() int {
 		return 1
 	})
-	s2 = s2.Sub(func() int {
+	s2 = s2.Fork(func() int {
 		return 1
 	})
 	var i int
@@ -1392,7 +1392,7 @@ func TestReducer(t *testing.T) {
 		t.Fatal()
 	}
 
-	s = s.Sub(
+	s = s.Fork(
 		func() acc {
 			return 2
 		},
@@ -1408,7 +1408,7 @@ func TestReducer(t *testing.T) {
 		t.Fatal()
 	}
 
-	s = s.Sub(
+	s = s.Fork(
 		func() acc {
 			return 3
 		},
@@ -1500,7 +1500,7 @@ func (_ extendAcc) Reduce(_ Scope, vs []reflect.Value) reflect.Value {
 	return Reduce(vs)
 }
 
-func TestCallResultSub(t *testing.T) {
+func TestCallResultFork(t *testing.T) {
 	var i int
 	New(func() int {
 		return 42
@@ -1566,11 +1566,11 @@ func TestNoShadow(t *testing.T) {
 	}
 
 	check(func() {
-		s.Sub(&i)
+		s.Fork(&i)
 	})
 
 	check(func() {
-		s.Sub(func() noShadowInt {
+		s.Fork(func() noShadowInt {
 			return 42
 		})
 	})
@@ -1595,7 +1595,7 @@ func TestScopeAsDependency(t *testing.T) {
 	if i64 != 42 {
 		t.Fatal()
 	}
-	s = s.Sub(func() int32 {
+	s = s.Fork(func() int32 {
 		return 2
 	})
 	s.Assign(&i64)
@@ -1655,7 +1655,7 @@ func TestReducerRunOnce(t *testing.T) {
 		t.Fatal()
 	}
 
-	scope = scope.Sub(func() acc {
+	scope = scope.Fork(func() acc {
 		return 42
 	})
 	scope.Assign(&a)
@@ -1685,7 +1685,7 @@ func TestReducerIndirectUpdate(t *testing.T) {
 		t.Fatal()
 	}
 
-	scope = scope.Sub(func() acc {
+	scope = scope.Fork(func() acc {
 		return 2
 	})
 	scope.Assign(&a2)
@@ -1719,7 +1719,7 @@ func TestProxy(t *testing.T) {
 		t.Fatalf("got %d\n", i)
 	}
 
-	s = s.Sub(func() string {
+	s = s.Fork(func() string {
 		return "foo"
 	})
 	s.SetProxy(func(
@@ -1743,7 +1743,7 @@ func TestProxy2(t *testing.T) {
 			scope Scope,
 		) Foo {
 			return func(fn any) {
-				scope.Sub(
+				scope.Fork(
 					func() int {
 						return 42
 					},

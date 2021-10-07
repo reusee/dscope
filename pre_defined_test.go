@@ -7,10 +7,10 @@ import (
 
 func TestPredefined(t *testing.T) {
 	New().Call(func(
-		sub Sub,
+		fork Fork,
 	) {
 
-		sub(func() int {
+		fork(func() int {
 			return 42
 		}).Call(func(
 			assign Assign,
@@ -50,7 +50,7 @@ func TestPredefined(t *testing.T) {
 	})
 
 	New(func(
-		sub Sub,
+		fork Fork,
 	) int {
 		return 42
 	})
@@ -59,10 +59,10 @@ func TestPredefined(t *testing.T) {
 		return 1
 	}).Call(func(
 		assign Assign,
-		sub Sub,
+		fork Fork,
 	) {
 
-		sub(func() int {
+		fork(func() int {
 			return 2
 		}).Call(func(
 			assign2 Assign,

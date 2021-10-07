@@ -38,8 +38,8 @@ type (
 	T30 int
 )
 
-func BenchmarkSubWithNewDeps(b *testing.B) {
-	scope := New().Sub(
+func BenchmarkForkWithNewDeps(b *testing.B) {
+	scope := New().Fork(
 		func() T1 { return 42 },
 		func(t1 T1) T2 { return T2(t1) },
 		func(t2 T2) T3 { return T3(t2) },
@@ -76,7 +76,7 @@ func BenchmarkSubWithNewDeps(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		scope.Sub(
+		scope.Fork(
 			func(s S) T2 {
 				return 29
 			},
@@ -88,8 +88,8 @@ func BenchmarkSubWithNewDeps(b *testing.B) {
 
 }
 
-func BenchmarkSubWithoutNewDeps(b *testing.B) {
-	scope := New().Sub(
+func BenchmarkForkWithoutNewDeps(b *testing.B) {
+	scope := New().Fork(
 		func() T1 { return 42 },
 		func(t1 T1) T2 { return T2(t1) },
 		func(t2 T2) T3 { return T3(t2) },
@@ -124,7 +124,7 @@ func BenchmarkSubWithoutNewDeps(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		scope.Sub(
+		scope.Fork(
 			func() T30 {
 				return 42
 			},
@@ -134,7 +134,7 @@ func BenchmarkSubWithoutNewDeps(b *testing.B) {
 }
 
 func BenchmarkCall(b *testing.B) {
-	scope := New().Sub(
+	scope := New().Fork(
 		func() T1 { return 1 },
 		func() T2 { return 2 },
 		func() T3 { return 3 },
@@ -305,7 +305,7 @@ func BenchmarkCallPointerProvider(b *testing.B) {
 	t20 := T20(20)
 	t21 := T21(21)
 	t22 := T22(22)
-	scope := New().Sub(
+	scope := New().Fork(
 		&t1,
 		&t2,
 		&t3,
@@ -476,7 +476,7 @@ func BenchmarkCallWithScope(b *testing.B) {
 }
 
 func BenchmarkAssign(b *testing.B) {
-	scope := New().Sub(
+	scope := New().Fork(
 		func() T1 { return 42 },
 		func(t1 T1) T2 { return T2(t1) },
 		func(t2 T2) T3 { return T3(t2) },
@@ -517,11 +517,11 @@ func BenchmarkAssign(b *testing.B) {
 
 }
 
-func BenchmarkSub(b *testing.B) {
+func BenchmarkFork(b *testing.B) {
 	scope := New()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		scope.Sub()
+		scope.Fork()
 	}
 }
 
@@ -531,7 +531,7 @@ func BenchmarkGetTypeID(b *testing.B) {
 	}
 }
 
-func BenchmarkRecursiveSub(b *testing.B) {
+func BenchmarkRecursiveFork(b *testing.B) {
 	scope := New(
 		func() int {
 			return 42
@@ -540,7 +540,7 @@ func BenchmarkRecursiveSub(b *testing.B) {
 	var n int
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		scope = scope.Sub(
+		scope = scope.Fork(
 			func() string {
 				return "42"
 			},

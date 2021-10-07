@@ -37,7 +37,7 @@ type _TypeID int
 type Scope struct {
 	reducers     map[_TypeID]reflect.Type
 	signature    string
-	subFuncKey   string
+	forkFuncKey  string
 	declarations _StackedMap
 	path         Path
 	proxy        []proxyEntry
@@ -54,7 +54,7 @@ var Universe = Scope{}
 func New(
 	inits ...any,
 ) Scope {
-	return Universe.Sub(inits...)
+	return Universe.Fork(inits...)
 }
 
 var nextGetID int64 = 42
@@ -144,7 +144,7 @@ func cachedGet(
 						vs[i] = values[decl.ValueIndex]
 						names[i] = decl.InitName
 					}
-					scope = scope.Sub(&names)
+					scope = scope.Fork(&names)
 					values = []reflect.Value{
 						vs[0].Interface().(Reducer).Reduce(scope, vs),
 					}
@@ -211,7 +211,7 @@ var dependentScopeTypeID = getTypeID(dependentScopeType)
 type predefinedProvider func() (
 	_ Scope,
 	_ DependentScope,
-	_ Sub,
+	_ Fork,
 	_ Assign,
 	_ Get,
 	_ Call,
@@ -228,15 +228,15 @@ var predefinedTypeIDs = func() map[_TypeID]struct{} {
 	return m
 }()
 
-var subFns sync.Map
+var forkFns sync.Map
 
 var badScope = Scope{}
 
-type Sub func(...any) Scope
+type Fork func(...any) Scope
 
-var subType = reflect.TypeOf((*Sub)(nil)).Elem()
+var forkType = reflect.TypeOf((*Fork)(nil)).Elem()
 
-func (s Scope) Sub(
+func (s Scope) Fork(
 	initializers ...any,
 ) Scope {
 
@@ -256,7 +256,7 @@ func (s Scope) Sub(
 	}
 	key := buf.String()
 
-	if value, ok := subFns.Load(key); ok {
+	if value, ok := forkFns.Load(key); ok {
 		return value.(func(Scope, []any) Scope)(s, initializers)
 	}
 
@@ -567,9 +567,9 @@ func (s Scope) Sub(
 
 		// new scope
 		scope := Scope{
-			signature:  signature,
-			subFuncKey: key,
-			reducers:   reducers,
+			signature:   signature,
+			forkFuncKey: key,
+			reducers:    reducers,
 		}
 		if len(s.proxy) > 0 {
 			proxy := make([]proxyEntry, len(s.proxy))
@@ -695,7 +695,7 @@ func (s Scope) Sub(
 		return scope
 	}
 
-	subFns.Store(key, fn)
+	forkFns.Store(key, fn)
 
 	return fn(s, initializers)
 }
@@ -761,8 +761,8 @@ skip_proxy:
 	switch t {
 	case scopeType:
 		return reflect.ValueOf(scope), nil
-	case subType:
-		return reflect.ValueOf(scope.Sub), nil
+	case forkType:
+		return reflect.ValueOf(scope.Fork), nil
 	case assignType:
 		return reflect.ValueOf(scope.Assign), nil
 	case getType:

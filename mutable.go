@@ -34,7 +34,7 @@ func NewMutable(
 		for _, v := range res.Values {
 			decls = append(decls, v.Interface())
 		}
-		mutated := cur.Sub(decls...)
+		mutated := cur.Fork(decls...)
 		mutatedPtr := &mutated
 		if !scope.CompareAndSwap(from, mutatedPtr) {
 			numRedo++
@@ -51,7 +51,7 @@ func NewMutable(
 		}
 		from := scope.Load().(*Scope)
 		cur := *from
-		mutated := cur.Sub(decls...)
+		mutated := cur.Fork(decls...)
 		mutatedPtr := &mutated
 		if !scope.CompareAndSwap(from, mutatedPtr) {
 			numRedo++
