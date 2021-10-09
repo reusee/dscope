@@ -71,12 +71,18 @@ func cachedGet(
 	var values []reflect.Value
 	var err error
 	id := atomic.AddInt64(&nextGetID, 1)
-	fnName := name
-	if fnName == "" {
-		fnName = fmt.Sprintf("%T", init)
-	}
-	if isReducer {
-		fnName = "reducer(" + fnName + ")"
+
+	var nameOnce sync.Once
+	getName := func() string {
+		nameOnce.Do(func() {
+			if name == "" {
+				name = fmt.Sprintf("%T", init)
+			}
+			if isReducer {
+				name = "reducer(" + name + ")"
+			}
+		})
+		return name
 	}
 
 	return _Get{
@@ -104,7 +110,7 @@ func cachedGet(
 				if logInit { // NOCOVER
 					t0 := time.Now()
 					defer func() {
-						debugLog("[DSCOPE] run %s in %v\n", fnName, time.Since(t0))
+						debugLog("[DSCOPE] run %s in %v\n", getName(), time.Since(t0))
 					}()
 				}
 
@@ -158,10 +164,12 @@ func cachedGet(
 				if initKind == reflect.Func {
 					var result CallResult
 					func() {
-						defer he(&err, e4.NewInfo("dscope: call %s", fnName))
+						defer he(&err, func(err error) error {
+							return e4.NewInfo("dscope: call %s", getName())(err)
+						})
 						defer func() {
 							if p := recover(); p != nil {
-								pt("func: %s\n", fnName)
+								pt("func: %s\n", getName())
 								panic(p)
 							}
 						}()
