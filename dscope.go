@@ -76,7 +76,11 @@ func cachedGet(
 	getName := func() string {
 		nameOnce.Do(func() {
 			if name == "" {
-				name = fmt.Sprintf("%T", init)
+				if t, ok := init.(reflect.Type); ok { // reducer type
+					name = fmt.Sprintf("%v", t)
+				} else {
+					name = fmt.Sprintf("%T", init)
+				}
 			}
 			if isReducer {
 				name = "reducer(" + name + ")"
