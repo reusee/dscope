@@ -552,22 +552,35 @@ func (s Scope) Fork(
 		MarkTypeID _TypeID
 	}
 
-	var reducerInfos []ReducerInfo
-	for id, t := range reducers {
-		id := id
-		t := t
+	var resetReducers []ReducerInfo
+	resetReducerSet := make(map[_TypeID]bool)
+	resetReducer := func(id _TypeID) {
+		if _, ok := resetReducerSet[id]; ok {
+			return
+		}
+		t, ok := reducers[id]
+		if !ok {
+			return
+		}
 		markType := getReducerMarkType(t)
-
-		reducerInfos = append(reducerInfos, ReducerInfo{
+		resetReducers = append(resetReducers, ReducerInfo{
 			TypeID:     id,
 			Type:       t,
 			MarkType:   markType,
 			MarkTypeID: getTypeID(markType),
 		})
+		resetReducerSet[id] = true
 	}
-
-	sort.Slice(reducerInfos, func(i, j int) bool {
-		return reducerInfos[i].MarkTypeID < reducerInfos[j].MarkTypeID
+	// new decl reducers
+	for _, decl := range newDeclsTemplate {
+		resetReducer(decl.TypeID)
+	}
+	// reset reducers
+	for _, id := range resetIDs {
+		resetReducer(id)
+	}
+	sort.Slice(resetReducers, func(i, j int) bool {
+		return resetReducers[i].MarkTypeID < resetReducers[j].MarkTypeID
 	})
 
 	// fn
@@ -683,9 +696,9 @@ func (s Scope) Fork(
 		}
 
 		// reducers
-		if len(reducers) > 0 {
-			reducerDecls := make([]_Decl, 0, len(reducers))
-			for _, info := range reducerInfos {
+		if len(resetReducers) > 0 {
+			reducerDecls := make([]_Decl, 0, len(resetReducers))
+			for _, info := range resetReducers {
 				info := info
 				reducerDecls = append(reducerDecls, _Decl{
 					Init: func() { // NOCOVER

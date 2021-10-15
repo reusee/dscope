@@ -1796,3 +1796,36 @@ func TestFillStruct(t *testing.T) {
 		t.Fatal()
 	}
 }
+
+type countedReducer struct {
+	N *int
+}
+
+var _ Reducer = countedReducer{}
+
+func (c countedReducer) Reduce(_ Scope, vs []reflect.Value) reflect.Value {
+	*c.N++
+	return vs[0]
+}
+
+func TestReducerReset(t *testing.T) {
+	nCall := 0
+	s := New(
+		&countedReducer{&nCall},
+		&countedReducer{&nCall},
+	)
+	var c countedReducer
+	s.Assign(&c)
+	if nCall != 1 {
+		t.Fatal()
+	}
+
+	// unrelated update
+	s = s.Fork(func() int {
+		return 42
+	})
+	s.Assign(&c)
+	if nCall != 1 {
+		t.Fatalf("got %d", nCall)
+	}
+}
