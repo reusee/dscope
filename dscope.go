@@ -658,21 +658,24 @@ func (s Scope) Fork(
 		// reset decls
 		if len(resetIDs) > 0 {
 			resetDecls := make([]_Decl, 0, len(resetIDs))
-			gets := make(map[int64]_Get)
 			for _, id := range resetIDs {
 				decls, ok := declarations.Load(id)
 				if !ok { // NOCOVER
 					panic("impossible")
 				}
 				for _, decl := range decls {
-					get, ok := gets[decl.Get.ID]
-					if !ok {
-						get = cachedGet(decl.Init, decl.InitName,
+					found := false
+					for _, d := range resetDecls {
+						if d.Get.ID == decl.Get.ID {
+							found = true
+							decl.Get = d.Get
+						}
+					}
+					if !found {
+						decl.Get = cachedGet(decl.Init, decl.InitName,
 							// no reducer type in resetIDs
 							false)
-						gets[decl.Get.ID] = get
 					}
-					decl.Get = get
 					resetDecls = append(resetDecls, decl)
 				}
 			}
