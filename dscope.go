@@ -20,6 +20,7 @@ import (
 type _Decl struct {
 	Init       any
 	InitName   string
+	InitMulti  bool
 	Type       reflect.Type
 	Get        _Get
 	Kind       reflect.Kind
@@ -309,11 +310,12 @@ func (s Scope) Fork(
 				id := getTypeID(t)
 
 				newDeclsTemplate = append(newDeclsTemplate, _Decl{
-					Kind:     reflect.Func,
-					Type:     t,
-					TypeID:   id,
-					Init:     initValue,
-					InitName: initName,
+					Kind:      reflect.Func,
+					Type:      t,
+					TypeID:    id,
+					Init:      initValue,
+					InitName:  initName,
+					InitMulti: numOut > 1,
 				})
 				numDecls++
 				if _, ok := predefinedTypeIDs[id]; !ok {
@@ -648,6 +650,7 @@ func (s Scope) Fork(
 						Kind:       info.Kind,
 						Init:       initFunc,
 						InitName:   initName,
+						InitMulti:  info.InitMulti,
 						Get:        get,
 						ValueIndex: i,
 						Type:       info.Type,
@@ -681,14 +684,21 @@ func (s Scope) Fork(
 					panic("impossible")
 				}
 				for _, decl := range decls {
-					found := false
-					for _, d := range resetDecls {
-						if d.Get.ID == decl.Get.ID {
-							found = true
-							decl.Get = d.Get
+					if decl.InitMulti {
+						// multiple types using the same init function
+						found := false
+						for _, d := range resetDecls {
+							if d.Get.ID == decl.Get.ID {
+								found = true
+								decl.Get = d.Get
+							}
 						}
-					}
-					if !found {
+						if !found {
+							decl.Get = cachedGet(decl.Init, decl.InitName,
+								// no reducer type in resetIDs
+								false)
+						}
+					} else {
 						decl.Get = cachedGet(decl.Init, decl.InitName,
 							// no reducer type in resetIDs
 							false)
