@@ -263,7 +263,7 @@ func (s Scope) Fork(
 		} else {
 			id = getTypeID(reflect.TypeOf(initializer))
 		}
-		buf.WriteString(strconv.FormatInt(int64(id), 10))
+		buf.WriteString(strconv.Itoa(int(id)))
 		buf.WriteByte('.')
 	}
 	key := buf.String()
@@ -512,7 +512,7 @@ func (s Scope) Fork(
 	}
 	buf.Reset()
 	for _, id := range initTypeIDs {
-		buf.WriteString(strconv.FormatInt(int64(id), 10))
+		buf.WriteString(strconv.Itoa(int(id)))
 		buf.WriteByte('.')
 	}
 	signature := buf.String()
