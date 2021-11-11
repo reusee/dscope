@@ -8,6 +8,8 @@ github.com/reusee/e4 v0.0.0-20210823014223-b02406cf2483 h1:X3T+NCwdOh4nLtDZNUEa8
 github.com/reusee/e4 v0.0.0-20210823014223-b02406cf2483/go.mod h1:tn7INLQH/YwWai6I0MV227/HgZgagrroPgzfUTLV8No=
 github.com/reusee/e4 v0.0.0-20210916142410-92e608583aff h1:sDNdiX4dL5OWQwiO9dQ2rPu2J/PlN6WanLFHbqYaTx4=
 github.com/reusee/e4 v0.0.0-20210916142410-92e608583aff/go.mod h1:tn7INLQH/YwWai6I0MV227/HgZgagrroPgzfUTLV8No=
+github.com/reusee/e4 v0.0.0-20211111112921-a1e3637d4313 h1:NdolWZRwyEnTsDfOy+bjFhm9jUH6HMgXU5kKbp9v5js=
+github.com/reusee/e4 v0.0.0-20211111112921-a1e3637d4313/go.mod h1:tn7INLQH/YwWai6I0MV227/HgZgagrroPgzfUTLV8No=
 github.com/reusee/pr v0.0.0-20210102140014-3c32e4f45182/go.mod h1:yDr3ReZyWYFsHDC9Gxj8Udlcd1Fxm0N+QGMWkI5G5xE=
 github.com/reusee/pr v0.0.0-20210516083936-327176ab5209 h1:sIuGfukzgdvNv2sKfecmPm10yO/Bu3bJr3Nr0xBwkOQ=
 github.com/reusee/pr v0.0.0-20210516083936-327176ab5209/go.mod h1:PQpaqXEeqG5qfdTaGyvrxlCFcxH/hbBE4EO7Dz0XbTo=

@@ -169,9 +169,10 @@ func cachedGet(
 				if initKind == reflect.Func {
 					var result CallResult
 					func() {
-						defer he(&err, func(err error) error {
+						defer he(&err, e4.WrapFunc(func(err error) error {
+							// use a closure to avoid calling getName eagerly
 							return e4.NewInfo("dscope: call %s", getName())(err)
-						})
+						}))
 						defer func() {
 							if p := recover(); p != nil {
 								pt("func: %s\n", getName())
