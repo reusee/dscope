@@ -244,8 +244,6 @@ var predefinedTypeIDs = func() map[_TypeID]struct{} {
 
 var forkFns sync.Map
 
-var badScope = Scope{}
-
 type Fork func(...any) Scope
 
 var forkType = reflect.TypeOf((*Fork)(nil)).Elem()
@@ -1002,8 +1000,6 @@ func (s Scope) FillStruct(ptr any) {
 		s.Assign(v.Field(i).Addr().Interface())
 	}
 }
-
-var returnTypeMap sync.Map
 
 var getArgsFunc sync.Map
 

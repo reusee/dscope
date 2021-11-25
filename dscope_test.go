@@ -1494,12 +1494,6 @@ func TestRuntimeLoop(t *testing.T) {
 	}
 }
 
-type extendAcc int
-
-func (_ extendAcc) Reduce(_ Scope, vs []reflect.Value) reflect.Value {
-	return Reduce(vs)
-}
-
 func TestCallResultFork(t *testing.T) {
 	var i int
 	New(func() int {
