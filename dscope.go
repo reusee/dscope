@@ -1,14 +1,14 @@
 package dscope
 
 import (
+	"encoding/binary"
 	"fmt"
+	"hash/maphash"
 	"math/rand"
 	"os"
 	"reflect"
 	"runtime"
 	"sort"
-	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -37,8 +37,8 @@ type _TypeID int
 
 type Scope struct {
 	reducers     map[_TypeID]reflect.Type
-	signature    string
-	forkFuncKey  string
+	signature    uint64
+	forkFuncKey  uint64
 	declarations _StackedMap
 	path         Path
 	proxy        []proxyEntry
@@ -248,14 +248,19 @@ type Fork func(...any) Scope
 
 var forkType = reflect.TypeOf((*Fork)(nil)).Elem()
 
+var hashSeed = maphash.MakeSeed()
+
 func (s Scope) Fork(
 	initializers ...any,
 ) Scope {
 
 	// get transition signature
-	buf := new(strings.Builder)
-	buf.WriteString(s.signature)
-	buf.WriteByte('-')
+	h := new(maphash.Hash)
+	h.SetSeed(hashSeed)
+	buf := make([]byte, 8)
+	binary.LittleEndian.PutUint64(buf, s.signature)
+	h.Write(buf)
+	h.WriteByte('-')
 	for _, initializer := range initializers {
 		var id _TypeID
 		if named, ok := initializer.(NamedInit); ok {
@@ -263,22 +268,22 @@ func (s Scope) Fork(
 		} else {
 			id = getTypeID(reflect.TypeOf(initializer))
 		}
-		buf.WriteString(strconv.Itoa(int(id)))
-		buf.WriteByte('.')
+		binary.LittleEndian.PutUint64(buf, uint64(id))
+		h.Write(buf)
+		h.WriteByte('.')
 	}
-	key := buf.String()
+	key := h.Sum64()
 
 	value, ok := forkFns.Load(key)
 	if !ok {
-		return s.forkSlow(initializers, buf, key)
+		return s.forkSlow(initializers, key)
 	}
 	return value.(func(Scope, []any) Scope)(s, initializers)
 }
 
 func (s Scope) forkSlow(
 	initializers []any,
-	buf *strings.Builder,
-	key string,
+	key uint64,
 ) Scope {
 
 	// collect new decls
@@ -520,12 +525,15 @@ func (s Scope) forkSlow(
 	}); err != nil {
 		throw(err)
 	}
-	buf.Reset()
+	h := new(maphash.Hash)
+	h.SetSeed(hashSeed)
+	buf := make([]byte, 8)
 	for _, id := range initTypeIDs {
-		buf.WriteString(strconv.Itoa(int(id)))
-		buf.WriteByte('.')
+		binary.LittleEndian.PutUint64(buf, uint64(id))
+		h.Write(buf)
+		h.WriteByte('.')
 	}
-	signature := buf.String()
+	signature := h.Sum64()
 
 	// reset info
 	set := make(map[_TypeID]struct{})
