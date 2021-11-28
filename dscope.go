@@ -275,16 +275,9 @@ func (s Scope) Fork(
 	key := h.Sum64()
 
 	value, ok := forkFns.Load(key)
-	if !ok {
-		return s.forkSlow(initializers, key)
+	if ok {
+		return value.(func(Scope, []any) Scope)(s, initializers)
 	}
-	return value.(func(Scope, []any) Scope)(s, initializers)
-}
-
-func (s Scope) forkSlow(
-	initializers []any,
-	key uint64,
-) Scope {
 
 	// collect new decls
 	var newDeclsTemplate []_Decl
@@ -525,9 +518,8 @@ func (s Scope) forkSlow(
 	}); err != nil {
 		throw(err)
 	}
-	h := new(maphash.Hash)
+	h.Reset()
 	h.SetSeed(hashSeed)
-	buf := make([]byte, 8)
 	for _, id := range initTypeIDs {
 		binary.LittleEndian.PutUint64(buf, uint64(id))
 		h.Write(buf)
