@@ -253,7 +253,7 @@ func (s Scope) Fork(
 ) Scope {
 
 	// get transition signature
-	var buf strings.Builder
+	buf := new(strings.Builder)
 	buf.WriteString(s.signature)
 	buf.WriteByte('-')
 	for _, initializer := range initializers {
@@ -268,9 +268,18 @@ func (s Scope) Fork(
 	}
 	key := buf.String()
 
-	if value, ok := forkFns.Load(key); ok {
-		return value.(func(Scope, []any) Scope)(s, initializers)
+	value, ok := forkFns.Load(key)
+	if !ok {
+		return s.forkSlow(initializers, buf, key)
 	}
+	return value.(func(Scope, []any) Scope)(s, initializers)
+}
+
+func (s Scope) forkSlow(
+	initializers []any,
+	buf *strings.Builder,
+	key string,
+) Scope {
 
 	// collect new decls
 	var newDeclsTemplate []_Decl
