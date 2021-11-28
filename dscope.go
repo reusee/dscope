@@ -260,7 +260,6 @@ func (s Scope) Fork(
 	buf := make([]byte, 8)
 	binary.LittleEndian.PutUint64(buf, s.signature)
 	h.Write(buf)
-	h.WriteByte('-')
 	for _, initializer := range initializers {
 		var id _TypeID
 		if named, ok := initializer.(NamedInit); ok {
@@ -270,7 +269,6 @@ func (s Scope) Fork(
 		}
 		binary.LittleEndian.PutUint64(buf, uint64(id))
 		h.Write(buf)
-		h.WriteByte('.')
 	}
 	key := h.Sum64()
 
@@ -519,11 +517,9 @@ func (s Scope) Fork(
 		throw(err)
 	}
 	h.Reset()
-	h.SetSeed(hashSeed)
 	for _, id := range initTypeIDs {
 		binary.LittleEndian.PutUint64(buf, uint64(id))
 		h.Write(buf)
-		h.WriteByte('.')
 	}
 	signature := h.Sum64()
 
