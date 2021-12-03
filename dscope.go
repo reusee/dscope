@@ -41,13 +41,6 @@ type Scope struct {
 	forkFuncKey  uint64
 	declarations _StackedMap
 	path         *Path
-	proxy        []proxyEntry
-	proxyPath    *Path
-}
-
-type proxyEntry struct {
-	TypeID _TypeID
-	Func   reflect.Value
 }
 
 var Universe = Scope{}
@@ -204,18 +197,6 @@ func (s Scope) appendPath(t reflect.Type) Scope {
 		path.Len = s.path.Len + 1
 	}
 	s.path = path
-	return s
-}
-
-func (s Scope) appendProxyPath(t reflect.Type) Scope {
-	path := &Path{
-		Prev: s.proxyPath,
-		Type: t,
-	}
-	if s.proxyPath != nil {
-		path.Len = s.proxyPath.Len + 1
-	}
-	s.proxyPath = path
 	return s
 }
 
@@ -611,12 +592,6 @@ func (s Scope) Fork(
 			forkFuncKey: key,
 			reducers:    reducers,
 		}
-		if len(s.proxy) > 0 {
-			proxy := make([]proxyEntry, len(s.proxy))
-			copy(proxy, s.proxy)
-			scope.proxy = proxy
-			scope.proxyPath = s.proxyPath
-		}
 
 		// declarations
 		var declarations _StackedMap
@@ -780,34 +755,6 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 	err error,
 ) {
 
-	// proxy
-	if len(scope.proxy) > 0 {
-		p := scope.proxyPath
-		for p != nil {
-			if p.Type == t {
-				goto skip_proxy
-			}
-			p = p.Prev
-		}
-		n := sort.Search(len(scope.proxy), func(i int) bool {
-			return scope.proxy[i].TypeID >= id
-		})
-		if n < len(scope.proxy) {
-			entry := scope.proxy[n]
-			if entry.TypeID == id {
-				// proxied
-				scope = scope.appendProxyPath(t)
-				result := scope.CallValue(entry.Func)
-				pos, ok := result.positionsByType[t]
-				if !ok {
-					panic("impossible")
-				}
-				return result.Values[pos], nil
-			}
-		}
-	}
-skip_proxy:
-
 	// pre-defined
 	switch t {
 	case scopeType:
@@ -965,40 +912,6 @@ func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 		res.positionsByType = v.(map[reflect.Type]int)
 	}
 	return
-}
-
-func (s *Scope) SetProxy(provideFuncs ...any) {
-	for _, provideFunc := range provideFuncs {
-		fnValue := reflect.ValueOf(provideFunc)
-		fnType := fnValue.Type()
-		if fnType.NumOut() == 0 {
-			panic(fmt.Errorf("bad proxy func: %v", fnType))
-		}
-		for i := 0; i < fnType.NumOut(); i++ {
-			typ := fnType.Out(i)
-			typeID := getTypeID(typ)
-			n := sort.Search(len(s.proxy), func(i int) bool {
-				return s.proxy[i].TypeID >= typeID
-			})
-			if n >= len(s.proxy) {
-				s.proxy = append(s.proxy, proxyEntry{
-					TypeID: typeID,
-					Func:   fnValue,
-				})
-			} else {
-				if s.proxy[n].TypeID == typeID {
-					panic(fmt.Errorf("duplicated proxy type: %v, by %v", typ, fnType))
-				} else {
-					entry := proxyEntry{
-						TypeID: typeID,
-						Func:   fnValue,
-					}
-					s.proxy = append(s.proxy[:n],
-						append([]proxyEntry{entry}, s.proxy[n:]...)...)
-				}
-			}
-		}
-	}
 }
 
 func (s Scope) FillStruct(ptr any) {
