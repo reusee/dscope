@@ -40,9 +40,9 @@ type Scope struct {
 	signature    uint64
 	forkFuncKey  uint64
 	declarations _StackedMap
-	path         Path
+	path         *Path
 	proxy        []proxyEntry
-	proxyPath    Path
+	proxyPath    *Path
 }
 
 type proxyEntry struct {
@@ -94,10 +94,10 @@ func cachedGet(
 		ID: id,
 
 		Func: func(scope Scope) ([]reflect.Value, error) {
-			if len(scope.path) > 1 {
-				last := scope.path[len(scope.path)-1]
-				for _, elem := range scope.path[:len(scope.path)-1] {
-					if elem == last {
+			if scope.path.Len > 0 {
+				p := scope.path.Prev
+				for p != nil {
+					if p.Type == scope.path.Type {
 						return nil, we.With(
 							e4.With(InitInfo{
 								Value: init,
@@ -108,6 +108,7 @@ func cachedGet(
 							ErrDependencyLoop,
 						)
 					}
+					p = p.Prev
 				}
 			}
 
@@ -195,17 +196,25 @@ func cachedGet(
 }
 
 func (s Scope) appendPath(t reflect.Type) Scope {
-	path := make(Path, len(s.path), len(s.path)+1)
-	copy(path, s.path)
-	path = append(path, t)
+	path := &Path{
+		Prev: s.path,
+		Type: t,
+	}
+	if s.path != nil {
+		path.Len = s.path.Len + 1
+	}
 	s.path = path
 	return s
 }
 
 func (s Scope) appendProxyPath(t reflect.Type) Scope {
-	path := make(Path, len(s.proxyPath), len(s.proxyPath)+1)
-	copy(path, s.proxyPath)
-	path = append(path, t)
+	path := &Path{
+		Prev: s.proxyPath,
+		Type: t,
+	}
+	if s.proxyPath != nil {
+		path.Len = s.proxyPath.Len + 1
+	}
 	s.proxyPath = path
 	return s
 }
@@ -424,7 +433,7 @@ func (s Scope) Fork(
 					Value: decls[0].Init,
 					Name:  decls[0].InitName,
 				}),
-				e4.With(Path(append(path, decls[0].Type))),
+				e4.Info("path %+v", path),
 			)(
 				ErrDependencyLoop,
 			)
@@ -606,9 +615,7 @@ func (s Scope) Fork(
 			proxy := make([]proxyEntry, len(s.proxy))
 			copy(proxy, s.proxy)
 			scope.proxy = proxy
-			proxyPath := make(Path, len(s.proxyPath))
-			copy(proxyPath, s.proxyPath)
-			scope.proxyPath = proxyPath
+			scope.proxyPath = s.proxyPath
 		}
 
 		// declarations
@@ -775,10 +782,12 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 
 	// proxy
 	if len(scope.proxy) > 0 {
-		for _, elem := range scope.proxyPath {
-			if elem == t {
+		p := scope.proxyPath
+		for p != nil {
+			if p.Type == t {
 				goto skip_proxy
 			}
+			p = p.Prev
 		}
 		n := sort.Search(len(scope.proxy), func(i int) bool {
 			return scope.proxy[i].TypeID >= id
