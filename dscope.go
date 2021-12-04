@@ -609,7 +609,7 @@ func (s Scope) Fork(
 			})
 			declarations = _StackedMap{decls}
 		} else {
-			declarations = make(_StackedMap, len(s.declarations), len(s.declarations)+2)
+			declarations = make(_StackedMap, len(s.declarations), len(s.declarations)+3)
 			copy(declarations, s.declarations)
 		}
 
