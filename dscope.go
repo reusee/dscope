@@ -66,23 +66,6 @@ func cachedGet(
 	var err error
 	id := atomic.AddInt64(&nextGetID, 1)
 
-	var nameOnce sync.Once
-	getName := func() string {
-		nameOnce.Do(func() {
-			if name == "" {
-				if t, ok := init.(reflect.Type); ok { // reducer type
-					name = fmt.Sprintf("%v", t)
-				} else {
-					name = fmt.Sprintf("%T", init)
-				}
-			}
-			if isReducer {
-				name = "reducer(" + name + ")"
-			}
-		})
-		return name
-	}
-
 	return _Get{
 		ID: id,
 
@@ -109,7 +92,7 @@ func cachedGet(
 				if logInit { // NOCOVER
 					t0 := time.Now()
 					defer func() {
-						debugLog("[DSCOPE] run %s in %v\n", getName(), time.Since(t0))
+						debugLog("[DSCOPE] run %s in %v\n", getName(name, init, isReducer), time.Since(t0))
 					}()
 				}
 
@@ -165,11 +148,11 @@ func cachedGet(
 					func() {
 						defer he(&err, e4.WrapFunc(func(err error) error {
 							// use a closure to avoid calling getName eagerly
-							return e4.NewInfo("dscope: call %s", getName())(err)
+							return e4.NewInfo("dscope: call %s", getName(name, init, isReducer))(err)
 						}))
 						defer func() {
 							if p := recover(); p != nil {
-								pt("func: %s\n", getName())
+								pt("func: %s\n", getName(name, init, isReducer))
 								panic(p)
 							}
 						}()
@@ -970,4 +953,18 @@ func getTypeID(t reflect.Type) (r _TypeID) {
 	typeIDMap.Store(newM)
 	typeIDLock.Unlock()
 	return newM[t]
+}
+
+func getName(name string, value any, isReducer bool) string {
+	if name == "" {
+		if t, ok := value.(reflect.Type); ok { // reducer type
+			name = fmt.Sprintf("%v", t)
+		} else {
+			name = fmt.Sprintf("%T", value)
+		}
+	}
+	if isReducer {
+		name = "reducer(" + name + ")"
+	}
+	return name
 }
