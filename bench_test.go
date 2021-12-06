@@ -525,6 +525,16 @@ func BenchmarkFork(b *testing.B) {
 	}
 }
 
+func BenchmarkFork1(b *testing.B) {
+	scope := New()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		scope.Fork(func() int {
+			return 42
+		})
+	}
+}
+
 func BenchmarkGetTypeID(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		getTypeID(scopeType)
