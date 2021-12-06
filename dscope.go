@@ -70,22 +70,20 @@ func cachedGet(
 		ID: id,
 
 		Func: func(scope Scope) ([]reflect.Value, error) {
-			if scope.path.Len > 0 {
-				p := scope.path.Prev
-				for p != nil {
-					if p.Type == scope.path.Type {
-						return nil, we.With(
-							e4.With(InitInfo{
-								Value: init,
-								Name:  name,
-							}),
-							e4.With(scope.path),
-						)(
-							ErrDependencyLoop,
-						)
-					}
-					p = p.Prev
+			// detect dependency loop
+			for p := scope.path.Prev; p != nil; p = p.Prev {
+				if p.Type != scope.path.Type {
+					continue
 				}
+				return nil, we.With(
+					e4.With(InitInfo{
+						Value: init,
+						Name:  name,
+					}),
+					e4.With(scope.path),
+				)(
+					ErrDependencyLoop,
+				)
 			}
 
 			once.Do(func() {
