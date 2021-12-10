@@ -130,6 +130,7 @@ func cachedGet(
 						vs[i] = values[decl.ValueIndex]
 						names[i] = decl.InitName
 					}
+					pathScope.recyclePath()
 					scope = scope.Fork(&names)
 					values = []reflect.Value{
 						vs[0].Interface().(Reducer).Reduce(scope, vs),
@@ -169,16 +170,27 @@ func cachedGet(
 	}
 }
 
+var pathPool = sync.Pool{
+	New: func() any {
+		return new(Path)
+	},
+}
+
 func (s Scope) appendPath(t reflect.Type) Scope {
-	path := &Path{
-		Prev: s.path,
-		Type: t,
-	}
+	path := pathPool.Get().(*Path)
+	path.Prev = s.path
+	path.Type = t
 	if s.path != nil {
 		path.Len = s.path.Len + 1
+	} else {
+		path.Len = 0
 	}
 	s.path = path
 	return s
+}
+
+func (s *Scope) recyclePath() {
+	pathPool.Put(s.path)
 }
 
 var (
@@ -769,7 +781,9 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 			)
 		}
 		var values []reflect.Value
-		values, err = decl.Get.Func(scope.appendPath(t))
+		pathScope := scope.appendPath(t)
+		values, err = decl.Get.Func(pathScope)
+		pathScope.recyclePath()
 		if err != nil { // NOCOVER
 			return ret, err
 		}
