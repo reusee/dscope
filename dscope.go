@@ -295,21 +295,6 @@ func (s Scope) Fork(
 				numDecls++
 				if _, ok := predefinedTypeIDs[id]; !ok {
 					if _, ok := s.declarations.LoadOne(id); ok {
-						if t.Implements(noShadowType) {
-							throw(we.With(
-								e4.With(ArgInfo{
-									Value: initializer,
-								}),
-								e4.With(TypeInfo{
-									Type: t,
-								}),
-								e4.With(Reason(
-									fmt.Sprintf("should not shadow %v", t),
-								)),
-							)(
-								ErrBadShadow,
-							))
-						}
 						shadowedIDs[id] = struct{}{}
 					}
 				}
@@ -329,21 +314,6 @@ func (s Scope) Fork(
 			})
 			if _, ok := predefinedTypeIDs[id]; !ok {
 				if _, ok := s.declarations.LoadOne(id); ok {
-					if t.Implements(noShadowType) {
-						throw(we.With(
-							e4.With(ArgInfo{
-								Value: initializer,
-							}),
-							e4.With(TypeInfo{
-								Type: t,
-							}),
-							e4.With(Reason(
-								fmt.Sprintf("should not shadow %v", t),
-							)),
-						)(
-							ErrBadShadow,
-						))
-					}
 					shadowedIDs[id] = struct{}{}
 				}
 			}
