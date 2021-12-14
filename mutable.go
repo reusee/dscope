@@ -5,6 +5,10 @@ import (
 	"sync/atomic"
 )
 
+type MutableScope struct {
+	scope atomic.Value
+}
+
 type MutateCall func(fn any) Scope
 
 type Mutate func(decls ...any) Scope
@@ -13,12 +17,12 @@ type GetScope func() Scope
 
 func NewMutable(
 	decls ...any,
-) Scope {
+) *MutableScope {
 
-	var scope atomic.Value
+	m := new(MutableScope)
 
 	get := GetScope(func() Scope {
-		return *scope.Load().(*Scope)
+		return *m.scope.Load().(*Scope)
 	})
 
 	mutateCall := MutateCall(func(fn any) Scope {
@@ -27,7 +31,7 @@ func NewMutable(
 		if numRedo > 1024 {
 			panic("dependency loop or too much contention")
 		}
-		from := scope.Load().(*Scope)
+		from := m.scope.Load().(*Scope)
 		cur := *from
 		res := cur.CallValue(reflect.ValueOf(fn))
 		var decls []any
@@ -36,7 +40,7 @@ func NewMutable(
 		}
 		mutated := cur.Fork(decls...)
 		mutatedPtr := &mutated
-		if !scope.CompareAndSwap(from, mutatedPtr) {
+		if !m.scope.CompareAndSwap(from, mutatedPtr) {
 			numRedo++
 			goto mutate
 		}
@@ -49,11 +53,11 @@ func NewMutable(
 		if numRedo > 1024 { // NOCOVER
 			panic("dependency loop or too much contention")
 		}
-		from := scope.Load().(*Scope)
+		from := m.scope.Load().(*Scope)
 		cur := *from
 		mutated := cur.Fork(decls...)
 		mutatedPtr := &mutated
-		if !scope.CompareAndSwap(from, mutatedPtr) {
+		if !m.scope.CompareAndSwap(from, mutatedPtr) {
 			numRedo++
 			goto mutate
 		}
@@ -62,7 +66,37 @@ func NewMutable(
 
 	decls = append(decls, &get, &mutateCall, &mutate)
 	s := New(decls...)
-	scope.Store(&s)
+	m.scope.Store(&s)
 
-	return s
+	return m
+}
+
+func (m *MutableScope) GetScope() Scope {
+	return *m.scope.Load().(*Scope)
+}
+
+func (m *MutableScope) Fork(
+	initializers ...any,
+) Scope {
+	return m.GetScope().Fork(initializers...)
+}
+
+func (m *MutableScope) Assign(objs ...any) {
+	m.GetScope().Assign(objs...)
+}
+
+func (m *MutableScope) Get(t reflect.Type) (reflect.Value, error) {
+	return m.GetScope().Get(t)
+}
+
+func (m *MutableScope) Call(fn any) CallResult {
+	return m.GetScope().Call(fn)
+}
+
+func (m *MutableScope) CallValue(fn reflect.Value) CallResult {
+	return m.GetScope().CallValue(fn)
+}
+
+func (m *MutableScope) FillStruct(ptr any) {
+	m.GetScope().FillStruct(ptr)
 }

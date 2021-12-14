@@ -34,9 +34,9 @@ func TestMutateCall(t *testing.T) {
 	scope.Call(func(
 		get GetScope,
 	) {
-		scope = get()
+		s := get()
 		var i int
-		scope.Assign(&i)
+		s.Assign(&i)
 		if i != (n*(n+1))/2 {
 			t.Fatal()
 		}
