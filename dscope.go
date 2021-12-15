@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/maphash"
-	"math/rand"
 	"os"
 	"reflect"
 	"runtime"
@@ -892,7 +891,7 @@ var (
 		return v
 	}()
 	typeIDLock sync.Mutex
-	ids        = make(map[int64]struct{})
+	nextTypeID _TypeID
 )
 
 func getTypeID(t reflect.Type) (r _TypeID) {
@@ -906,18 +905,12 @@ func getTypeID(t reflect.Type) (r _TypeID) {
 		typeIDLock.Unlock()
 		return i
 	}
-	newM := make(map[reflect.Type]_TypeID, len(m))
+	newM := make(map[reflect.Type]_TypeID, len(m)+1)
 	for k, v := range m {
 		newM[k] = v
 	}
-	for {
-		id := rand.Int63()
-		if _, ok := ids[id]; ok { // NOCOVER
-			continue
-		}
-		newM[t] = _TypeID(id)
-		break
-	}
+	nextTypeID++
+	newM[t] = _TypeID(nextTypeID)
 	typeIDMap.Store(newM)
 	typeIDLock.Unlock()
 	return newM[t]
