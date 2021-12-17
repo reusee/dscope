@@ -62,13 +62,12 @@ func cachedGet(
 
 	var once sync.Once
 	var values []reflect.Value
-	var err error
 	id := atomic.AddInt64(&nextGetID, 1)
 
 	return _Get{
 		ID: id,
 
-		Func: func(scope Scope) ([]reflect.Value, error) {
+		Func: func(scope Scope) (ret []reflect.Value, err error) {
 			// detect dependency loop
 			for p := scope.path.Prev; p != nil; p = p.Prev {
 				if p.Type != scope.path.Type {
