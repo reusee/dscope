@@ -179,20 +179,6 @@ func (s Scope) appendPath(t reflect.Type) Scope {
 	return s
 }
 
-type predefinedProvider func() (
-	_ Scope,
-)
-
-var predefinedTypeIDs = func() map[_TypeID]struct{} {
-	m := make(map[_TypeID]struct{})
-	t := reflect.TypeOf(predefinedProvider(nil))
-	for i := 0; i < t.NumOut(); i++ {
-		out := t.Out(i)
-		m[getTypeID(out)] = struct{}{}
-	}
-	return m
-}()
-
 var forkFns sync.Map
 
 var hashSeed = maphash.MakeSeed()
@@ -269,7 +255,7 @@ func (s Scope) Fork(
 					InitMulti: numOut > 1,
 				})
 				numDecls++
-				if _, ok := predefinedTypeIDs[id]; !ok {
+				if id != scopeTypeID {
 					if _, ok := s.declarations.LoadOne(id); ok {
 						redefinedIDs[id] = struct{}{}
 					}
@@ -288,7 +274,7 @@ func (s Scope) Fork(
 				Init:     initValue,
 				InitName: initName,
 			})
-			if _, ok := predefinedTypeIDs[id]; !ok {
+			if id != scopeTypeID {
 				if _, ok := s.declarations.LoadOne(id); ok {
 					redefinedIDs[id] = struct{}{}
 				}
@@ -362,7 +348,7 @@ func (s Scope) Fork(
 					downstreams[id2],
 					decl,
 				)
-				if _, ok := predefinedTypeIDs[id2]; !ok {
+				if id2 != scopeTypeID {
 					// not pre-defined
 					decls2, ok := declarationsTemplate.Load(id2)
 					if !ok {
