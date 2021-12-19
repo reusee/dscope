@@ -179,26 +179,13 @@ func (s Scope) appendPath(t reflect.Type) Scope {
 	return s
 }
 
-var (
-	scopeType = reflect.TypeOf((*Scope)(nil)).Elem()
-)
-
 type DependentScope struct {
 	Scope
 }
 
-var dependentScopeType = reflect.TypeOf((*DependentScope)(nil)).Elem()
-
-var dependentScopeTypeID = getTypeID(dependentScopeType)
-
 type predefinedProvider func() (
 	_ Scope,
 	_ DependentScope,
-	_ Fork,
-	_ Assign,
-	_ Get,
-	_ Call,
-	_ CallValue,
 )
 
 var predefinedTypeIDs = func() map[_TypeID]struct{} {
@@ -212,10 +199,6 @@ var predefinedTypeIDs = func() map[_TypeID]struct{} {
 }()
 
 var forkFns sync.Map
-
-type Fork func(...any) Scope
-
-var forkType = reflect.TypeOf((*Fork)(nil)).Elem()
 
 var hashSeed = maphash.MakeSeed()
 
@@ -673,10 +656,6 @@ func (s Scope) Fork(
 	return fn(s, initializers)
 }
 
-type Assign func(...any)
-
-var assignType = reflect.TypeOf((*Assign)(nil)).Elem()
-
 func (scope Scope) Assign(objs ...any) {
 	for _, o := range objs {
 		v := reflect.ValueOf(o)
@@ -699,26 +678,21 @@ func (scope Scope) Assign(objs ...any) {
 	}
 }
 
+var (
+	scopeTypeID          = getTypeID(reflect.TypeOf((*Scope)(nil)).Elem())
+	dependentScopeTypeID = getTypeID(reflect.TypeOf((*DependentScope)(nil)).Elem())
+)
+
 func (scope Scope) get(id _TypeID, t reflect.Type) (
 	ret reflect.Value,
 	err error,
 ) {
 
-	// pre-defined
-	switch t {
-	case scopeType:
+	// built-ins
+	switch id {
+	case scopeTypeID:
 		return reflect.ValueOf(scope), nil
-	case forkType:
-		return reflect.ValueOf(scope.Fork), nil
-	case assignType:
-		return reflect.ValueOf(scope.Assign), nil
-	case getType:
-		return reflect.ValueOf(scope.Get), nil
-	case callType:
-		return reflect.ValueOf(scope.Call), nil
-	case callValueType:
-		return reflect.ValueOf(scope.CallValue), nil
-	case dependentScopeType:
+	case dependentScopeTypeID:
 		return reflect.ValueOf(DependentScope{
 			Scope: scope,
 		}), nil
@@ -770,20 +744,12 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 
 }
 
-type Get func(reflect.Type) (reflect.Value, error)
-
-var getType = reflect.TypeOf((*Get)(nil)).Elem()
-
 func (scope Scope) Get(t reflect.Type) (
 	ret reflect.Value,
 	err error,
 ) {
 	return scope.get(getTypeID(t), t)
 }
-
-type Call func(any) CallResult
-
-var callType = reflect.TypeOf((*Call)(nil)).Elem()
 
 func (scope Scope) Call(fn any) CallResult {
 	return scope.CallValue(reflect.ValueOf(fn))
@@ -828,10 +794,6 @@ var reflectValuesPool = pr.NewPool(
 		return make([]reflect.Value, reflectValuesPoolMaxLen)
 	},
 )
-
-type CallValue func(reflect.Value) CallResult
-
-var callValueType = reflect.TypeOf((*CallValue)(nil)).Elem()
 
 func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 	fnType := fnValue.Type()

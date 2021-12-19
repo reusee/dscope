@@ -536,6 +536,8 @@ func BenchmarkFork1(b *testing.B) {
 }
 
 func BenchmarkGetTypeID(b *testing.B) {
+	scopeType := reflect.TypeOf((*Scope)(nil)).Elem()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		getTypeID(scopeType)
 	}
