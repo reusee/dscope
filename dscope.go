@@ -167,23 +167,23 @@ func cachedGet(
 	}
 }
 
-func (s Scope) appendPath(t reflect.Type) Scope {
+func (scope Scope) appendPath(t reflect.Type) Scope {
 	path := &Path{
-		Prev: s.path,
+		Prev: scope.path,
 		Type: t,
 	}
-	if s.path != nil {
-		path.Len = s.path.Len + 1
+	if scope.path != nil {
+		path.Len = scope.path.Len + 1
 	}
-	s.path = path
-	return s
+	scope.path = path
+	return scope
 }
 
 var forkFns sync.Map
 
 var hashSeed = maphash.MakeSeed()
 
-func (s Scope) Fork(
+func (scope Scope) Fork(
 	initializers ...any,
 ) Scope {
 
@@ -191,7 +191,7 @@ func (s Scope) Fork(
 	h := new(maphash.Hash)
 	h.SetSeed(hashSeed)
 	buf := make([]byte, 8)
-	binary.LittleEndian.PutUint64(buf, s.signature)
+	binary.LittleEndian.PutUint64(buf, scope.signature)
 	h.Write(buf)
 	for _, initializer := range initializers {
 		var id _TypeID
@@ -207,7 +207,7 @@ func (s Scope) Fork(
 
 	value, ok := forkFns.Load(key)
 	if ok {
-		return value.(func(Scope, []any) Scope)(s, initializers)
+		return value.(func(Scope, []any) Scope)(scope, initializers)
 	}
 
 	// collect new decls
@@ -256,7 +256,7 @@ func (s Scope) Fork(
 				})
 				numDecls++
 				if id != scopeTypeID {
-					if _, ok := s.declarations.LoadOne(id); ok {
+					if _, ok := scope.declarations.LoadOne(id); ok {
 						redefinedIDs[id] = struct{}{}
 					}
 				}
@@ -275,7 +275,7 @@ func (s Scope) Fork(
 				InitName: initName,
 			})
 			if id != scopeTypeID {
-				if _, ok := s.declarations.LoadOne(id); ok {
+				if _, ok := scope.declarations.LoadOne(id); ok {
 					redefinedIDs[id] = struct{}{}
 				}
 			}
@@ -308,7 +308,7 @@ func (s Scope) Fork(
 		posesAtSorted[j] = posAtSorted(i)
 	}
 
-	declarationsTemplate := append(s.declarations[:0:0], s.declarations...)
+	declarationsTemplate := append(scope.declarations[:0:0], scope.declarations...)
 	sortedNewDeclsTemplate := append(newDeclsTemplate[:0:0], newDeclsTemplate...)
 	sort.Slice(sortedNewDeclsTemplate, func(i, j int) bool {
 		return sortedNewDeclsTemplate[i].TypeID < sortedNewDeclsTemplate[j].TypeID
@@ -349,7 +349,6 @@ func (s Scope) Fork(
 					decl,
 				)
 				if id2 != scopeTypeID {
-					// not pre-defined
 					decls2, ok := declarationsTemplate.Load(id2)
 					if !ok {
 						return we.With(
@@ -436,7 +435,7 @@ func (s Scope) Fork(
 			return
 		}
 		for _, downstream := range downstreams[id] {
-			if _, ok := s.declarations.LoadOne(downstream.TypeID); !ok {
+			if _, ok := scope.declarations.LoadOne(downstream.TypeID); !ok {
 				continue
 			}
 			if _, ok := set[downstream.TypeID]; !ok {
@@ -634,7 +633,7 @@ func (s Scope) Fork(
 
 	forkFns.Store(key, fn)
 
-	return fn(s, initializers)
+	return fn(scope, initializers)
 }
 
 func (scope Scope) Assign(objs ...any) {
@@ -801,7 +800,7 @@ func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 	return
 }
 
-func (s Scope) FillStruct(ptr any) {
+func (scope Scope) FillStruct(ptr any) {
 	v := reflect.ValueOf(ptr)
 	if v.Kind() != reflect.Ptr ||
 		v.Type().Elem().Kind() != reflect.Struct {
@@ -811,7 +810,7 @@ func (s Scope) FillStruct(ptr any) {
 	}
 	v = v.Elem()
 	for i, max := 0, v.NumField(); i < max; i++ {
-		s.Assign(v.Field(i).Addr().Interface())
+		scope.Assign(v.Field(i).Addr().Interface())
 	}
 }
 
