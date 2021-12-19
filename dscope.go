@@ -231,7 +231,7 @@ func (s Scope) Fork(
 
 	// collect new decls
 	var newDeclsTemplate []_Decl
-	shadowedIDs := make(map[_TypeID]struct{})
+	redefinedIDs := make(map[_TypeID]struct{})
 	initNumDecls := make([]int, 0, len(initializers))
 	initKinds := make([]reflect.Kind, 0, len(initializers))
 	for _, initializer := range initializers {
@@ -276,7 +276,7 @@ func (s Scope) Fork(
 				numDecls++
 				if _, ok := predefinedTypeIDs[id]; !ok {
 					if _, ok := s.declarations.LoadOne(id); ok {
-						shadowedIDs[id] = struct{}{}
+						redefinedIDs[id] = struct{}{}
 					}
 				}
 
@@ -295,7 +295,7 @@ func (s Scope) Fork(
 			})
 			if _, ok := predefinedTypeIDs[id]; !ok {
 				if _, ok := s.declarations.LoadOne(id); ok {
-					shadowedIDs[id] = struct{}{}
+					redefinedIDs[id] = struct{}{}
 				}
 			}
 
@@ -467,8 +467,8 @@ func (s Scope) Fork(
 		colors[id] = 1
 	}
 
-	shadowedIDs[dependentScopeTypeID] = struct{}{}
-	for id := range shadowedIDs {
+	redefinedIDs[dependentScopeTypeID] = struct{}{}
+	for id := range redefinedIDs {
 		resetDownstream(id)
 	}
 

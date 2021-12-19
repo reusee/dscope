@@ -1518,8 +1518,6 @@ func TestCallResultAssign(t *testing.T) {
 	}
 }
 
-type noShadowInt int
-
 func TestScopeAsDependency(t *testing.T) {
 	s := New(
 		func(
