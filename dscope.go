@@ -179,13 +179,8 @@ func (s Scope) appendPath(t reflect.Type) Scope {
 	return s
 }
 
-type DependentScope struct {
-	Scope
-}
-
 type predefinedProvider func() (
 	_ Scope,
-	_ DependentScope,
 )
 
 var predefinedTypeIDs = func() map[_TypeID]struct{} {
@@ -467,7 +462,7 @@ func (s Scope) Fork(
 		colors[id] = 1
 	}
 
-	redefinedIDs[dependentScopeTypeID] = struct{}{}
+	redefinedIDs[scopeTypeID] = struct{}{}
 	for id := range redefinedIDs {
 		resetDownstream(id)
 	}
@@ -679,8 +674,7 @@ func (scope Scope) Assign(objs ...any) {
 }
 
 var (
-	scopeTypeID          = getTypeID(reflect.TypeOf((*Scope)(nil)).Elem())
-	dependentScopeTypeID = getTypeID(reflect.TypeOf((*DependentScope)(nil)).Elem())
+	scopeTypeID = getTypeID(reflect.TypeOf((*Scope)(nil)).Elem())
 )
 
 func (scope Scope) get(id _TypeID, t reflect.Type) (
@@ -692,10 +686,6 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 	switch id {
 	case scopeTypeID:
 		return reflect.ValueOf(scope), nil
-	case dependentScopeTypeID:
-		return reflect.ValueOf(DependentScope{
-			Scope: scope,
-		}), nil
 	}
 
 	if _, ok := scope.reducers[id]; !ok {

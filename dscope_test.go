@@ -1521,7 +1521,7 @@ func TestCallResultAssign(t *testing.T) {
 func TestScopeAsDependency(t *testing.T) {
 	s := New(
 		func(
-			scope DependentScope,
+			scope Scope,
 		) int64 {
 			var i int32
 			scope.Assign(&i)
