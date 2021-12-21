@@ -49,7 +49,6 @@ func (r Reason) Error() string {
 type Path struct {
 	Prev *Path
 	Type reflect.Type
-	Len  int
 }
 
 func (p *Path) String() string {

@@ -172,9 +172,6 @@ func (scope Scope) appendPath(t reflect.Type) Scope {
 		Prev: scope.path,
 		Type: t,
 	}
-	if scope.path != nil {
-		path.Len = scope.path.Len + 1
-	}
 	scope.path = path
 	return scope
 }
