@@ -59,18 +59,7 @@ func TestPanic(t *testing.T) {
 			if !is(err, ErrBadArgument) {
 				t.Fatal()
 			}
-			var argInfo ArgInfo
-			if !as(err, &argInfo) {
-				t.Fatal()
-			}
-			if reflect.TypeOf(argInfo.Value) != reflect.TypeOf((*func(int))(nil)).Elem() {
-				t.Fatal()
-			}
-			var reason Reason
-			if !as(err, &reason) {
-				t.Fatal()
-			}
-			if reason != "function returns nothing" {
+			if !strings.Contains(err.Error(), "returns nothing") {
 				t.Fatal()
 			}
 		}()
@@ -95,18 +84,7 @@ func TestPanic(t *testing.T) {
 			if !is(err, ErrBadArgument) {
 				t.Fatal()
 			}
-			var argInfo ArgInfo
-			if !as(err, &argInfo) {
-				t.Fatal()
-			}
-			if reflect.TypeOf(argInfo.Value) != reflect.TypeOf((*int)(nil)).Elem() {
-				t.Fatal()
-			}
-			var reason Reason
-			if !as(err, &reason) {
-				t.Fatal()
-			}
-			if reason != "not a function or a pointer" {
+			if !strings.Contains(err.Error(), "not a valid definition") {
 				t.Fatal()
 			}
 		}()
@@ -126,18 +104,7 @@ func TestPanic(t *testing.T) {
 			if !is(err, ErrBadArgument) {
 				t.Fatal()
 			}
-			var argInfo ArgInfo
-			if !as(err, &argInfo) {
-				t.Fatal()
-			}
-			if reflect.TypeOf(argInfo.Value) != reflect.TypeOf((*int)(nil)).Elem() {
-				t.Fatal()
-			}
-			var reason Reason
-			if !as(err, &reason) {
-				t.Fatal()
-			}
-			if reason != "must be a pointer" {
+			if !strings.Contains(err.Error(), "not a pointer") {
 				t.Fatal()
 			}
 		}()
@@ -157,14 +124,7 @@ func TestPanic(t *testing.T) {
 			if !is(err, ErrDependencyNotFound) {
 				t.Fatal()
 			}
-			var typeInfo TypeInfo
-			if !as(err, &typeInfo) {
-				t.Fatal()
-			}
-			if typeInfo.Type != reflect.TypeOf((*string)(nil)).Elem() {
-				t.Fatal()
-			}
-			if typeInfo.Error() != "type: string" {
+			if !strings.Contains(err.Error(), "not found") {
 				t.Fatal()
 			}
 		}()
@@ -185,14 +145,7 @@ func TestPanic(t *testing.T) {
 			if !is(err, ErrDependencyNotFound) {
 				t.Fatal()
 			}
-			var typeInfo TypeInfo
-			if !as(err, &typeInfo) {
-				t.Fatal()
-			}
-			if typeInfo.Type != reflect.TypeOf((*acc)(nil)).Elem() {
-				t.Fatal()
-			}
-			if typeInfo.Error() != "type: dscope.acc" {
+			if !strings.Contains(err.Error(), "not found") {
 				t.Fatal()
 			}
 		}()
@@ -213,13 +166,6 @@ func TestPanic(t *testing.T) {
 			if !is(err, ErrDependencyNotFound) {
 				t.Fatal()
 			}
-			var typeInfo TypeInfo
-			if !as(err, &typeInfo) {
-				t.Fatal()
-			}
-			if typeInfo.Type != reflect.TypeOf((*string)(nil)).Elem() {
-				t.Fatal()
-			}
 		}()
 		scope.Call(func(string) {})
 	}()
@@ -235,21 +181,6 @@ func TestPanic(t *testing.T) {
 				t.Fatal()
 			}
 			if !is(err, ErrDependencyNotFound) {
-				t.Fatal()
-			}
-			var typeInfo TypeInfo
-			if !as(err, &typeInfo) {
-				t.Fatal()
-			}
-			if typeInfo.Type != reflect.TypeOf((*string)(nil)).Elem() {
-				t.Fatal()
-			}
-			var initInfo InitInfo
-			if !as(err, &initInfo) {
-				t.Fatal()
-			}
-			if reflect.TypeOf(initInfo.Value) !=
-				reflect.TypeOf((*func(string) int32)(nil)).Elem() {
 				t.Fatal()
 			}
 		}()
@@ -296,18 +227,7 @@ func TestPanic(t *testing.T) {
 			if !is(err, ErrBadDeclaration) {
 				t.Fatal()
 			}
-			var typeInfo TypeInfo
-			if !as(err, &typeInfo) {
-				t.Fatal()
-			}
-			if typeInfo.Type != reflect.TypeOf((*int)(nil)).Elem() {
-				t.Fatal()
-			}
-			var reason Reason
-			if !as(err, &reason) {
-				t.Fatal()
-			}
-			if reason != "non-reducer type has multiple declarations" {
+			if !strings.Contains(err.Error(), "has multiple definitions") {
 				t.Fatal()
 			}
 		}()
@@ -695,25 +615,8 @@ func TestCallReturn(t *testing.T) {
 			if !is(err, ErrBadArgument) {
 				t.Fatal()
 			}
-			var argInfo ArgInfo
-			if !as(err, &argInfo) {
+			if !strings.Contains(err.Error(), "is not a pointer") {
 				t.Fatal()
-			}
-			if reflect.TypeOf(argInfo.Value) != reflect.TypeOf((*int)(nil)).Elem() {
-				t.Fatal()
-			}
-			if s := argInfo.Error(); s != "arg: int" {
-				t.Fatalf("got %s", s)
-			}
-			var reason Reason
-			if !as(err, &reason) {
-				t.Fatal()
-			}
-			if reason != "must be a pointer" {
-				t.Fatal()
-			}
-			if s := reason.Error(); s != "reason: must be a pointer" {
-				t.Fatalf("got %s", s)
 			}
 		}()
 		scope.Call(func() (int, error) {
@@ -734,25 +637,9 @@ func TestCallReturn(t *testing.T) {
 			if !is(err, ErrBadArgument) {
 				t.Fatal()
 			}
-			var argInfo ArgInfo
-			if !as(err, &argInfo) {
+			if !strings.Contains(err.Error(), "is not a pointer to string") {
+				pt("%s\n", err)
 				t.Fatal()
-			}
-			if reflect.TypeOf(argInfo.Value) != reflect.TypeOf((**string)(nil)).Elem() {
-				t.Fatal()
-			}
-			if s := argInfo.Error(); s != "arg: *string" {
-				t.Fatalf("got %s", s)
-			}
-			var reason Reason
-			if !as(err, &reason) {
-				t.Fatal()
-			}
-			if reason != "must be pointer to string" {
-				t.Fatal()
-			}
-			if s := reason.Error(); s != "reason: must be pointer to string" {
-				t.Fatalf("got %s", s)
 			}
 		}()
 		var s string

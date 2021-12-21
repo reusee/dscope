@@ -1,7 +1,6 @@
 package dscope
 
 import (
-	"fmt"
 	"reflect"
 
 	"github.com/reusee/e4"
@@ -20,22 +19,16 @@ func (c CallResult) Extract(targets ...any) {
 		targetValue := reflect.ValueOf(target)
 		if targetValue.Kind() != reflect.Ptr {
 			panic(we.With(
-				e4.With(ArgInfo{
-					Value: target,
-				}),
-				e4.With(Reason("must be a pointer")),
+				e4.Info("%T is not a pointer", target),
 			)(
 				ErrBadArgument,
 			))
 		}
 		if targetValue.Type().Elem() != c.Values[i].Type() {
 			panic(we.With(
-				e4.With(ArgInfo{
-					Value: target,
-				}),
-				e4.With(Reason(
-					fmt.Sprintf("must be pointer to %v", targetValue.Type().Elem().String()),
-				)),
+				e4.Info("%T is not a pointer to %v",
+					target,
+					targetValue.Type().Elem()),
 			)(
 				ErrBadArgument,
 			))
@@ -52,10 +45,7 @@ func (c CallResult) Assign(targets ...any) {
 		targetValue := reflect.ValueOf(target)
 		if targetValue.Kind() != reflect.Ptr {
 			panic(we.With(
-				e4.With(ArgInfo{
-					Value: target,
-				}),
-				e4.With(Reason("must be a pointer")),
+				e4.Info("%v is not a pointer", target),
 			)(
 				ErrBadArgument,
 			))

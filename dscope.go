@@ -74,11 +74,8 @@ func cachedGet(
 					continue
 				}
 				return nil, we.With(
-					e4.With(InitInfo{
-						Value: init,
-						Name:  name,
-					}),
-					e4.With(scope.path),
+					e4.Info("found dependency loop when calling %T / %s", init, name),
+					e4.Info("path: %+v", scope.path),
 				)(
 					ErrDependencyLoop,
 				)
@@ -110,20 +107,7 @@ func cachedGet(
 							return
 						}
 						if decl.ValueIndex >= len(values) { // NOCOVER
-							err = we.With(
-								e4.With(TypeInfo{
-									Type: typ,
-								}),
-								e4.With(Reason(fmt.Sprintf(
-									"get %v from %T at %d",
-									typ,
-									decl.Init,
-									decl.ValueIndex,
-								))),
-							)(
-								ErrBadDeclaration,
-							)
-							return
+							panic("impossible")
 						}
 						vs[i] = values[decl.ValueIndex]
 						names[i] = decl.InitName
@@ -230,10 +214,7 @@ func (scope Scope) Fork(
 			numOut := initType.NumOut()
 			if numOut == 0 {
 				throw(we.With(
-					e4.With(ArgInfo{
-						Value: initializer,
-					}),
-					e4.With(Reason("function returns nothing")),
+					e4.Info("%T returns nothing", initializer),
 				)(
 					ErrBadArgument,
 				))
@@ -281,10 +262,7 @@ func (scope Scope) Fork(
 
 		default:
 			throw(we.With(
-				e4.With(ArgInfo{
-					Value: initializer,
-				}),
-				e4.With(Reason("not a function or a pointer")),
+				e4.Info("%T is not a valid definition", initializer),
 			)(
 				ErrBadArgument,
 			))
@@ -320,11 +298,8 @@ func (scope Scope) Fork(
 		color := colors[id]
 		if color == 1 {
 			return we.With(
-				e4.With(InitInfo{
-					Value: decls[0].Init,
-					Name:  decls[0].InitName,
-				}),
-				e4.Info("path %+v", path),
+				e4.Info("found dependency loop in definition %T / %v", decls[0].Init, decls[0].InitName),
+				e4.Info("path: %+v", path),
 			)(
 				ErrDependencyLoop,
 			)
@@ -349,13 +324,8 @@ func (scope Scope) Fork(
 					decls2, ok := declarationsTemplate.Load(id2)
 					if !ok {
 						return we.With(
-							e4.With(TypeInfo{
-								Type: requiredType,
-							}),
-							e4.With(InitInfo{
-								Value: decl.Init,
-								Name:  decl.InitName,
-							}),
+							e4.Info("dependency not found in definition %T / %s", decl.Init, decl.InitName),
+							e4.Info("path: %+v", path),
 						)(
 							ErrDependencyNotFound,
 						)
@@ -401,10 +371,7 @@ func (scope Scope) Fork(
 			reducers[decls[0].TypeID] = decls[0].Type
 			if !decls[0].Type.Implements(reducerType) {
 				return we.With(
-					e4.With(TypeInfo{
-						Type: decls[0].Type,
-					}),
-					e4.With(Reason("non-reducer type has multiple declarations")),
+					e4.Info("%v has multiple definitions", decls[0].Type),
 				)(
 					ErrBadDeclaration,
 				)
@@ -638,10 +605,7 @@ func (scope Scope) Assign(objs ...any) {
 		v := reflect.ValueOf(o)
 		if v.Kind() != reflect.Ptr {
 			throw(we.With(
-				e4.With(ArgInfo{
-					Value: o,
-				}),
-				e4.With(Reason("must be a pointer")),
+				e4.Info("%T is not a pointer", o),
 			)(
 				ErrBadArgument,
 			))
@@ -675,9 +639,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 		decl, ok := scope.declarations.LoadOne(id)
 		if !ok {
 			return ret, we.With(
-				e4.With(TypeInfo{
-					Type: t,
-				}),
+				e4.Info("no definition for %v", t),
 			)(
 				ErrDependencyNotFound,
 			)
@@ -688,20 +650,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 			return ret, err
 		}
 		if decl.ValueIndex >= len(values) { // NOCOVER
-			err = we.With(
-				e4.With(TypeInfo{
-					Type: t,
-				}),
-				e4.With(Reason(fmt.Sprintf(
-					"get %v from %T at %d",
-					t,
-					decl.Init,
-					decl.ValueIndex,
-				))),
-			)(
-				ErrBadDeclaration,
-			)
-			return
+			panic("impossible")
 		}
 		return values[decl.ValueIndex], nil
 
