@@ -13,7 +13,7 @@ var ErrDependencyNotFound = errors.New("dependency not found")
 
 var ErrBadArgument = errors.New("bad argument")
 
-var ErrBadDeclaration = errors.New("bad declaration")
+var ErrBadDefinition = errors.New("bad definition")
 
 type Path struct {
 	Prev *Path

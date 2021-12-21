@@ -1,14 +1,14 @@
 package dscope
 
-type _StackedMap [][]_Decl
+type _StackedMap [][]_Value
 
-// Load loads decls with specified id
+// Load loads values with specified id
 // MUST NOT modify returned slice
-func (u _StackedMap) Load(id _TypeID) ([]_Decl, bool) {
+func (u _StackedMap) Load(id _TypeID) ([]_Value, bool) {
 	var left, right, idx, l uint
 	var start, end int
 	var id2 _TypeID
-	var m []_Decl
+	var m []_Value
 	for i := len(u) - 1; i >= 0; i-- {
 		m = u[i]
 		// do binary search
@@ -19,7 +19,7 @@ func (u _StackedMap) Load(id _TypeID) ([]_Decl, bool) {
 		for left < right {
 			idx = (left + right) >> 1
 			id2 = m[idx].TypeID
-			// need to find the first decl
+			// need to find the first value
 			if id2 >= id {
 				right = idx
 			} else {
@@ -52,10 +52,10 @@ func (u _StackedMap) Load(id _TypeID) ([]_Decl, bool) {
 	return nil, false
 }
 
-func (u _StackedMap) LoadOne(id _TypeID) (ret _Decl, ok bool) {
+func (u _StackedMap) LoadOne(id _TypeID) (ret _Value, ok bool) {
 	var left, right, idx uint
 	var id2 _TypeID
-	var m []_Decl
+	var m []_Value
 	for i := len(u) - 1; i >= 0; i-- {
 		m = u[i]
 		left = 0
@@ -75,11 +75,11 @@ func (u _StackedMap) LoadOne(id _TypeID) (ret _Decl, ok bool) {
 	return
 }
 
-// Range iterates all decls
-// MUST NOT modify []_Decl argument in callback function
-func (u _StackedMap) Range(fn func([]_Decl) error) error {
+// Range iterates all values
+// MUST NOT modify []_Value argument in callback function
+func (u _StackedMap) Range(fn func([]_Value) error) error {
 	keys := make(map[_TypeID]struct{})
-	var m []_Decl
+	var m []_Value
 	var start, end int
 	for i := len(u) - 1; i >= 0; i-- {
 		m = u[i]
@@ -107,8 +107,8 @@ func (u _StackedMap) Range(fn func([]_Decl) error) error {
 
 func (u _StackedMap) Len() int {
 	ret := 0
-	for _, decls := range u {
-		ret += len(decls)
+	for _, values := range u {
+		ret += len(values)
 	}
 	return ret
 }

@@ -224,7 +224,7 @@ func TestPanic(t *testing.T) {
 			if !ok {
 				t.Fatal()
 			}
-			if !is(err, ErrBadDeclaration) {
+			if !is(err, ErrBadDefinition) {
 				t.Fatal()
 			}
 			if !strings.Contains(err.Error(), "has multiple definitions") {
@@ -529,7 +529,7 @@ func TestForkLazyMulti(t *testing.T) {
 	}
 }
 
-func TestDeclareInterface(t *testing.T) {
+func TestInterfaceDef(t *testing.T) {
 	type Foo any
 	scope := New().Fork(
 		func() Foo {

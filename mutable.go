@@ -11,12 +11,12 @@ type MutableScope struct {
 
 type MutateCall func(fn any) Scope
 
-type Mutate func(decls ...any) Scope
+type Mutate func(defs ...any) Scope
 
 type GetScope func() Scope
 
 func NewMutable(
-	decls ...any,
+	defs ...any,
 ) *MutableScope {
 
 	m := new(MutableScope)
@@ -34,11 +34,11 @@ func NewMutable(
 		from := m.scope.Load().(*Scope)
 		cur := *from
 		res := cur.CallValue(reflect.ValueOf(fn))
-		var decls []any
+		var defs []any
 		for _, v := range res.Values {
-			decls = append(decls, v.Interface())
+			defs = append(defs, v.Interface())
 		}
-		mutated := cur.Fork(decls...)
+		mutated := cur.Fork(defs...)
 		mutatedPtr := &mutated
 		if !m.scope.CompareAndSwap(from, mutatedPtr) {
 			numRedo++
@@ -47,7 +47,7 @@ func NewMutable(
 		return mutated
 	})
 
-	mutate := Mutate(func(decls ...any) Scope {
+	mutate := Mutate(func(defs ...any) Scope {
 		numRedo := 0
 	mutate:
 		if numRedo > 1024 { // NOCOVER
@@ -55,7 +55,7 @@ func NewMutable(
 		}
 		from := m.scope.Load().(*Scope)
 		cur := *from
-		mutated := cur.Fork(decls...)
+		mutated := cur.Fork(defs...)
 		mutatedPtr := &mutated
 		if !m.scope.CompareAndSwap(from, mutatedPtr) {
 			numRedo++
@@ -64,8 +64,8 @@ func NewMutable(
 		return mutated
 	})
 
-	decls = append(decls, &get, &mutateCall, &mutate)
-	s := New(decls...)
+	defs = append(defs, &get, &mutateCall, &mutate)
+	s := New(defs...)
 	m.scope.Store(&s)
 
 	return m
@@ -76,9 +76,9 @@ func (m *MutableScope) GetScope() Scope {
 }
 
 func (m *MutableScope) Fork(
-	initializers ...any,
+	defs ...any,
 ) Scope {
-	return m.GetScope().Fork(initializers...)
+	return m.GetScope().Fork(defs...)
 }
 
 func (m *MutableScope) Assign(objs ...any) {

@@ -4,26 +4,24 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/maphash"
-	"os"
 	"reflect"
 	"runtime"
 	"sort"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/reusee/e4"
 	"github.com/reusee/pr"
 )
 
-type _Decl struct {
-	Init       any
-	InitName   string
-	InitMulti  bool
+type _Value struct {
+	Def        any
+	DefName    string
+	DefIsMulti bool
 	Type       reflect.Type
 	Get        _Get
 	Kind       reflect.Kind
-	ValueIndex int
+	Position   int
 	TypeID     _TypeID
 }
 
@@ -35,33 +33,31 @@ type _Get struct {
 type _TypeID int
 
 type Scope struct {
-	reducers     map[_TypeID]reflect.Type
-	signature    uint64
-	forkFuncKey  uint64
-	declarations _StackedMap
-	path         *Path
+	reducers    map[_TypeID]reflect.Type
+	signature   uint64
+	forkFuncKey uint64
+	values      _StackedMap
+	path        *Path
 }
 
 var Universe = Scope{}
 
 func New(
-	inits ...any,
+	defs ...any,
 ) Scope {
-	return Universe.Fork(inits...)
+	return Universe.Fork(defs...)
 }
 
 var nextGetID int64 = 42
 
-var logInit = os.Getenv("DSCOPE_LOG_INIT") != ""
-
 func cachedGet(
-	init any,
+	def any,
 	name string,
 	isReducer bool,
 ) _Get {
 
 	var once sync.Once
-	var values []reflect.Value
+	var defValues []reflect.Value
 	id := atomic.AddInt64(&nextGetID, 1)
 
 	return _Get{
@@ -74,7 +70,7 @@ func cachedGet(
 					continue
 				}
 				return nil, we.With(
-					e4.Info("found dependency loop when calling %T / %s", init, name),
+					e4.Info("found dependency loop when calling %T / %s", def, name),
 					e4.Info("path: %+v", scope.path),
 				)(
 					ErrDependencyLoop,
@@ -82,71 +78,65 @@ func cachedGet(
 			}
 
 			once.Do(func() {
-				if logInit { // NOCOVER
-					t0 := time.Now()
-					defer func() {
-						debugLog("[DSCOPE] run %s in %v\n", getName(name, init, isReducer), time.Since(t0))
-					}()
-				}
 
 				// reducer
 				if isReducer {
-					typ := init.(reflect.Type)
+					typ := def.(reflect.Type)
 					typeID := getTypeID(typ)
-					decls, ok := scope.declarations.Load(typeID)
+					values, ok := scope.values.Load(typeID)
 					if !ok { // NOCOVER
 						panic("impossible")
 					}
 					pathScope := scope.appendPath(typ)
-					vs := make([]reflect.Value, len(decls))
-					names := make(InitNames, len(decls))
-					for i, decl := range decls {
+					vs := make([]reflect.Value, len(values))
+					names := make(DefNames, len(values))
+					for i, value := range values {
 						var values []reflect.Value
-						values, err = decl.Get.Func(pathScope)
+						values, err = value.Get.Func(pathScope)
 						if err != nil { // NOCOVER
 							return
 						}
-						if decl.ValueIndex >= len(values) { // NOCOVER
+						if value.Position >= len(values) { // NOCOVER
 							panic("impossible")
 						}
-						vs[i] = values[decl.ValueIndex]
-						names[i] = decl.InitName
+						vs[i] = values[value.Position]
+						names[i] = value.DefName
 					}
 					scope = scope.Fork(&names)
-					values = []reflect.Value{
+					defValues = []reflect.Value{
 						vs[0].Interface().(Reducer).Reduce(scope, vs),
 					}
 					return
 				}
 
 				// non-reducer
-				initValue := reflect.ValueOf(init)
-				initKind := initValue.Kind()
+				defValue := reflect.ValueOf(def)
+				defKind := defValue.Kind()
 
-				if initKind == reflect.Func {
+				if defKind == reflect.Func {
 					var result CallResult
 					func() {
 						defer he(&err, e4.WrapFunc(func(err error) error {
 							// use a closure to avoid calling getName eagerly
-							return e4.NewInfo("dscope: call %s", getName(name, init, isReducer))(err)
+							return e4.NewInfo("dscope: call %s", getName(name, def, isReducer))(err)
 						}))
 						defer func() {
 							if p := recover(); p != nil {
-								pt("func: %s\n", getName(name, init, isReducer))
+								pt("func: %s\n", getName(name, def, isReducer))
 								panic(p)
 							}
 						}()
-						result = scope.Call(init)
+						result = scope.Call(def)
 					}()
-					values = result.Values
+					defValues = result.Values
 
-				} else if initKind == reflect.Ptr {
-					values = []reflect.Value{initValue.Elem()}
+				} else if defKind == reflect.Ptr {
+					defValues = []reflect.Value{defValue.Elem()}
 				}
 
 			})
 
-			return values, err
+			return defValues, err
 		},
 	}
 }
@@ -165,7 +155,7 @@ var forkFns sync.Map
 var hashSeed = maphash.MakeSeed()
 
 func (scope Scope) Fork(
-	initializers ...any,
+	defs ...any,
 ) Scope {
 
 	// get transition signature
@@ -174,12 +164,12 @@ func (scope Scope) Fork(
 	buf := make([]byte, 8)
 	binary.LittleEndian.PutUint64(buf, scope.signature)
 	h.Write(buf)
-	for _, initializer := range initializers {
+	for _, def := range defs {
 		var id _TypeID
-		if named, ok := initializer.(NamedInit); ok {
-			id = getTypeID(reflect.TypeOf(named.Value))
+		if named, ok := def.(NamedDef); ok {
+			id = getTypeID(reflect.TypeOf(named.Def))
 		} else {
-			id = getTypeID(reflect.TypeOf(initializer))
+			id = getTypeID(reflect.TypeOf(def))
 		}
 		binary.LittleEndian.PutUint64(buf, uint64(id))
 		h.Write(buf)
@@ -188,81 +178,81 @@ func (scope Scope) Fork(
 
 	value, ok := forkFns.Load(key)
 	if ok {
-		return value.(func(Scope, []any) Scope)(scope, initializers)
+		return value.(func(Scope, []any) Scope)(scope, defs)
 	}
 
-	// collect new decls
-	var newDeclsTemplate []_Decl
+	// collect new values
+	var newValuesTemplate []_Value
 	redefinedIDs := make(map[_TypeID]struct{})
-	initNumDecls := make([]int, 0, len(initializers))
-	initKinds := make([]reflect.Kind, 0, len(initializers))
-	for _, initializer := range initializers {
-		var initValue any
-		var initName string
-		if named, ok := initializer.(NamedInit); ok {
-			initValue = named.Value
-			initName = named.Name
+	defNumValues := make([]int, 0, len(defs))
+	defKinds := make([]reflect.Kind, 0, len(defs))
+	for _, def := range defs {
+		var defValue any
+		var defName string
+		if named, ok := def.(NamedDef); ok {
+			defValue = named.Def
+			defName = named.Name
 		} else {
-			initValue = initializer
+			defValue = def
 		}
-		initType := reflect.TypeOf(initValue)
-		initKinds = append(initKinds, initType.Kind())
+		defType := reflect.TypeOf(defValue)
+		defKinds = append(defKinds, defType.Kind())
 
-		switch initType.Kind() {
+		switch defType.Kind() {
 
 		case reflect.Func:
-			numOut := initType.NumOut()
+			numOut := defType.NumOut()
 			if numOut == 0 {
 				throw(we.With(
-					e4.Info("%T returns nothing", initializer),
+					e4.Info("%T returns nothing", def),
 				)(
 					ErrBadArgument,
 				))
 			}
-			var numDecls int
+			var numValues int
 			for i := 0; i < numOut; i++ {
-				t := initType.Out(i)
+				t := defType.Out(i)
 				id := getTypeID(t)
 
-				newDeclsTemplate = append(newDeclsTemplate, _Decl{
-					Kind:      reflect.Func,
-					Type:      t,
-					TypeID:    id,
-					Init:      initValue,
-					InitName:  initName,
-					InitMulti: numOut > 1,
+				newValuesTemplate = append(newValuesTemplate, _Value{
+					Kind:       reflect.Func,
+					Type:       t,
+					TypeID:     id,
+					Def:        defValue,
+					DefName:    defName,
+					DefIsMulti: numOut > 1,
 				})
-				numDecls++
+				numValues++
 				if id != scopeTypeID {
-					if _, ok := scope.declarations.LoadOne(id); ok {
+					if _, ok := scope.values.LoadOne(id); ok {
 						redefinedIDs[id] = struct{}{}
 					}
 				}
 
 			}
-			initNumDecls = append(initNumDecls, numDecls)
+			defNumValues = append(defNumValues, numValues)
 
 		case reflect.Ptr:
-			t := initType.Elem()
+			t := defType.Elem()
 			id := getTypeID(t)
-			newDeclsTemplate = append(newDeclsTemplate, _Decl{
-				Kind:     reflect.Ptr,
-				Type:     t,
-				TypeID:   id,
-				Init:     initValue,
-				InitName: initName,
+			newValuesTemplate = append(newValuesTemplate, _Value{
+				Kind:    reflect.Ptr,
+				Type:    t,
+				TypeID:  id,
+				Def:     defValue,
+				DefName: defName,
 			})
 			if id != scopeTypeID {
-				if _, ok := scope.declarations.LoadOne(id); ok {
+				if _, ok := scope.values.LoadOne(id); ok {
 					redefinedIDs[id] = struct{}{}
 				}
 			}
 
-			initNumDecls = append(initNumDecls, 1)
+			defNumValues = append(defNumValues, 1)
 
 		default:
 			throw(we.With(
-				e4.Info("%T is not a valid definition", initializer),
+				e4.Info("%T is not a valid definition", def),
 			)(
 				ErrBadArgument,
 			))
@@ -270,12 +260,12 @@ func (scope Scope) Fork(
 		}
 	}
 	type posAtTemplate int
-	posesAtTemplate := make([]posAtTemplate, 0, len(newDeclsTemplate))
-	for i := range newDeclsTemplate {
+	posesAtTemplate := make([]posAtTemplate, 0, len(newValuesTemplate))
+	for i := range newValuesTemplate {
 		posesAtTemplate = append(posesAtTemplate, posAtTemplate(i))
 	}
 	sort.Slice(posesAtTemplate, func(i, j int) bool {
-		return newDeclsTemplate[posesAtTemplate[i]].TypeID < newDeclsTemplate[posesAtTemplate[j]].TypeID
+		return newValuesTemplate[posesAtTemplate[i]].TypeID < newValuesTemplate[posesAtTemplate[j]].TypeID
 	})
 	type posAtSorted int
 	posesAtSorted := make([]posAtSorted, len(posesAtTemplate))
@@ -283,22 +273,22 @@ func (scope Scope) Fork(
 		posesAtSorted[j] = posAtSorted(i)
 	}
 
-	declarationsTemplate := append(scope.declarations[:0:0], scope.declarations...)
-	sortedNewDeclsTemplate := append(newDeclsTemplate[:0:0], newDeclsTemplate...)
-	sort.Slice(sortedNewDeclsTemplate, func(i, j int) bool {
-		return sortedNewDeclsTemplate[i].TypeID < sortedNewDeclsTemplate[j].TypeID
+	valuesTemplate := append(scope.values[:0:0], scope.values...)
+	sortedNewValuesTemplate := append(newValuesTemplate[:0:0], newValuesTemplate...)
+	sort.Slice(sortedNewValuesTemplate, func(i, j int) bool {
+		return sortedNewValuesTemplate[i].TypeID < sortedNewValuesTemplate[j].TypeID
 	})
-	declarationsTemplate = append(declarationsTemplate, sortedNewDeclsTemplate)
+	valuesTemplate = append(valuesTemplate, sortedNewValuesTemplate)
 
 	colors := make(map[_TypeID]int)
-	downstreams := make(map[_TypeID][]_Decl)
-	var traverse func(decls []_Decl, path []reflect.Type) error
-	traverse = func(decls []_Decl, path []reflect.Type) error {
-		id := decls[0].TypeID
+	downstreams := make(map[_TypeID][]_Value)
+	var traverse func(values []_Value, path []reflect.Type) error
+	traverse = func(values []_Value, path []reflect.Type) error {
+		id := values[0].TypeID
 		color := colors[id]
 		if color == 1 {
 			return we.With(
-				e4.Info("found dependency loop in definition %T / %v", decls[0].Init, decls[0].InitName),
+				e4.Info("found dependency loop in definition %T / %v", values[0].Def, values[0].DefName),
 				e4.Info("path: %+v", path),
 			)(
 				ErrDependencyLoop,
@@ -307,30 +297,30 @@ func (scope Scope) Fork(
 			return nil
 		}
 		colors[id] = 1
-		for _, decl := range decls {
-			if decl.Kind != reflect.Func {
+		for _, value := range values {
+			if value.Kind != reflect.Func {
 				continue
 			}
-			initType := reflect.TypeOf(decl.Init)
-			numIn := initType.NumIn()
+			defType := reflect.TypeOf(value.Def)
+			numIn := defType.NumIn()
 			for i := 0; i < numIn; i++ {
-				requiredType := initType.In(i)
+				requiredType := defType.In(i)
 				id2 := getTypeID(requiredType)
 				downstreams[id2] = append(
 					downstreams[id2],
-					decl,
+					value,
 				)
 				if id2 != scopeTypeID {
-					decls2, ok := declarationsTemplate.Load(id2)
+					value2, ok := valuesTemplate.Load(id2)
 					if !ok {
 						return we.With(
-							e4.Info("dependency not found in definition %T / %s", decl.Init, decl.InitName),
+							e4.Info("dependency not found in definition %T / %s", value.Def, value.DefName),
 							e4.Info("path: %+v", path),
 						)(
 							ErrDependencyNotFound,
 						)
 					}
-					if err := traverse(decls2, append(path, decl.Type)); err != nil {
+					if err := traverse(value2, append(path, value.Type)); err != nil {
 						return err
 					}
 				}
@@ -340,40 +330,40 @@ func (scope Scope) Fork(
 		return nil
 	}
 
-	initTypeIDs := make([]_TypeID, 0, declarationsTemplate.Len())
+	defTypeIDs := make([]_TypeID, 0, valuesTemplate.Len())
 	reducers := make(map[_TypeID]reflect.Type)
-	if err := declarationsTemplate.Range(func(decls []_Decl) error {
-		if err := traverse(decls, nil); err != nil {
+	if err := valuesTemplate.Range(func(values []_Value) error {
+		if err := traverse(values, nil); err != nil {
 			return err
 		}
 
-		for _, decl := range decls {
-			t := reflect.TypeOf(decl.Init)
+		for _, value := range values {
+			t := reflect.TypeOf(value.Def)
 			id := getTypeID(t)
-			i := sort.Search(len(initTypeIDs), func(i int) bool {
-				return id >= initTypeIDs[i]
+			i := sort.Search(len(defTypeIDs), func(i int) bool {
+				return id >= defTypeIDs[i]
 			})
-			if i < len(initTypeIDs) {
-				if initTypeIDs[i] == id {
+			if i < len(defTypeIDs) {
+				if defTypeIDs[i] == id {
 					// existed
 				} else {
-					initTypeIDs = append(
-						initTypeIDs[:i],
-						append([]_TypeID{id}, initTypeIDs[i:]...)...,
+					defTypeIDs = append(
+						defTypeIDs[:i],
+						append([]_TypeID{id}, defTypeIDs[i:]...)...,
 					)
 				}
 			} else {
-				initTypeIDs = append(initTypeIDs, id)
+				defTypeIDs = append(defTypeIDs, id)
 			}
 		}
 
-		if len(decls) > 1 {
-			reducers[decls[0].TypeID] = decls[0].Type
-			if !decls[0].Type.Implements(reducerType) {
+		if len(values) > 1 {
+			reducers[values[0].TypeID] = values[0].Type
+			if !values[0].Type.Implements(reducerType) {
 				return we.With(
-					e4.Info("%v has multiple definitions", decls[0].Type),
+					e4.Info("%v has multiple definitions", values[0].Type),
 				)(
-					ErrBadDeclaration,
+					ErrBadDefinition,
 				)
 			}
 		}
@@ -383,7 +373,7 @@ func (scope Scope) Fork(
 		throw(err)
 	}
 	h.Reset()
-	for _, id := range initTypeIDs {
+	for _, id := range defTypeIDs {
 		binary.LittleEndian.PutUint64(buf, uint64(id))
 		h.Write(buf)
 	}
@@ -399,7 +389,7 @@ func (scope Scope) Fork(
 			return
 		}
 		for _, downstream := range downstreams[id] {
-			if _, ok := scope.declarations.LoadOne(downstream.TypeID); !ok {
+			if _, ok := scope.values.LoadOne(downstream.TypeID); !ok {
 				continue
 			}
 			if _, ok := set[downstream.TypeID]; !ok {
@@ -447,9 +437,9 @@ func (scope Scope) Fork(
 		})
 		resetReducerSet[id] = true
 	}
-	// new decl reducers
-	for _, decl := range newDeclsTemplate {
-		resetReducer(decl.TypeID)
+	// new reducers
+	for _, value := range newValuesTemplate {
+		resetReducer(value.TypeID)
 	}
 	// reset reducers
 	for _, id := range resetIDs {
@@ -460,7 +450,7 @@ func (scope Scope) Fork(
 	})
 
 	// fn
-	fn := func(s Scope, initializers []any) Scope {
+	fn := func(s Scope, defs []any) Scope {
 
 		// new scope
 		scope := Scope{
@@ -469,135 +459,134 @@ func (scope Scope) Fork(
 			reducers:    reducers,
 		}
 
-		// declarations
-		var declarations _StackedMap
-		if len(s.declarations) > 32 {
+		// values
+		var m _StackedMap
+		if len(s.values) > 32 {
 			// flatten
-			var decls []_Decl
-			if err := s.declarations.Range(func(ds []_Decl) error {
-				decls = append(decls, ds...)
+			var values []_Value
+			if err := s.values.Range(func(ds []_Value) error {
+				values = append(values, ds...)
 				return nil
 			}); err != nil { // NOCOVER
 				throw(err)
 			}
-			sort.Slice(decls, func(i, j int) bool {
-				return decls[i].TypeID < decls[j].TypeID
+			sort.Slice(values, func(i, j int) bool {
+				return values[i].TypeID < values[j].TypeID
 			})
-			declarations = _StackedMap{decls}
+			m = _StackedMap{values}
 		} else {
-			declarations = make(_StackedMap, len(s.declarations), len(s.declarations)+3)
-			copy(declarations, s.declarations)
+			m = make(_StackedMap, len(s.values), len(s.values)+3)
+			copy(m, s.values)
 		}
 
-		// new decls
-		newDecls := make([]_Decl, len(newDeclsTemplate))
+		// new values
+		newValues := make([]_Value, len(newValuesTemplate))
 		n := 0
-		for idx, initializer := range initializers {
-			var initValue any
-			var initName string
-			if named, ok := initializer.(NamedInit); ok {
-				initValue = named.Value
-				initName = named.Name
+		for idx, def := range defs {
+			var defValue any
+			var defName string
+			if named, ok := def.(NamedDef); ok {
+				defValue = named.Def
+				defName = named.Name
 			} else {
-				initValue = initializer
+				defValue = def
 			}
-			switch initKinds[idx] {
+			switch defKinds[idx] {
 			case reflect.Func:
-				get := cachedGet(initValue, initName, false)
-				numDecls := initNumDecls[idx]
-				for i := 0; i < numDecls; i++ {
-					info := newDeclsTemplate[n]
-					initFunc := initValue
-					newDecls[posesAtSorted[n]] = _Decl{
+				get := cachedGet(defValue, defName, false)
+				numValues := defNumValues[idx]
+				for i := 0; i < numValues; i++ {
+					info := newValuesTemplate[n]
+					newValues[posesAtSorted[n]] = _Value{
 						Kind:       info.Kind,
-						Init:       initFunc,
-						InitName:   initName,
-						InitMulti:  info.InitMulti,
+						Def:        defValue,
+						DefName:    defName,
+						DefIsMulti: info.DefIsMulti,
 						Get:        get,
-						ValueIndex: i,
+						Position:   i,
 						Type:       info.Type,
 						TypeID:     info.TypeID,
 					}
 					n++
 				}
 			case reflect.Ptr:
-				info := newDeclsTemplate[n]
-				get := cachedGet(initValue, initName, false)
-				newDecls[posesAtSorted[n]] = _Decl{
-					Kind:       info.Kind,
-					Init:       initValue,
-					InitName:   initName,
-					Get:        get,
-					ValueIndex: 0,
-					Type:       info.Type,
-					TypeID:     info.TypeID,
+				info := newValuesTemplate[n]
+				get := cachedGet(defValue, defName, false)
+				newValues[posesAtSorted[n]] = _Value{
+					Kind:     info.Kind,
+					Def:      defValue,
+					DefName:  defName,
+					Get:      get,
+					Position: 0,
+					Type:     info.Type,
+					TypeID:   info.TypeID,
 				}
 				n++
 			}
 		}
-		declarations = append(declarations, newDecls)
+		m = append(m, newValues)
 
-		// reset decls
+		// reset values
 		if len(resetIDs) > 0 {
-			resetDecls := make([]_Decl, 0, len(resetIDs))
+			resetValues := make([]_Value, 0, len(resetIDs))
 			for _, id := range resetIDs {
-				decls, ok := declarations.Load(id)
+				vs, ok := m.Load(id)
 				if !ok { // NOCOVER
 					panic("impossible")
 				}
-				for _, decl := range decls {
-					if decl.InitMulti {
-						// multiple types using the same init function
+				for _, value := range vs {
+					if value.DefIsMulti {
+						// multiple types using the same definiton
 						found := false
-						for _, d := range resetDecls {
-							if d.Get.ID == decl.Get.ID {
+						for _, d := range resetValues {
+							if d.Get.ID == value.Get.ID {
 								found = true
-								decl.Get = d.Get
+								value.Get = d.Get
 							}
 						}
 						if !found {
-							decl.Get = cachedGet(decl.Init, decl.InitName,
+							value.Get = cachedGet(value.Def, value.DefName,
 								// no reducer type in resetIDs
 								false)
 						}
 					} else {
-						decl.Get = cachedGet(decl.Init, decl.InitName,
+						value.Get = cachedGet(value.Def, value.DefName,
 							// no reducer type in resetIDs
 							false)
 					}
-					resetDecls = append(resetDecls, decl)
+					resetValues = append(resetValues, value)
 				}
 			}
-			declarations = append(declarations, resetDecls)
+			m = append(m, resetValues)
 		}
 
 		// reducers
 		if len(resetReducers) > 0 {
-			reducerDecls := make([]_Decl, 0, len(resetReducers))
+			reducerValues := make([]_Value, 0, len(resetReducers))
 			for _, info := range resetReducers {
 				info := info
-				reducerDecls = append(reducerDecls, _Decl{
-					Init: func() { // NOCOVER
+				reducerValues = append(reducerValues, _Value{
+					Def: func() { // NOCOVER
 						panic("should not be called")
 					},
-					Type:       info.MarkType,
-					Get:        cachedGet(info.Type, "", true),
-					Kind:       reflect.Func,
-					ValueIndex: 0,
-					TypeID:     info.MarkTypeID,
+					Type:     info.MarkType,
+					Get:      cachedGet(info.Type, "", true),
+					Kind:     reflect.Func,
+					Position: 0,
+					TypeID:   info.MarkTypeID,
 				})
 			}
-			declarations = append(declarations, reducerDecls)
+			m = append(m, reducerValues)
 		}
 
-		scope.declarations = declarations
+		scope.values = m
 
 		return scope
 	}
 
 	forkFns.Store(key, fn)
 
-	return fn(scope, initializers)
+	return fn(scope, defs)
 }
 
 func (scope Scope) Assign(objs ...any) {
@@ -636,7 +625,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 
 	if _, ok := scope.reducers[id]; !ok {
 		// non-reducer
-		decl, ok := scope.declarations.LoadOne(id)
+		value, ok := scope.values.LoadOne(id)
 		if !ok {
 			return ret, we.With(
 				e4.Info("no definition for %v", t),
@@ -645,14 +634,14 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 			)
 		}
 		var values []reflect.Value
-		values, err = decl.Get.Func(scope.appendPath(t))
+		values, err = value.Get.Func(scope.appendPath(t))
 		if err != nil { // NOCOVER
 			return ret, err
 		}
-		if decl.ValueIndex >= len(values) { // NOCOVER
+		if value.Position >= len(values) { // NOCOVER
 			panic("impossible")
 		}
-		return values[decl.ValueIndex], nil
+		return values[value.Position], nil
 
 	} else {
 		// reducer
@@ -763,7 +752,7 @@ func (scope Scope) FillStruct(ptr any) {
 var getArgsFunc sync.Map
 
 func (scope Scope) IsZero() bool {
-	return len(scope.declarations) == 0
+	return len(scope.values) == 0
 }
 
 var (

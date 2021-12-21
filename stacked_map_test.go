@@ -4,15 +4,15 @@ import "testing"
 
 func TestStackedMap(t *testing.T) {
 	var m _StackedMap
-	m = append(m, []_Decl{
-		{TypeID: 1, ValueIndex: 1},
-		{TypeID: 2, ValueIndex: 2},
-		{TypeID: 2, ValueIndex: 3},
-		{TypeID: 2, ValueIndex: 4},
-		{TypeID: 3, ValueIndex: 5},
+	m = append(m, []_Value{
+		{TypeID: 1, Position: 1},
+		{TypeID: 2, Position: 2},
+		{TypeID: 2, Position: 3},
+		{TypeID: 2, Position: 4},
+		{TypeID: 3, Position: 5},
 	})
-	m = append(m, []_Decl{
-		{TypeID: 3, ValueIndex: 6},
+	m = append(m, []_Value{
+		{TypeID: 3, Position: 6},
 	})
 
 	vs, ok := m.Load(1)
@@ -22,7 +22,7 @@ func TestStackedMap(t *testing.T) {
 	if len(vs) != 1 {
 		t.Fatal()
 	}
-	if vs[0].ValueIndex != 1 {
+	if vs[0].Position != 1 {
 		t.Fatal()
 	}
 
@@ -33,13 +33,13 @@ func TestStackedMap(t *testing.T) {
 	if len(vs) != 3 {
 		t.Fatalf("got %d", len(vs))
 	}
-	if vs[0].ValueIndex != 2 {
+	if vs[0].Position != 2 {
 		t.Fatal()
 	}
-	if vs[1].ValueIndex != 3 {
+	if vs[1].Position != 3 {
 		t.Fatal()
 	}
-	if vs[2].ValueIndex != 4 {
+	if vs[2].Position != 4 {
 		t.Fatal()
 	}
 
@@ -49,11 +49,11 @@ func TestStackedMap(t *testing.T) {
 	}
 
 	n := 0
-	if err := m.Range(func(ds []_Decl) error {
+	if err := m.Range(func(ds []_Value) error {
 		for _, d := range ds {
 			n++
 			if d.TypeID == 3 {
-				if d.ValueIndex != 6 {
+				if d.Position != 6 {
 					t.Fatal()
 				}
 			}
