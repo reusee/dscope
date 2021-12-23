@@ -1267,7 +1267,7 @@ func (a acc) Reduce(_ Scope, vs []reflect.Value) reflect.Value {
 	return reflect.ValueOf(ret)
 }
 
-func TestReducer(t *testing.T) {
+func TestCustomReducer(t *testing.T) {
 	s := New(
 		func() acc {
 			return 1
@@ -1440,7 +1440,7 @@ func (_ acc2) Reduce(scope Scope, vs []reflect.Value) reflect.Value {
 	return Reduce(vs)
 }
 
-func TestReducerRunOnce(t *testing.T) {
+func TestCustomReducerRunOnce(t *testing.T) {
 	n := 0
 	m := 0
 	scope := New(func() acc {
@@ -1501,7 +1501,7 @@ func TestReducerRunOnce(t *testing.T) {
 
 }
 
-func TestReducerIndirectUpdate(t *testing.T) {
+func TestCustomReducerIndirectUpdate(t *testing.T) {
 	scope := New(func() acc {
 		return 1
 	}, func(a acc) acc2 {
@@ -1584,5 +1584,22 @@ func TestReducerReset(t *testing.T) {
 	s.Assign(&c)
 	if nCall != 1 {
 		t.Fatalf("got %d", nCall)
+	}
+}
+
+type testReducerInt int
+
+func (_ testReducerInt) IsReducer() {}
+
+func TestReducer(t *testing.T) {
+	s := New(
+		PtrTo(testReducerInt(1)),
+		PtrTo(testReducerInt(2)),
+		PtrTo(testReducerInt(3)),
+	)
+	var i testReducerInt
+	s.Assign(&i)
+	if i != 6 {
+		t.Fatal()
 	}
 }

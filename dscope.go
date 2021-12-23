@@ -53,7 +53,7 @@ var nextGetID int64 = 42
 func cachedGet(
 	def any,
 	name string,
-	isReducer bool,
+	_reducerType *reflect.Type,
 ) _Get {
 
 	var once sync.Once
@@ -80,7 +80,7 @@ func cachedGet(
 			once.Do(func() {
 
 				// reducer
-				if isReducer {
+				if _reducerType != nil {
 					typ := def.(reflect.Type)
 					typeID := getTypeID(typ)
 					values, ok := scope.values.Load(typeID)
@@ -103,8 +103,15 @@ func cachedGet(
 						names[i] = value.DefName
 					}
 					scope = scope.Fork(&names)
-					defValues = []reflect.Value{
-						vs[0].Interface().(CustomReducer).Reduce(scope, vs),
+					switch *_reducerType {
+					case reducerType:
+						defValues = []reflect.Value{
+							Reduce(vs),
+						}
+					case customReducerType:
+						defValues = []reflect.Value{
+							vs[0].Interface().(CustomReducer).Reduce(scope, vs),
+						}
 					}
 					return
 				}
@@ -118,11 +125,11 @@ func cachedGet(
 					func() {
 						defer he(&err, e4.WrapFunc(func(err error) error {
 							// use a closure to avoid calling getName eagerly
-							return e4.NewInfo("dscope: call %s", getName(name, def, isReducer))(err)
+							return e4.NewInfo("dscope: call %s", getName(name, def, false))(err)
 						}))
 						defer func() {
 							if p := recover(); p != nil {
-								pt("func: %s\n", getName(name, def, isReducer))
+								pt("func: %s\n", getName(name, def, false))
 								panic(p)
 							}
 						}()
@@ -358,7 +365,7 @@ func (scope Scope) Fork(
 		}
 
 		if len(values) > 1 {
-			if !isReducerType(values[0].Type) {
+			if getReducerType(values[0].Type) == nil {
 				return we.With(
 					e4.Info("%v has multiple definitions", values[0].Type),
 				)(
@@ -493,7 +500,7 @@ func (scope Scope) Fork(
 			}
 			switch defKinds[idx] {
 			case reflect.Func:
-				get := cachedGet(defValue, defName, false)
+				get := cachedGet(defValue, defName, nil)
 				numValues := defNumValues[idx]
 				for i := 0; i < numValues; i++ {
 					info := newValuesTemplate[n]
@@ -511,7 +518,7 @@ func (scope Scope) Fork(
 				}
 			case reflect.Ptr:
 				info := newValuesTemplate[n]
-				get := cachedGet(defValue, defName, false)
+				get := cachedGet(defValue, defName, nil)
 				newValues[posesAtSorted[n]] = _Value{
 					Kind:     info.Kind,
 					Def:      defValue,
@@ -547,12 +554,12 @@ func (scope Scope) Fork(
 						if !found {
 							value.Get = cachedGet(value.Def, value.DefName,
 								// no reducer type in resetIDs
-								false)
+								nil)
 						}
 					} else {
 						value.Get = cachedGet(value.Def, value.DefName,
 							// no reducer type in resetIDs
-							false)
+							nil)
 					}
 					resetValues = append(resetValues, value)
 				}
@@ -570,7 +577,7 @@ func (scope Scope) Fork(
 						panic("should not be called")
 					},
 					Type:     info.MarkType,
-					Get:      cachedGet(info.Type, "", true),
+					Get:      cachedGet(info.Type, "", getReducerType(info.Type)),
 					Kind:     reflect.Func,
 					Position: 0,
 					TypeID:   info.MarkTypeID,

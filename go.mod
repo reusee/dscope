@@ -1,6 +1,6 @@
 module github.com/reusee/dscope
 
-go 1.17
+go 1.18
 
 require (
 	github.com/reusee/e4 v0.0.0-20211111112921-a1e3637d4313

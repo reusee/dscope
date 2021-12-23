@@ -8,19 +8,56 @@ import (
 	"sync"
 )
 
+// reducer types
+
 type CustomReducer interface {
 	Reduce(Scope, []reflect.Value) reflect.Value
 }
+
+var customReducerType = reflect.TypeOf((*CustomReducer)(nil)).Elem()
+
+type Reducer interface {
+	IsReducer()
+}
+
+var reducerType = reflect.TypeOf((*Reducer)(nil)).Elem()
+
+func getReducerType(t reflect.Type) *reflect.Type {
+	if t.Implements(reducerType) {
+		return &reducerType
+	}
+	if t.Implements(customReducerType) {
+		return &customReducerType
+	}
+	return nil
+}
+
+// reducer mark type
 
 type reducerMark struct{}
 
 var reducerMarkType = reflect.TypeOf((*reducerMark)(nil)).Elem()
 
-var customReducerType = reflect.TypeOf((*CustomReducer)(nil)).Elem()
+var reducerMarkTypes sync.Map
 
-func isReducerType(t reflect.Type) bool {
-	return t.Implements(customReducerType)
+func getReducerMarkType(t reflect.Type) reflect.Type {
+	if v, ok := reducerMarkTypes.Load(t); ok {
+		return v.(reflect.Type)
+	}
+	markType := reflect.FuncOf(
+		[]reflect.Type{
+			reducerMarkType,
+		},
+		[]reflect.Type{
+			t,
+		},
+		false,
+	)
+	reducerMarkTypes.Store(t, markType)
+	return markType
 }
+
+// reduce func
 
 var ErrNoValues = errors.New("no values")
 
@@ -85,23 +122,4 @@ func Reduce(vs []reflect.Value) reflect.Value {
 	}
 
 	return ret
-}
-
-var reducerMarkTypes sync.Map
-
-func getReducerMarkType(t reflect.Type) reflect.Type {
-	if v, ok := reducerMarkTypes.Load(t); ok {
-		return v.(reflect.Type)
-	}
-	markType := reflect.FuncOf(
-		[]reflect.Type{
-			reducerMarkType,
-		},
-		[]reflect.Type{
-			t,
-		},
-		false,
-	)
-	reducerMarkTypes.Store(t, markType)
-	return markType
 }
