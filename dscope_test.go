@@ -1257,7 +1257,7 @@ func TestPcallValueArgs(t *testing.T) {
 
 type acc int
 
-var _ Reducer = acc(0)
+var _ CustomReducer = acc(0)
 
 func (a acc) Reduce(_ Scope, vs []reflect.Value) reflect.Value {
 	var ret acc
@@ -1315,7 +1315,7 @@ func TestReducer(t *testing.T) {
 
 type testFunc func(*int)
 
-var _ Reducer = testFunc(nil)
+var _ CustomReducer = testFunc(nil)
 
 func (t testFunc) Reduce(_ Scope, vs []reflect.Value) reflect.Value {
 	return Reduce(vs)
@@ -1434,7 +1434,7 @@ func TestScopeAsDependency(t *testing.T) {
 
 type acc2 int
 
-var _ Reducer = acc2(0)
+var _ CustomReducer = acc2(0)
 
 func (_ acc2) Reduce(scope Scope, vs []reflect.Value) reflect.Value {
 	return Reduce(vs)
@@ -1558,7 +1558,7 @@ type countedReducer struct {
 	N *int
 }
 
-var _ Reducer = countedReducer{}
+var _ CustomReducer = countedReducer{}
 
 func (c countedReducer) Reduce(_ Scope, vs []reflect.Value) reflect.Value {
 	*c.N++

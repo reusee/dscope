@@ -8,7 +8,7 @@ import (
 	"sync"
 )
 
-type Reducer interface {
+type CustomReducer interface {
 	Reduce(Scope, []reflect.Value) reflect.Value
 }
 
@@ -16,7 +16,11 @@ type reducerMark struct{}
 
 var reducerMarkType = reflect.TypeOf((*reducerMark)(nil)).Elem()
 
-var reducerType = reflect.TypeOf((*Reducer)(nil)).Elem()
+var customReducerType = reflect.TypeOf((*CustomReducer)(nil)).Elem()
+
+func isReducerType(t reflect.Type) bool {
+	return t.Implements(customReducerType)
+}
 
 var ErrNoValues = errors.New("no values")
 

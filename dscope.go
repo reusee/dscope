@@ -104,7 +104,7 @@ func cachedGet(
 					}
 					scope = scope.Fork(&names)
 					defValues = []reflect.Value{
-						vs[0].Interface().(Reducer).Reduce(scope, vs),
+						vs[0].Interface().(CustomReducer).Reduce(scope, vs),
 					}
 					return
 				}
@@ -358,14 +358,14 @@ func (scope Scope) Fork(
 		}
 
 		if len(values) > 1 {
-			reducers[values[0].TypeID] = values[0].Type
-			if !values[0].Type.Implements(reducerType) {
+			if !isReducerType(values[0].Type) {
 				return we.With(
 					e4.Info("%v has multiple definitions", values[0].Type),
 				)(
 					ErrBadDefinition,
 				)
 			}
+			reducers[values[0].TypeID] = values[0].Type
 		}
 
 		return nil

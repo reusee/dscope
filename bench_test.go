@@ -563,7 +563,7 @@ func BenchmarkRecursiveFork(b *testing.B) {
 
 type benchMultiFunc func()
 
-var _ Reducer = benchMultiFunc(nil)
+var _ CustomReducer = benchMultiFunc(nil)
 
 func (_ benchMultiFunc) Reduce(_ Scope, vs []reflect.Value) reflect.Value {
 	return Reduce(vs)
