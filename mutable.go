@@ -94,10 +94,14 @@ mutate:
 	res := cur.CallValue(reflect.ValueOf(fn))
 	var defs []any
 	for _, v := range res.Values {
-		if v.IsNil() {
+		def := v.Interface()
+		if def == nil {
 			continue
 		}
-		defs = append(defs, v.Interface())
+		defs = append(defs, def)
+	}
+	if len(defs) == 0 {
+		return *from
 	}
 	mutated := cur.Fork(defs...)
 	mutatedPtr := &mutated

@@ -99,11 +99,12 @@ func TestMutateLoop(t *testing.T) {
 				}
 			}()
 
-			call(func() {
+			call(func() *int {
 				call(func() *int {
 					i := 1
 					return &i
 				})
+				return nil
 			})
 		}()
 	})
