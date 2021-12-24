@@ -94,6 +94,9 @@ mutate:
 	res := cur.CallValue(reflect.ValueOf(fn))
 	var defs []any
 	for _, v := range res.Values {
+		if v.IsNil() {
+			continue
+		}
 		defs = append(defs, v.Interface())
 	}
 	mutated := cur.Fork(defs...)
