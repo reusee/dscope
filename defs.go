@@ -2,8 +2,9 @@ package dscope
 
 type Defs []any
 
-func (d *Defs) Add(defs ...any) {
+func (d *Defs) Add(defs ...any) *Defs {
 	*d = append(*d, defs...)
+	return d
 }
 
 func (d Defs) Copy() []any {
