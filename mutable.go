@@ -25,44 +25,9 @@ func NewMutable(
 		return *m.scope.Load().(*Scope)
 	})
 
-	mutateCall := MutateCall(func(fn any) Scope {
-		numRedo := 0
-	mutate:
-		if numRedo > 1024 {
-			panic("dependency loop or too much contention")
-		}
-		from := m.scope.Load().(*Scope)
-		cur := *from
-		res := cur.CallValue(reflect.ValueOf(fn))
-		var defs []any
-		for _, v := range res.Values {
-			defs = append(defs, v.Interface())
-		}
-		mutated := cur.Fork(defs...)
-		mutatedPtr := &mutated
-		if !m.scope.CompareAndSwap(from, mutatedPtr) {
-			numRedo++
-			goto mutate
-		}
-		return mutated
-	})
+	mutateCall := MutateCall(m.MutateCall)
 
-	mutate := Mutate(func(defs ...any) Scope {
-		numRedo := 0
-	mutate:
-		if numRedo > 1024 { // NOCOVER
-			panic("dependency loop or too much contention")
-		}
-		from := m.scope.Load().(*Scope)
-		cur := *from
-		mutated := cur.Fork(defs...)
-		mutatedPtr := &mutated
-		if !m.scope.CompareAndSwap(from, mutatedPtr) {
-			numRedo++
-			goto mutate
-		}
-		return mutated
-	})
+	mutate := Mutate(m.Mutate)
 
 	defs = append(defs, &get, &mutateCall, &mutate)
 	s := New(defs...)
@@ -99,4 +64,50 @@ func (m *MutableScope) CallValue(fn reflect.Value) CallResult {
 
 func (m *MutableScope) FillStruct(ptr any) {
 	m.GetScope().FillStruct(ptr)
+}
+
+func (m *MutableScope) Mutate(defs ...any) Scope {
+	numRedo := 0
+mutate:
+	if numRedo > 1024 { // NOCOVER
+		panic("dependency loop or too much contention")
+	}
+	from := m.scope.Load().(*Scope)
+	cur := *from
+	mutated := cur.Fork(defs...)
+	mutatedPtr := &mutated
+	if !m.scope.CompareAndSwap(from, mutatedPtr) {
+		numRedo++
+		goto mutate
+	}
+	return mutated
+}
+
+func (m *MutableScope) MutateCall(fn any) Scope {
+	numRedo := 0
+mutate:
+	if numRedo > 1024 {
+		panic("dependency loop or too much contention")
+	}
+	from := m.scope.Load().(*Scope)
+	cur := *from
+	res := cur.CallValue(reflect.ValueOf(fn))
+	var defs []any
+	for _, v := range res.Values {
+		def := v.Interface()
+		if def == nil {
+			continue
+		}
+		defs = append(defs, def)
+	}
+	if len(defs) == 0 {
+		return *from
+	}
+	mutated := cur.Fork(defs...)
+	mutatedPtr := &mutated
+	if !m.scope.CompareAndSwap(from, mutatedPtr) {
+		numRedo++
+		goto mutate
+	}
+	return mutated
 }

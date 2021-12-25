@@ -99,14 +99,37 @@ func TestMutateLoop(t *testing.T) {
 				}
 			}()
 
-			call(func() {
+			call(func() *int {
 				call(func() *int {
 					i := 1
 					return &i
 				})
+				return nil
 			})
 		}()
 	})
+}
+
+func TestMutateCallReturnsNil(t *testing.T) {
+	d := NewMutable(func() int {
+		return 42
+	})
+	d.MutateCall(func() any {
+		return nil
+	})
+	var i int
+	d.Assign(&i)
+	if i != 42 {
+		t.Fatal()
+	}
+	d.MutateCall(func() any {
+		i := 88
+		return &i
+	})
+	d.Assign(&i)
+	if i != 88 {
+		t.Fatal()
+	}
 }
 
 func BenchmarkMutatableGet(b *testing.B) {
