@@ -34,8 +34,8 @@ type _TypeID int
 
 type Scope struct {
 	reducers    map[_TypeID]reflect.Type
-	signature   uint64
-	forkFuncKey uint64
+	signature   [2]uint64
+	forkFuncKey [2]uint64
 	values      _StackedMap
 	path        *Path
 }
@@ -159,7 +159,10 @@ func (scope Scope) appendPath(t reflect.Type) Scope {
 
 var forkFns sync.Map
 
-var hashSeed = maphash.MakeSeed()
+var (
+	hashSeed  = maphash.MakeSeed()
+	hashSeed2 = maphash.MakeSeed()
+)
 
 func (scope Scope) Fork(
 	defs ...any,
@@ -167,10 +170,17 @@ func (scope Scope) Fork(
 
 	// get transition signature
 	h := new(maphash.Hash)
+	h2 := new(maphash.Hash)
 	h.SetSeed(hashSeed)
+	h2.SetSeed(hashSeed2)
 	buf := make([]byte, 8)
-	binary.LittleEndian.PutUint64(buf, scope.signature)
+	buf2 := make([]byte, 8)
+	binary.LittleEndian.PutUint64(buf, scope.signature[0])
+	binary.LittleEndian.PutUint64(buf, scope.signature[1])
+	binary.LittleEndian.PutUint64(buf2, scope.signature[0])
+	binary.LittleEndian.PutUint64(buf2, scope.signature[1])
 	h.Write(buf)
+	h2.Write(buf2)
 	for _, def := range defs {
 		var id _TypeID
 		if named, ok := def.(NamedDef); ok {
@@ -179,9 +189,14 @@ func (scope Scope) Fork(
 			id = getTypeID(reflect.TypeOf(def))
 		}
 		binary.LittleEndian.PutUint64(buf, uint64(id))
+		binary.LittleEndian.PutUint64(buf2, uint64(id))
 		h.Write(buf)
+		h2.Write(buf2)
 	}
-	key := h.Sum64()
+	key := [2]uint64{
+		h.Sum64(),
+		h2.Sum64(),
+	}
 
 	value, ok := forkFns.Load(key)
 	if ok {
@@ -379,12 +394,19 @@ func (scope Scope) Fork(
 	}); err != nil {
 		throw(err)
 	}
+
 	h.Reset()
+	h2.Reset()
 	for _, id := range defTypeIDs {
 		binary.LittleEndian.PutUint64(buf, uint64(id))
+		binary.LittleEndian.PutUint64(buf2, uint64(id))
 		h.Write(buf)
+		h2.Write(buf2)
 	}
-	signature := h.Sum64()
+	signature := [2]uint64{
+		h.Sum64(),
+		h2.Sum64(),
+	}
 
 	// reset info
 	set := make(map[_TypeID]struct{})
