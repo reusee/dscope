@@ -9,7 +9,6 @@ import (
 	"sort"
 	"sync"
 	"sync/atomic"
-	"unsafe"
 
 	"github.com/reusee/e4"
 	"github.com/reusee/pr"
@@ -763,8 +762,6 @@ func (scope Scope) IsZero() bool {
 	return len(scope.values) == 0
 }
 
-const sizeOfReflectType = 16
-
 var (
 	typeIDMap = func() atomic.Value {
 		var v atomic.Value
@@ -772,39 +769,28 @@ var (
 		return v
 	}()
 	typeIDLock sync.Mutex
+	nextTypeID _TypeID
 )
-
-func init() {
-	var x reflect.Type
-	if unsafe.Sizeof(x) != sizeOfReflectType {
-		panic("fixme: size of reflect.Type is not 16")
-	}
-}
 
 func getTypeID(t reflect.Type) (r _TypeID) {
 	m := typeIDMap.Load().(map[reflect.Type]_TypeID)
 	if i, ok := m[t]; ok {
 		return i
 	}
-
 	typeIDLock.Lock()
-	defer typeIDLock.Unlock()
 	m = typeIDMap.Load().(map[reflect.Type]_TypeID)
 	if i, ok := m[t]; ok { // NOCOVER
+		typeIDLock.Unlock()
 		return i
 	}
-
 	newM := make(map[reflect.Type]_TypeID, len(m)+1)
 	for k, v := range m {
 		newM[k] = v
 	}
-
-	var h maphash.Hash
-	h.SetSeed(hashSeed)
-	h.Write((*(*[sizeOfReflectType]byte)(unsafe.Pointer(&t)))[:])
-	newM[t] = _TypeID(h.Sum64())
+	nextTypeID++
+	newM[t] = _TypeID(nextTypeID)
 	typeIDMap.Store(newM)
-
+	typeIDLock.Unlock()
 	return newM[t]
 }
 
