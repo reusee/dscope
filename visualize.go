@@ -23,7 +23,7 @@ func (s Scope) Visualize(w io.Writer) error {
 				in := defType.In(i)
 				for j := 0; j < defType.NumOut(); j++ {
 					out := defType.Out(j)
-					edges[[2]reflect.Type{in, out}] = true
+					edges[[2]reflect.Type{out, in}] = true
 				}
 			}
 		}
@@ -39,7 +39,7 @@ func (s Scope) Visualize(w io.Writer) error {
 		if v, ok := nodes.Load(t); ok {
 			return v.(dot.Node)
 		}
-		node := g.Node(t.Name())
+		node := g.Node(t.String())
 		nodes.Store(t, node)
 		return node
 	}
