@@ -15,19 +15,14 @@ import (
 )
 
 type _Value struct {
-	Def        any
-	DefName    string
-	DefIsMulti bool
-	Type       reflect.Type
-	Get        _Get
-	Kind       reflect.Kind
-	Position   int
-	TypeID     _TypeID
-}
-
-type _Get struct {
-	Func func(scope Scope) ([]reflect.Value, error)
-	ID   int64
+	Def         any
+	DefName     string
+	DefIsMulti  bool
+	Type        reflect.Type
+	Initializer *_Initializer
+	Kind        reflect.Kind
+	Position    int
+	TypeID      _TypeID
 }
 
 type _TypeID int
@@ -46,106 +41,6 @@ func New(
 	defs ...any,
 ) Scope {
 	return Universe.Fork(defs...)
-}
-
-var nextGetID int64 = 42
-
-func cachedGet(
-	def any,
-	name string,
-	_reducerType *reflect.Type,
-) _Get {
-
-	var once sync.Once
-	var defValues []reflect.Value
-	id := atomic.AddInt64(&nextGetID, 1)
-
-	return _Get{
-		ID: id,
-
-		Func: func(scope Scope) (ret []reflect.Value, err error) {
-			// detect dependency loop
-			for p := scope.path.Prev; p != nil; p = p.Prev {
-				if p.Type != scope.path.Type {
-					continue
-				}
-				return nil, we.With(
-					e4.Info("found dependency loop when calling %T / %s", def, name),
-					e4.Info("path: %+v", scope.path),
-				)(
-					ErrDependencyLoop,
-				)
-			}
-
-			once.Do(func() {
-
-				// reducer
-				if _reducerType != nil {
-					typ := def.(reflect.Type)
-					typeID := getTypeID(typ)
-					values, ok := scope.values.Load(typeID)
-					if !ok { // NOCOVER
-						panic("impossible")
-					}
-					pathScope := scope.appendPath(typ)
-					vs := make([]reflect.Value, len(values))
-					names := make(DefNames, len(values))
-					for i, value := range values {
-						var values []reflect.Value
-						values, err = value.Get.Func(pathScope)
-						if err != nil { // NOCOVER
-							return
-						}
-						if value.Position >= len(values) { // NOCOVER
-							panic("impossible")
-						}
-						vs[i] = values[value.Position]
-						names[i] = value.DefName
-					}
-					scope = scope.Fork(&names)
-					switch *_reducerType {
-					case reducerType:
-						defValues = []reflect.Value{
-							Reduce(vs),
-						}
-					case customReducerType:
-						defValues = []reflect.Value{
-							vs[0].Interface().(CustomReducer).Reduce(scope, vs),
-						}
-					}
-					return
-				}
-
-				// non-reducer
-				defValue := reflect.ValueOf(def)
-				defKind := defValue.Kind()
-
-				if defKind == reflect.Func {
-					var result CallResult
-					func() {
-						defer he(&err, e4.WrapFunc(func(err error) error {
-							// use a closure to avoid calling getName eagerly
-							return e4.NewInfo("dscope: call %s", getName(name, def, false))(err)
-						}))
-						defer func() {
-							if p := recover(); p != nil {
-								pt("func: %s\n", getName(name, def, false))
-								panic(p)
-							}
-						}()
-						result = scope.Call(def)
-					}()
-					defValues = result.Values
-
-				} else if defKind == reflect.Ptr {
-					defValues = []reflect.Value{defValue.Elem()}
-				}
-
-			})
-
-			return defValues, err
-		},
-	}
 }
 
 func (scope Scope) appendPath(t reflect.Type) Scope {
@@ -522,33 +417,33 @@ func (scope Scope) Fork(
 			}
 			switch defKinds[idx] {
 			case reflect.Func:
-				get := cachedGet(defValue, defName, nil)
+				initializer := newInitializer(defValue, defName, nil)
 				numValues := defNumValues[idx]
 				for i := 0; i < numValues; i++ {
 					info := newValuesTemplate[n]
 					newValues[posesAtSorted[n]] = _Value{
-						Kind:       info.Kind,
-						Def:        defValue,
-						DefName:    defName,
-						DefIsMulti: info.DefIsMulti,
-						Get:        get,
-						Position:   i,
-						Type:       info.Type,
-						TypeID:     info.TypeID,
+						Kind:        info.Kind,
+						Def:         defValue,
+						DefName:     defName,
+						DefIsMulti:  info.DefIsMulti,
+						Initializer: initializer,
+						Position:    i,
+						Type:        info.Type,
+						TypeID:      info.TypeID,
 					}
 					n++
 				}
 			case reflect.Ptr:
 				info := newValuesTemplate[n]
-				get := cachedGet(defValue, defName, nil)
+				initializer := newInitializer(defValue, defName, nil)
 				newValues[posesAtSorted[n]] = _Value{
-					Kind:     info.Kind,
-					Def:      defValue,
-					DefName:  defName,
-					Get:      get,
-					Position: 0,
-					Type:     info.Type,
-					TypeID:   info.TypeID,
+					Kind:        info.Kind,
+					Def:         defValue,
+					DefName:     defName,
+					Initializer: initializer,
+					Position:    0,
+					Type:        info.Type,
+					TypeID:      info.TypeID,
 				}
 				n++
 			}
@@ -568,18 +463,18 @@ func (scope Scope) Fork(
 						// multiple types using the same definiton
 						found := false
 						for _, d := range resetValues {
-							if d.Get.ID == value.Get.ID {
+							if d.Initializer.ID == value.Initializer.ID {
 								found = true
-								value.Get = d.Get
+								value.Initializer = d.Initializer
 							}
 						}
 						if !found {
-							value.Get = cachedGet(value.Def, value.DefName,
+							value.Initializer = newInitializer(value.Def, value.DefName,
 								// no reducer type in resetIDs
 								nil)
 						}
 					} else {
-						value.Get = cachedGet(value.Def, value.DefName,
+						value.Initializer = newInitializer(value.Def, value.DefName,
 							// no reducer type in resetIDs
 							nil)
 					}
@@ -598,11 +493,11 @@ func (scope Scope) Fork(
 					Def: func() { // NOCOVER
 						panic("should not be called")
 					},
-					Type:     info.MarkType,
-					Get:      cachedGet(info.Type, "", getReducerType(info.Type)),
-					Kind:     reflect.Func,
-					Position: 0,
-					TypeID:   info.MarkTypeID,
+					Type:        info.MarkType,
+					Initializer: newInitializer(info.Type, "", getReducerType(info.Type)),
+					Kind:        reflect.Func,
+					Position:    0,
+					TypeID:      info.MarkTypeID,
 				})
 			}
 			m = append(m, reducerValues)
@@ -663,7 +558,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 			)
 		}
 		var values []reflect.Value
-		values, err = value.Get.Func(scope.appendPath(t))
+		values, err = value.Initializer.Get(scope.appendPath(t))
 		if err != nil { // NOCOVER
 			return ret, err
 		}
