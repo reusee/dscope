@@ -436,9 +436,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 		for _, info := range f.ResetReducers {
 			info := info
 			reducerValues = append(reducerValues, _Value{
-				Def: func() { // NOCOVER
-					panic("should not be called")
-				},
+				Def:         shouldNotCall,
 				Type:        info.MarkType,
 				Initializer: newInitializer(info.Type, "", getReducerType(info.Type)),
 				Kind:        reflect.Func,
@@ -452,4 +450,8 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 	scope.values = m
 
 	return scope
+}
+
+func shouldNotCall() {
+	panic("should not be called")
 }
