@@ -1,24 +1,26 @@
 package dscope
 
-type _StackedMap [][]_Value
+type _StackedMap struct {
+	Values []_Value
+	Next   *_StackedMap
+	Height int8
+}
 
 // Load loads values with specified id
 // MUST NOT modify returned slice
-func (u _StackedMap) Load(id _TypeID) ([]_Value, bool) {
+func (s *_StackedMap) Load(id _TypeID) ([]_Value, bool) {
 	var left, right, idx, l uint
 	var start, end int
 	var id2 _TypeID
-	var m []_Value
-	for i := len(u) - 1; i >= 0; i-- {
-		m = u[i]
+	for s != nil {
 		// do binary search
 		left = 0
-		l = uint(len(m))
+		l = uint(len(s.Values))
 		right = l
 		// find left bound
 		for left < right {
 			idx = (left + right) >> 1
-			id2 = m[idx].TypeID
+			id2 = s.Values[idx].TypeID
 			// need to find the first value
 			if id2 >= id {
 				right = idx
@@ -28,7 +30,7 @@ func (u _StackedMap) Load(id _TypeID) ([]_Value, bool) {
 		}
 		start = -1
 		for ; idx < l; idx++ {
-			id2 = m[idx].TypeID
+			id2 = s.Values[idx].TypeID
 			if id2 == id {
 				if start < 0 {
 					// found start
@@ -46,69 +48,85 @@ func (u _StackedMap) Load(id _TypeID) ([]_Value, bool) {
 		}
 		if start != -1 {
 			// found
-			return m[start:end], true
+			return s.Values[start:end], true
 		}
+		s = s.Next
 	}
 	return nil, false
 }
 
-func (u _StackedMap) LoadOne(id _TypeID) (ret _Value, ok bool) {
+func (s *_StackedMap) LoadOne(id _TypeID) (ret _Value, ok bool) {
 	var left, right, idx uint
 	var id2 _TypeID
-	var m []_Value
-	for i := len(u) - 1; i >= 0; i-- {
-		m = u[i]
+	for s != nil {
 		left = 0
-		right = uint(len(m))
+		right = uint(len(s.Values))
 		for left < right {
 			idx = (left + right) >> 1
-			id2 = m[idx].TypeID
+			id2 = s.Values[idx].TypeID
 			if id2 > id {
 				right = idx
 			} else if id2 < id {
 				left = idx + 1
 			} else {
-				return m[idx], true
+				return s.Values[idx], true
 			}
 		}
+		s = s.Next
 	}
 	return
 }
 
 // Range iterates all values
 // MUST NOT modify []_Value argument in callback function
-func (u _StackedMap) Range(fn func([]_Value) error) error {
+func (s *_StackedMap) Range(fn func([]_Value) error) error {
 	keys := make(map[_TypeID]struct{})
-	var m []_Value
 	var start, end int
-	for i := len(u) - 1; i >= 0; i-- {
-		m = u[i]
-		for j, d := range m {
+	for s != nil {
+		for j, d := range s.Values {
 			if _, ok := keys[d.TypeID]; ok {
 				continue
 			}
 			keys[d.TypeID] = struct{}{}
 			start = j
 			end = start + 1
-			for _, follow := range m[j+1:] {
+			for _, follow := range s.Values[j+1:] {
 				if follow.TypeID == d.TypeID {
 					end++
 				} else {
 					break
 				}
 			}
-			if err := fn(m[start:end]); err != nil {
+			if err := fn(s.Values[start:end]); err != nil {
 				return err
 			}
 		}
+		s = s.Next
 	}
 	return nil
 }
 
-func (u _StackedMap) Len() int {
+func (s *_StackedMap) Append(values []_Value) *_StackedMap {
+	if s != nil {
+		return &_StackedMap{
+			Values: values,
+			Next:   s,
+			Height: s.Height + 1,
+		}
+	}
+	return &_StackedMap{
+		Values: values,
+		Next:   s,
+		Height: 1,
+	}
+}
+
+//TODO delete
+func (s *_StackedMap) Len() int {
 	ret := 0
-	for _, values := range u {
-		ret += len(values)
+	for s != nil {
+		ret += len(s.Values)
+		s = s.Next
 	}
 	return ret
 }

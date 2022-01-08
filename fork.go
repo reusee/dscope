@@ -127,12 +127,11 @@ func newForker(
 		posesAtSorted[j] = posAtSorted(i)
 	}
 
-	valuesTemplate := append(scope.values[:0:0], scope.values...)
 	sortedNewValuesTemplate := append(newValuesTemplate[:0:0], newValuesTemplate...)
 	sort.Slice(sortedNewValuesTemplate, func(i, j int) bool {
 		return sortedNewValuesTemplate[i].TypeID < sortedNewValuesTemplate[j].TypeID
 	})
-	valuesTemplate = append(valuesTemplate, sortedNewValuesTemplate)
+	valuesTemplate := scope.values.Append(sortedNewValuesTemplate)
 
 	colors := make(map[_TypeID]int)
 	downstreams := make(map[_TypeID][]_Value)
@@ -330,8 +329,8 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 	}
 
 	// values
-	var m _StackedMap
-	if len(s.values) > 32 {
+	var m *_StackedMap
+	if s.values != nil && s.values.Height > 32 {
 		// flatten
 		var values []_Value
 		if err := s.values.Range(func(ds []_Value) error {
@@ -343,10 +342,11 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 		sort.Slice(values, func(i, j int) bool {
 			return values[i].TypeID < values[j].TypeID
 		})
-		m = _StackedMap{values}
+		m = &_StackedMap{
+			Values: values,
+		}
 	} else {
-		m = make(_StackedMap, len(s.values), len(s.values)+3)
-		copy(m, s.values)
+		m = s.values
 	}
 
 	// new values
@@ -394,7 +394,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 			n++
 		}
 	}
-	m = append(m, newValues)
+	m = m.Append(newValues)
 
 	// reset values
 	if len(f.ResetIDs) > 0 {
@@ -427,7 +427,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 				resetValues = append(resetValues, value)
 			}
 		}
-		m = append(m, resetValues)
+		m = m.Append(resetValues)
 	}
 
 	// reducers
@@ -444,7 +444,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 				TypeID:      info.MarkTypeID,
 			})
 		}
-		m = append(m, reducerValues)
+		m = m.Append(reducerValues)
 	}
 
 	scope.values = m

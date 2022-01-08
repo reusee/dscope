@@ -30,7 +30,7 @@ type Scope struct {
 	reducers    map[_TypeID]reflect.Type
 	signature   [2]uint64
 	forkFuncKey [2]uint64
-	values      _StackedMap
+	values      *_StackedMap
 	path        *Path
 }
 
@@ -266,7 +266,7 @@ func (scope Scope) FillStruct(ptr any) {
 var getArgsFunc sync.Map
 
 func (scope Scope) IsZero() bool {
-	return len(scope.values) == 0
+	return scope.values == nil
 }
 
 var (

@@ -3,15 +3,15 @@ package dscope
 import "testing"
 
 func TestStackedMap(t *testing.T) {
-	var m _StackedMap
-	m = append(m, []_Value{
+	var m *_StackedMap
+	m = m.Append([]_Value{
 		{TypeID: 1, Position: 1},
 		{TypeID: 2, Position: 2},
 		{TypeID: 2, Position: 3},
 		{TypeID: 2, Position: 4},
 		{TypeID: 3, Position: 5},
 	})
-	m = append(m, []_Value{
+	m = m.Append([]_Value{
 		{TypeID: 3, Position: 6},
 	})
 
