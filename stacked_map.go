@@ -121,7 +121,6 @@ func (s *_StackedMap) Append(values []_Value) *_StackedMap {
 	}
 }
 
-//TODO delete
 func (s *_StackedMap) Len() int {
 	ret := 0
 	for s != nil {

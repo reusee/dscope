@@ -944,16 +944,6 @@ func TestOverwrite(t *testing.T) {
 	}
 }
 
-func TestIsZero(t *testing.T) {
-	if New().IsZero() {
-		t.Fatal()
-	}
-	var s Scope
-	if !s.IsZero() {
-		t.Fatal()
-	}
-}
-
 func TestOverrideAndNewDep(t *testing.T) {
 	scope := New(
 		func(string) int {
@@ -1600,6 +1590,29 @@ func TestReducer(t *testing.T) {
 	var i testReducerInt
 	s.Assign(&i)
 	if i != 6 {
+		t.Fatal()
+	}
+}
+
+func TestResetSameInitializer(t *testing.T) {
+	n := 0
+	s := New(
+		func(i int) (int8, int16) {
+			n++
+			return 42, 42
+		},
+		func() int {
+			return 42
+		},
+	)
+	s = s.Fork(func() int {
+		return 1
+	})
+	var i8 int8
+	var i16 int16
+	s.Assign(&i8)
+	s.Assign(&i16)
+	if n != 1 {
 		t.Fatal()
 	}
 }

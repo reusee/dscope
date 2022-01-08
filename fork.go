@@ -409,20 +409,16 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 					// multiple types using the same definiton
 					found := false
 					for _, d := range resetValues {
-						if d.Initializer.ID == value.Initializer.ID {
+						if d.Initializer.DefID == value.Initializer.DefID {
 							found = true
 							value.Initializer = d.Initializer
 						}
 					}
 					if !found {
-						value.Initializer = newInitializer(value.Def, value.DefName,
-							// no reducer type in resetIDs
-							nil)
+						value.Initializer = value.Initializer.Reset()
 					}
 				} else {
-					value.Initializer = newInitializer(value.Def, value.DefName,
-						// no reducer type in resetIDs
-						nil)
+					value.Initializer = value.Initializer.Reset()
 				}
 				resetValues = append(resetValues, value)
 			}
@@ -452,6 +448,6 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 	return scope
 }
 
-func shouldNotCall() {
+func shouldNotCall() { // NOCOVER
 	panic("should not be called")
 }

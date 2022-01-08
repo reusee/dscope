@@ -265,10 +265,6 @@ func (scope Scope) FillStruct(ptr any) {
 
 var getArgsFunc sync.Map
 
-func (scope Scope) IsZero() bool {
-	return scope.values == nil
-}
-
 var (
 	typeIDMap = func() atomic.Value {
 		var v atomic.Value
