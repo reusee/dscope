@@ -169,6 +169,7 @@ func newForker(
 						return we.With(
 							e4.Info("dependency not found in definition %T / %s", value.Def, value.DefName),
 							e4.Info("path: %+v", path),
+							e4.Info("no definition for %v", requiredType),
 						)(
 							ErrDependencyNotFound,
 						)
