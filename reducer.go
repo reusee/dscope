@@ -94,6 +94,9 @@ func Reduce(vs []reflect.Value) reflect.Value {
 			t,
 			func(args []reflect.Value) (rets []reflect.Value) {
 				for _, v := range vs {
+					if v.IsNil() {
+						continue
+					}
 					rets = v.Call(args)
 				}
 				return
