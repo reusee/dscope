@@ -410,7 +410,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 					// multiple types using the same definiton
 					found := false
 					for _, d := range resetValues {
-						if d.Initializer.DefID == value.Initializer.DefID {
+						if d.Initializer.ID == value.Initializer.ID {
 							found = true
 							value.Initializer = d.Initializer
 						}

@@ -16,12 +16,12 @@ import (
 type _Value struct {
 	Def         any
 	DefName     string
-	DefIsMulti  bool
 	Type        reflect.Type
 	Initializer *_Initializer
 	Kind        reflect.Kind
 	Position    int
 	TypeID      _TypeID
+	DefIsMulti  bool
 }
 
 type _TypeID int

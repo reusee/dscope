@@ -9,7 +9,7 @@ import (
 )
 
 type _Initializer struct {
-	DefID       int64
+	ID          int64
 	Def         any
 	Name        string
 	ReducerType *reflect.Type
@@ -19,7 +19,7 @@ type _Initializer struct {
 
 func newInitializer(def any, name string, reducerType *reflect.Type) *_Initializer {
 	return &_Initializer{
-		DefID:       atomic.AddInt64(&nextInitializerID, 1),
+		ID:          atomic.AddInt64(&nextInitializerID, 1),
 		Def:         def,
 		Name:        name,
 		ReducerType: reducerType,
@@ -116,7 +116,7 @@ func (i *_Initializer) Get(scope Scope) (ret []reflect.Value, err error) {
 
 func (s *_Initializer) Reset() *_Initializer {
 	return &_Initializer{
-		DefID:       s.DefID,
+		ID:          s.ID,
 		Def:         s.Def,
 		Name:        s.Name,
 		ReducerType: s.ReducerType,
