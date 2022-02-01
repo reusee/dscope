@@ -11,17 +11,15 @@ import (
 type _Initializer struct {
 	ID          int64
 	Def         any
-	Name        string
 	ReducerType *reflect.Type
 	Once        sync.Once
 	Values      []reflect.Value
 }
 
-func newInitializer(def any, name string, reducerType *reflect.Type) *_Initializer {
+func newInitializer(def any, reducerType *reflect.Type) *_Initializer {
 	return &_Initializer{
 		ID:          atomic.AddInt64(&nextInitializerID, 1),
 		Def:         def,
-		Name:        name,
 		ReducerType: reducerType,
 	}
 }
@@ -35,8 +33,7 @@ func (i *_Initializer) Get(scope Scope) (ret []reflect.Value, err error) {
 			continue
 		}
 		return nil, we.With(
-			e4.Info("found dependency loop when calling %T / %s",
-				i.Def, i.Name),
+			e4.Info("found dependency loop when calling %T", i.Def),
 			e4.Info("path: %+v", scope.path),
 		)(
 			ErrDependencyLoop,
@@ -55,7 +52,6 @@ func (i *_Initializer) Get(scope Scope) (ret []reflect.Value, err error) {
 			}
 			pathScope := scope.appendPath(typ)
 			vs := make([]reflect.Value, len(values))
-			names := make(DefNames, len(values))
 			for i, value := range values {
 				var values []reflect.Value
 				values, err = value.Initializer.Get(pathScope)
@@ -66,9 +62,7 @@ func (i *_Initializer) Get(scope Scope) (ret []reflect.Value, err error) {
 					panic("impossible")
 				}
 				vs[i] = values[value.Position]
-				names[i] = value.DefName
 			}
-			scope = scope.Fork(&names)
 			switch *i.ReducerType {
 			case reducerType:
 				i.Values = []reflect.Value{
@@ -88,21 +82,7 @@ func (i *_Initializer) Get(scope Scope) (ret []reflect.Value, err error) {
 
 		if defKind == reflect.Func {
 			var result CallResult
-			func() {
-				defer he(&err, e4.WrapFunc(func(err error) error {
-					// use a closure to avoid calling getName eagerly
-					return e4.NewInfo("dscope: call %s",
-						getName(i.Name, i.Def, false))(err)
-				}))
-				defer func() {
-					if p := recover(); p != nil {
-						pt("func: %s\n",
-							getName(i.Name, i.Def, false))
-						panic(p)
-					}
-				}()
-				result = scope.Call(i.Def)
-			}()
+			result = scope.Call(i.Def)
 			i.Values = result.Values
 
 		} else if defKind == reflect.Ptr {
@@ -118,7 +98,6 @@ func (s *_Initializer) Reset() *_Initializer {
 	return &_Initializer{
 		ID:          s.ID,
 		Def:         s.Def,
-		Name:        s.Name,
 		ReducerType: s.ReducerType,
 	}
 }

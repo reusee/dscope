@@ -42,15 +42,7 @@ func newForker(
 	defNumValues := make([]int, 0, len(defs))
 	defKinds := make([]reflect.Kind, 0, len(defs))
 	for _, def := range defs {
-		var defValue any
-		var defName string
-		if named, ok := def.(NamedDef); ok {
-			defValue = named.Def
-			defName = named.Name
-		} else {
-			defValue = def
-		}
-		defType := reflect.TypeOf(defValue)
+		defType := reflect.TypeOf(def)
 		defKinds = append(defKinds, defType.Kind())
 
 		switch defType.Kind() {
@@ -73,8 +65,7 @@ func newForker(
 					Kind:       reflect.Func,
 					Type:       t,
 					TypeID:     id,
-					Def:        defValue,
-					DefName:    defName,
+					Def:        def,
 					DefIsMulti: numOut > 1,
 				})
 				numValues++
@@ -91,11 +82,10 @@ func newForker(
 			t := defType.Elem()
 			id := getTypeID(t)
 			newValuesTemplate = append(newValuesTemplate, _Value{
-				Kind:    reflect.Ptr,
-				Type:    t,
-				TypeID:  id,
-				Def:     defValue,
-				DefName: defName,
+				Kind:   reflect.Ptr,
+				Type:   t,
+				TypeID: id,
+				Def:    def,
 			})
 			if id != scopeTypeID {
 				if _, ok := scope.values.LoadOne(id); ok {
@@ -141,7 +131,7 @@ func newForker(
 		color := colors[id]
 		if color == 1 {
 			return we.With(
-				e4.Info("found dependency loop in definition %T / %v", values[0].Def, values[0].DefName),
+				e4.Info("found dependency loop in definition %T", values[0].Def),
 				e4.Info("path: %+v", path),
 			)(
 				ErrDependencyLoop,
@@ -167,7 +157,7 @@ func newForker(
 					value2, ok := valuesTemplate.Load(id2)
 					if !ok {
 						return we.With(
-							e4.Info("dependency not found in definition %T / %s", value.Def, value.DefName),
+							e4.Info("dependency not found in definition %T", value.Def),
 							e4.Info("path: %+v", path),
 							e4.Info("no definition for %v", requiredType),
 						)(
@@ -354,24 +344,15 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 	newValues := make([]_Value, len(f.NewValuesTemplate))
 	n := 0
 	for idx, def := range defs {
-		var defValue any
-		var defName string
-		if named, ok := def.(NamedDef); ok {
-			defValue = named.Def
-			defName = named.Name
-		} else {
-			defValue = def
-		}
 		switch f.DefKinds[idx] {
 		case reflect.Func:
-			initializer := newInitializer(defValue, defName, nil)
+			initializer := newInitializer(def, nil)
 			numValues := f.DefNumValues[idx]
 			for i := 0; i < numValues; i++ {
 				info := f.NewValuesTemplate[n]
 				newValues[f.PosesAtSorted[n]] = _Value{
 					Kind:        info.Kind,
-					Def:         defValue,
-					DefName:     defName,
+					Def:         def,
 					DefIsMulti:  info.DefIsMulti,
 					Initializer: initializer,
 					Position:    i,
@@ -382,11 +363,10 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 			}
 		case reflect.Ptr:
 			info := f.NewValuesTemplate[n]
-			initializer := newInitializer(defValue, defName, nil)
+			initializer := newInitializer(def, nil)
 			newValues[f.PosesAtSorted[n]] = _Value{
 				Kind:        info.Kind,
-				Def:         defValue,
-				DefName:     defName,
+				Def:         def,
 				Initializer: initializer,
 				Position:    0,
 				Type:        info.Type,
@@ -435,7 +415,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 			reducerValues = append(reducerValues, _Value{
 				Def:         shouldNotCall,
 				Type:        info.MarkType,
-				Initializer: newInitializer(info.Type, "", getReducerType(info.Type)),
+				Initializer: newInitializer(info.Type, getReducerType(info.Type)),
 				Kind:        reflect.Func,
 				Position:    0,
 				TypeID:      info.MarkTypeID,

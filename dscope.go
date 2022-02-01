@@ -2,7 +2,6 @@ package dscope
 
 import (
 	"encoding/binary"
-	"fmt"
 	"hash/maphash"
 	"reflect"
 	"runtime"
@@ -15,7 +14,6 @@ import (
 
 type _Value struct {
 	Def         any
-	DefName     string
 	Type        reflect.Type
 	Initializer *_Initializer
 	Kind        reflect.Kind
@@ -76,12 +74,7 @@ func (scope Scope) Fork(
 	h.Write(buf)
 	h2.Write(buf2)
 	for _, def := range defs {
-		var id _TypeID
-		if named, ok := def.(NamedDef); ok {
-			id = getTypeID(reflect.TypeOf(named.Def))
-		} else {
-			id = getTypeID(reflect.TypeOf(def))
-		}
+		id := getTypeID(reflect.TypeOf(def))
 		binary.LittleEndian.PutUint64(buf, uint64(id))
 		binary.LittleEndian.PutUint64(buf2, uint64(id))
 		h.Write(buf)
@@ -295,18 +288,4 @@ func getTypeID(t reflect.Type) (r _TypeID) {
 	typeIDMap.Store(newM)
 	typeIDLock.Unlock()
 	return newM[t]
-}
-
-func getName(name string, value any, isReducer bool) string {
-	if name == "" {
-		if t, ok := value.(reflect.Type); ok { // reducer type
-			name = fmt.Sprintf("%v", t)
-		} else {
-			name = fmt.Sprintf("%T", value)
-		}
-	}
-	if isReducer {
-		name = "reducer(" + name + ")"
-	}
-	return name
 }
