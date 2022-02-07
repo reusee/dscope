@@ -58,7 +58,7 @@ func (i *_Initializer) Get(scope Scope) (ret []reflect.Value, err error) {
 				if err != nil { // NOCOVER
 					return
 				}
-				if value.Position >= len(values) { // NOCOVER
+				if value.Position >= uint8(len(values)) { // NOCOVER
 					panic("impossible")
 				}
 				vs[i] = values[value.Position]

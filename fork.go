@@ -349,7 +349,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 					DefType:     info.DefType,
 					DefIsMulti:  info.DefIsMulti,
 					Initializer: initializer,
-					Position:    i,
+					Position:    uint8(i),
 					Type:        info.Type,
 					TypeID:      info.TypeID,
 				}

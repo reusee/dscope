@@ -16,8 +16,8 @@ type _Value struct {
 	DefType     reflect.Type
 	Type        reflect.Type
 	Initializer *_Initializer
-	Position    int
 	TypeID      _TypeID
+	Position    uint8
 	DefIsMulti  bool
 }
 
@@ -144,7 +144,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 		if err != nil { // NOCOVER
 			return ret, err
 		}
-		if value.Position >= len(values) { // NOCOVER
+		if value.Position >= uint8(len(values)) { // NOCOVER
 			panic("impossible")
 		}
 		return values[value.Position], nil
