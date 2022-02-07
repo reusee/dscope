@@ -14,13 +14,15 @@ func (s Scope) Visualize(w io.Writer) error {
 	if err := s.values.Range(func(values []_Value) error {
 
 		for _, value := range values {
-			if value.DefType.Kind() != reflect.Func {
+			if value.DefKind != reflect.Func {
 				continue
 			}
-			for i := 0; i < value.DefType.NumIn(); i++ {
-				in := value.DefType.In(i)
-				for j := 0; j < value.DefType.NumOut(); j++ {
-					out := value.DefType.Out(j)
+			defValue := reflect.ValueOf(value.Def)
+			defType := defValue.Type()
+			for i := 0; i < defType.NumIn(); i++ {
+				in := defType.In(i)
+				for j := 0; j < defType.NumOut(); j++ {
+					out := defType.Out(j)
 					edges[[2]reflect.Type{out, in}] = true
 				}
 			}
