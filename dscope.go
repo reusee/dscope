@@ -13,10 +13,9 @@ import (
 )
 
 type _Value struct {
-	Def         any
+	DefType     reflect.Type
 	Type        reflect.Type
 	Initializer *_Initializer
-	DefKind     reflect.Kind
 	Position    int
 	TypeID      _TypeID
 	DefIsMulti  bool
