@@ -7,6 +7,8 @@ github.com/reusee/e4 v0.0.0-20211111112921-a1e3637d4313 h1:NdolWZRwyEnTsDfOy+bjF
 github.com/reusee/e4 v0.0.0-20211111112921-a1e3637d4313/go.mod h1:tn7INLQH/YwWai6I0MV227/HgZgagrroPgzfUTLV8No=
 github.com/reusee/pr v0.0.0-20210726063359-3496350be6e4 h1:eEOyIRvBNPe5uupvQLTt+17KdLS7l+H48YYimxTUb/o=
 github.com/reusee/pr v0.0.0-20210726063359-3496350be6e4/go.mod h1:THQFbB5S6WvoMCzivvvW7nUgkVPJKAuAU5FUM+ebG30=
+github.com/reusee/pr v0.0.0-20220207084106-ae143efb4639 h1:nZ9SoiO36zGcuVl7xvSl1RpwOjoTjme1tu0RGpOlLh0=
+github.com/reusee/pr v0.0.0-20220207084106-ae143efb4639/go.mod h1:lkziaMyVWREVGES2pz3bBJydullEF52RP/di84Id7vE=
 github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
 golang.org/x/crypto v0.0.0-20191011191535-87dc89f01550/go.mod h1:yigFU9vqHzYiE8UmvKecakEJjdnWj3jj499lnFckfCI=

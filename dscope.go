@@ -206,8 +206,9 @@ const reflectValuesPoolMaxLen = 64
 
 var reflectValuesPool = pr.NewPool(
 	int32(runtime.NumCPU()),
-	func() any {
-		return make([]reflect.Value, reflectValuesPoolMaxLen)
+	func() *[]reflect.Value {
+		slice := make([]reflect.Value, reflectValuesPoolMaxLen)
+		return &slice
 	},
 )
 
@@ -215,9 +216,9 @@ func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 	fnType := fnValue.Type()
 	var args []reflect.Value
 	if nArgs := fnType.NumIn(); nArgs <= reflectValuesPoolMaxLen {
-		v, put := reflectValuesPool.Get()
+		ptr, put := reflectValuesPool.Get()
 		defer put()
-		args = v.([]reflect.Value)
+		args = *ptr
 	} else {
 		args = make([]reflect.Value, nArgs)
 	}
