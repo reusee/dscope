@@ -16,7 +16,7 @@ type _Value struct {
 	Def         any
 	Type        reflect.Type
 	Initializer *_Initializer
-	Kind        reflect.Kind
+	DefKind     reflect.Kind
 	Position    int
 	TypeID      _TypeID
 	DefIsMulti  bool

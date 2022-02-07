@@ -62,7 +62,7 @@ func newForker(
 				id := getTypeID(t)
 
 				newValuesTemplate = append(newValuesTemplate, _Value{
-					Kind:       reflect.Func,
+					DefKind:    reflect.Func,
 					Type:       t,
 					TypeID:     id,
 					Def:        def,
@@ -82,10 +82,10 @@ func newForker(
 			t := defType.Elem()
 			id := getTypeID(t)
 			newValuesTemplate = append(newValuesTemplate, _Value{
-				Kind:   reflect.Ptr,
-				Type:   t,
-				TypeID: id,
-				Def:    def,
+				DefKind: reflect.Ptr,
+				Type:    t,
+				TypeID:  id,
+				Def:     def,
 			})
 			if id != scopeTypeID {
 				if _, ok := scope.values.LoadOne(id); ok {
@@ -141,7 +141,7 @@ func newForker(
 		}
 		colors[id] = 1
 		for _, value := range values {
-			if value.Kind != reflect.Func {
+			if value.DefKind != reflect.Func {
 				continue
 			}
 			defType := reflect.TypeOf(value.Def)
@@ -350,7 +350,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 			for i := 0; i < numValues; i++ {
 				info := f.NewValuesTemplate[n]
 				newValues[f.PosesAtSorted[n]] = _Value{
-					Kind:        info.Kind,
+					DefKind:     info.DefKind,
 					Def:         def,
 					DefIsMulti:  info.DefIsMulti,
 					Initializer: initializer,
@@ -364,7 +364,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 			info := f.NewValuesTemplate[n]
 			initializer := newInitializer(def, nil)
 			newValues[f.PosesAtSorted[n]] = _Value{
-				Kind:        info.Kind,
+				DefKind:     info.DefKind,
 				Def:         def,
 				Initializer: initializer,
 				Position:    0,
@@ -415,7 +415,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 				Def:         shouldNotCall,
 				Type:        info.MarkType,
 				Initializer: newInitializer(info.Type, getReducerType(info.Type)),
-				Kind:        reflect.Func,
+				DefKind:     reflect.Func,
 				Position:    0,
 				TypeID:      info.MarkTypeID,
 			})

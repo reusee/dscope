@@ -14,7 +14,7 @@ func (s Scope) Visualize(w io.Writer) error {
 	if err := s.values.Range(func(values []_Value) error {
 
 		for _, value := range values {
-			if value.Kind != reflect.Func {
+			if value.DefKind != reflect.Func {
 				continue
 			}
 			defValue := reflect.ValueOf(value.Def)
