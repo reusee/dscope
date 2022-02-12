@@ -24,10 +24,8 @@ type _Forker struct {
 type posAtSorted int
 
 type reducerInfo struct {
-	TypeID     _TypeID
-	Type       reflect.Type
-	MarkType   reflect.Type
-	MarkTypeID _TypeID
+	*_ValueInfo
+	OriginType reflect.Type
 }
 
 func newForker(
@@ -62,11 +60,13 @@ func newForker(
 				id := getTypeID(t)
 
 				newValuesTemplate = append(newValuesTemplate, _Value{
-					DefKind:    reflect.Func,
-					Type:       t,
-					TypeID:     id,
-					Def:        def,
-					DefIsMulti: numOut > 1,
+					_ValueInfo: &_ValueInfo{
+						Type:       t,
+						TypeID:     id,
+						DefKind:    reflect.Func,
+						DefIsMulti: numOut > 1,
+					},
+					Def: def,
 				})
 				numValues++
 				if id != scopeTypeID {
@@ -82,10 +82,13 @@ func newForker(
 			t := defType.Elem()
 			id := getTypeID(t)
 			newValuesTemplate = append(newValuesTemplate, _Value{
-				DefKind: reflect.Ptr,
-				Type:    t,
-				TypeID:  id,
-				Def:     def,
+				_ValueInfo: &_ValueInfo{
+					Type:       t,
+					TypeID:     id,
+					DefKind:    reflect.Ptr,
+					DefIsMulti: false,
+				},
+				Def: def,
 			})
 			if id != scopeTypeID {
 				if _, ok := scope.values.LoadOne(id); ok {
@@ -277,10 +280,12 @@ func newForker(
 		}
 		markType := getReducerMarkType(t)
 		resetReducers = append(resetReducers, reducerInfo{
-			TypeID:     id,
-			Type:       t,
-			MarkType:   markType,
-			MarkTypeID: getTypeID(markType),
+			_ValueInfo: &_ValueInfo{
+				Type:    markType,
+				TypeID:  getTypeID(markType),
+				DefKind: reflect.Func,
+			},
+			OriginType: t,
 		})
 		resetReducerSet[id] = true
 	}
@@ -293,7 +298,7 @@ func newForker(
 		resetReducer(id)
 	}
 	sort.Slice(resetReducers, func(i, j int) bool {
-		return resetReducers[i].MarkTypeID < resetReducers[j].MarkTypeID
+		return resetReducers[i].TypeID < resetReducers[j].TypeID
 	})
 
 	return &_Forker{
@@ -350,13 +355,10 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 			for i := 0; i < numValues; i++ {
 				info := f.NewValuesTemplate[n]
 				newValues[f.PosesAtSorted[n]] = _Value{
-					DefKind:     info.DefKind,
+					_ValueInfo:  info._ValueInfo,
 					Def:         def,
-					DefIsMulti:  info.DefIsMulti,
 					Initializer: initializer,
 					Position:    uint8(i),
-					Type:        info.Type,
-					TypeID:      info.TypeID,
 				}
 				n++
 			}
@@ -364,12 +366,10 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 			info := f.NewValuesTemplate[n]
 			initializer := newInitializer(def, nil)
 			newValues[f.PosesAtSorted[n]] = _Value{
-				DefKind:     info.DefKind,
+				_ValueInfo:  info._ValueInfo,
 				Def:         def,
 				Initializer: initializer,
 				Position:    0,
-				Type:        info.Type,
-				TypeID:      info.TypeID,
 			}
 			n++
 		}
@@ -412,12 +412,10 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 		for _, info := range f.ResetReducers {
 			info := info
 			reducerValues = append(reducerValues, _Value{
+				_ValueInfo:  info._ValueInfo,
 				Def:         shouldNotCall,
-				Type:        info.MarkType,
-				Initializer: newInitializer(info.Type, getReducerType(info.Type)),
-				DefKind:     reflect.Func,
+				Initializer: newInitializer(info.OriginType, getReducerType(info.OriginType)),
 				Position:    0,
-				TypeID:      info.MarkTypeID,
 			})
 		}
 		m = m.Append(reducerValues)

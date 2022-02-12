@@ -13,13 +13,17 @@ import (
 )
 
 type _Value struct {
+	*_ValueInfo
 	Def         any
-	Type        reflect.Type
 	Initializer *_Initializer
-	DefKind     reflect.Kind
-	TypeID      _TypeID
 	Position    uint8
-	DefIsMulti  bool
+}
+
+type _ValueInfo struct {
+	Type       reflect.Type
+	TypeID     _TypeID
+	DefKind    reflect.Kind
+	DefIsMulti bool
 }
 
 type _TypeID int
