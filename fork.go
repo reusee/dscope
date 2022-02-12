@@ -25,7 +25,8 @@ type posAtSorted int
 
 type reducerInfo struct {
 	*_ValueInfo
-	OriginType reflect.Type
+	OriginType  reflect.Type
+	ReducerType *reflect.Type
 }
 
 func newForker(
@@ -64,6 +65,7 @@ func newForker(
 						Type:       t,
 						TypeID:     id,
 						DefKind:    reflect.Func,
+						Position:   i,
 						DefIsMulti: numOut > 1,
 					},
 					Def: def,
@@ -285,7 +287,8 @@ func newForker(
 				TypeID:  getTypeID(markType),
 				DefKind: reflect.Func,
 			},
-			OriginType: t,
+			OriginType:  t,
+			ReducerType: getReducerType(t),
 		})
 		resetReducerSet[id] = true
 	}
@@ -358,7 +361,6 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 					_ValueInfo:  info._ValueInfo,
 					Def:         def,
 					Initializer: initializer,
-					Position:    uint8(i),
 				}
 				n++
 			}
@@ -369,7 +371,6 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 				_ValueInfo:  info._ValueInfo,
 				Def:         def,
 				Initializer: initializer,
-				Position:    0,
 			}
 			n++
 		}
@@ -414,8 +415,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 			reducerValues = append(reducerValues, _Value{
 				_ValueInfo:  info._ValueInfo,
 				Def:         shouldNotCall,
-				Initializer: newInitializer(info.OriginType, getReducerType(info.OriginType)),
-				Position:    0,
+				Initializer: newInitializer(info.OriginType, info.ReducerType),
 			})
 		}
 		m = m.Append(reducerValues)

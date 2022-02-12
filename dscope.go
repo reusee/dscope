@@ -16,13 +16,13 @@ type _Value struct {
 	*_ValueInfo
 	Def         any
 	Initializer *_Initializer
-	Position    uint8
 }
 
 type _ValueInfo struct {
 	Type       reflect.Type
 	TypeID     _TypeID
 	DefKind    reflect.Kind
+	Position   int
 	DefIsMulti bool
 }
 
@@ -148,9 +148,6 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 		values, err = value.Initializer.Get(scope.appendPath(t))
 		if err != nil { // NOCOVER
 			return ret, err
-		}
-		if value.Position >= uint8(len(values)) { // NOCOVER
-			panic("impossible")
 		}
 		return values[value.Position], nil
 
