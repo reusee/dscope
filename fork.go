@@ -64,11 +64,10 @@ func newForker(
 					_ValueInfo: &_ValueInfo{
 						Type:       t,
 						TypeID:     id,
-						DefKind:    reflect.Func,
+						DefType:    defType,
 						Position:   i,
 						DefIsMulti: numOut > 1,
 					},
-					Def: def,
 				})
 				numValues++
 				if id != scopeTypeID {
@@ -87,10 +86,9 @@ func newForker(
 				_ValueInfo: &_ValueInfo{
 					Type:       t,
 					TypeID:     id,
-					DefKind:    reflect.Ptr,
+					DefType:    defType,
 					DefIsMulti: false,
 				},
-				Def: def,
 			})
 			if id != scopeTypeID {
 				if _, ok := scope.values.LoadOne(id); ok {
@@ -136,7 +134,7 @@ func newForker(
 		color := colors[id]
 		if color == 1 {
 			return we.With(
-				e4.Info("found dependency loop in definition %T", values[0].Def),
+				e4.Info("found dependency loop in definition %v", values[0].DefType),
 				e4.Info("path: %+v", path),
 			)(
 				ErrDependencyLoop,
@@ -146,13 +144,12 @@ func newForker(
 		}
 		colors[id] = 1
 		for _, value := range values {
-			if value.DefKind != reflect.Func {
+			if value.DefType.Kind() != reflect.Func {
 				continue
 			}
-			defType := reflect.TypeOf(value.Def)
-			numIn := defType.NumIn()
+			numIn := value.DefType.NumIn()
 			for i := 0; i < numIn; i++ {
-				requiredType := defType.In(i)
+				requiredType := value.DefType.In(i)
 				id2 := getTypeID(requiredType)
 				downstreams[id2] = append(
 					downstreams[id2],
@@ -162,7 +159,7 @@ func newForker(
 					value2, ok := valuesTemplate.Load(id2)
 					if !ok {
 						return we.With(
-							e4.Info("dependency not found in definition %T", value.Def),
+							e4.Info("dependency not found in definition %v", value.DefType),
 							e4.Info("no definition for %v", requiredType),
 						)(
 							ErrDependencyNotFound,
@@ -186,8 +183,7 @@ func newForker(
 		}
 
 		for _, value := range values {
-			t := reflect.TypeOf(value.Def)
-			id := getTypeID(t)
+			id := getTypeID(value.DefType)
 			i := sort.Search(len(defTypeIDs), func(i int) bool {
 				return id >= defTypeIDs[i]
 			})
@@ -285,7 +281,7 @@ func newForker(
 			_ValueInfo: &_ValueInfo{
 				Type:    markType,
 				TypeID:  getTypeID(markType),
-				DefKind: reflect.Func,
+				DefType: reflect.TypeOf(func() {}),
 			},
 			OriginType:  t,
 			ReducerType: getReducerType(t),
@@ -359,7 +355,6 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 				info := f.NewValuesTemplate[n]
 				newValues[f.PosesAtSorted[n]] = _Value{
 					_ValueInfo:  info._ValueInfo,
-					Def:         def,
 					Initializer: initializer,
 				}
 				n++
@@ -369,7 +364,6 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 			initializer := newInitializer(def, nil)
 			newValues[f.PosesAtSorted[n]] = _Value{
 				_ValueInfo:  info._ValueInfo,
-				Def:         def,
 				Initializer: initializer,
 			}
 			n++
@@ -414,7 +408,6 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 			info := info
 			reducerValues = append(reducerValues, _Value{
 				_ValueInfo:  info._ValueInfo,
-				Def:         shouldNotCall,
 				Initializer: newInitializer(info.OriginType, info.ReducerType),
 			})
 		}
@@ -424,8 +417,4 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 	scope.values = m
 
 	return scope
-}
-
-func shouldNotCall() { // NOCOVER
-	panic("should not be called")
 }

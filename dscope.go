@@ -14,14 +14,13 @@ import (
 
 type _Value struct {
 	*_ValueInfo
-	Def         any
 	Initializer *_Initializer
 }
 
 type _ValueInfo struct {
 	Type       reflect.Type
 	TypeID     _TypeID
-	DefKind    reflect.Kind
+	DefType    reflect.Type
 	Position   int
 	DefIsMulti bool
 }
