@@ -323,7 +323,6 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 	}
 
 	// values
-	var m *_StackedMap
 	if s.values != nil && s.values.Height > 32 {
 		// flatten
 		var values []_Value
@@ -336,11 +335,11 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 		sort.Slice(values, func(i, j int) bool {
 			return values[i].TypeID < values[j].TypeID
 		})
-		m = &_StackedMap{
+		scope.values = &_StackedMap{
 			Values: values,
 		}
 	} else {
-		m = s.values
+		scope.values = s.values
 	}
 
 	// new values
@@ -369,13 +368,13 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 			n++
 		}
 	}
-	m = m.Append(newValues)
+	scope.values = scope.values.Append(newValues)
 
 	// reset values
 	if len(f.ResetIDs) > 0 {
 		resetValues := make([]_Value, 0, len(f.ResetIDs))
 		for _, id := range f.ResetIDs {
-			vs, ok := m.Load(id)
+			vs, ok := scope.values.Load(id)
 			if !ok { // NOCOVER
 				panic("impossible")
 			}
@@ -398,23 +397,20 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 				resetValues = append(resetValues, value)
 			}
 		}
-		m = m.Append(resetValues)
+		scope.values = scope.values.Append(resetValues)
 	}
 
 	// reducers
 	if len(f.ResetReducers) > 0 {
 		reducerValues := make([]_Value, 0, len(f.ResetReducers))
 		for _, info := range f.ResetReducers {
-			info := info
 			reducerValues = append(reducerValues, _Value{
 				_ValueInfo:  info._ValueInfo,
 				Initializer: newInitializer(info.OriginType, info.ReducerType),
 			})
 		}
-		m = m.Append(reducerValues)
+		scope.values = scope.values.Append(reducerValues)
 	}
-
-	scope.values = m
 
 	return scope
 }
