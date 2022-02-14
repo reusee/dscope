@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"runtime"
 	"sync"
-	"sync/atomic"
 
 	"github.com/reusee/e4"
 	"github.com/reusee/pr"
@@ -172,6 +171,8 @@ func (scope Scope) Call(fn any) CallResult {
 	return scope.CallValue(reflect.ValueOf(fn))
 }
 
+var getArgsFunc sync.Map
+
 func (scope Scope) getArgs(fnType reflect.Type, args []reflect.Value) (int, error) {
 	var getArgs func(Scope, []reflect.Value) (int, error)
 	if v, ok := getArgsFunc.Load(fnType); !ok {
@@ -255,38 +256,4 @@ func (scope Scope) FillStruct(ptr any) {
 	for i, max := 0, v.NumField(); i < max; i++ {
 		scope.Assign(v.Field(i).Addr().Interface())
 	}
-}
-
-var getArgsFunc sync.Map
-
-var (
-	typeIDMap = func() atomic.Value {
-		var v atomic.Value
-		v.Store(make(map[reflect.Type]_TypeID))
-		return v
-	}()
-	typeIDLock sync.Mutex
-	nextTypeID _TypeID
-)
-
-func getTypeID(t reflect.Type) (r _TypeID) {
-	m := typeIDMap.Load().(map[reflect.Type]_TypeID)
-	if i, ok := m[t]; ok {
-		return i
-	}
-	typeIDLock.Lock()
-	m = typeIDMap.Load().(map[reflect.Type]_TypeID)
-	if i, ok := m[t]; ok { // NOCOVER
-		typeIDLock.Unlock()
-		return i
-	}
-	newM := make(map[reflect.Type]_TypeID, len(m)+1)
-	for k, v := range m {
-		newM[k] = v
-	}
-	nextTypeID++
-	newM[t] = _TypeID(nextTypeID)
-	typeIDMap.Store(newM)
-	typeIDLock.Unlock()
-	return newM[t]
 }
