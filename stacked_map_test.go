@@ -5,14 +5,14 @@ import "testing"
 func TestStackedMap(t *testing.T) {
 	var m *_StackedMap
 	m = m.Append([]_Value{
-		{_ValueInfo: &_ValueInfo{TypeID: 1, Position: 1}},
-		{_ValueInfo: &_ValueInfo{TypeID: 2, Position: 2}},
-		{_ValueInfo: &_ValueInfo{TypeID: 2, Position: 3}},
-		{_ValueInfo: &_ValueInfo{TypeID: 2, Position: 4}},
-		{_ValueInfo: &_ValueInfo{TypeID: 3, Position: 5}},
+		{_TypeInfo: &_TypeInfo{TypeID: 1, Position: 1}},
+		{_TypeInfo: &_TypeInfo{TypeID: 2, Position: 2}},
+		{_TypeInfo: &_TypeInfo{TypeID: 2, Position: 3}},
+		{_TypeInfo: &_TypeInfo{TypeID: 2, Position: 4}},
+		{_TypeInfo: &_TypeInfo{TypeID: 3, Position: 5}},
 	})
 	m = m.Append([]_Value{
-		{_ValueInfo: &_ValueInfo{TypeID: 3, Position: 6}},
+		{_TypeInfo: &_TypeInfo{TypeID: 3, Position: 6}},
 	})
 
 	vs, ok := m.Load(1)

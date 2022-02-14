@@ -12,11 +12,11 @@ import (
 )
 
 type _Value struct {
-	*_ValueInfo
+	*_TypeInfo
 	*_Initializer
 }
 
-type _ValueInfo struct {
+type _TypeInfo struct {
 	TypeID     _TypeID
 	DefType    reflect.Type
 	Position   int
