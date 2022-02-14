@@ -58,3 +58,7 @@ func getTypeIDSlow(t reflect.Type) _TypeID {
 	typeIDLock.Unlock()
 	return id
 }
+
+func typeIDToType(id _TypeID) reflect.Type {
+	return typeIDInfos.Load().(*_TypeIDInfos).IDToType[id]
+}

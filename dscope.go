@@ -17,7 +17,6 @@ type _Value struct {
 }
 
 type _ValueInfo struct {
-	Type       reflect.Type
 	TypeID     _TypeID
 	DefType    reflect.Type
 	Position   int

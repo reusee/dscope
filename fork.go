@@ -5,6 +5,7 @@ import (
 	"hash/maphash"
 	"reflect"
 	"sort"
+	"strings"
 
 	"github.com/reusee/e4"
 )
@@ -62,7 +63,6 @@ func newForker(
 
 				newValuesTemplate = append(newValuesTemplate, _Value{
 					_ValueInfo: &_ValueInfo{
-						Type:       t,
 						TypeID:     id,
 						DefType:    defType,
 						Position:   i,
@@ -84,7 +84,6 @@ func newForker(
 			id := getTypeID(t)
 			newValuesTemplate = append(newValuesTemplate, _Value{
 				_ValueInfo: &_ValueInfo{
-					Type:       t,
 					TypeID:     id,
 					DefType:    defType,
 					DefIsMulti: false,
@@ -128,14 +127,23 @@ func newForker(
 
 	colors := make(map[_TypeID]int)
 	downstreams := make(map[_TypeID][]_Value)
-	var traverse func(values []_Value, path []reflect.Type) error
-	traverse = func(values []_Value, path []reflect.Type) error {
+	var traverse func(values []_Value, path []_TypeID) error
+	traverse = func(values []_Value, path []_TypeID) error {
 		id := values[0].TypeID
 		color := colors[id]
 		if color == 1 {
 			return we.With(
 				e4.Info("found dependency loop in definition %v", values[0].DefType),
-				e4.Info("path: %+v", path),
+				func() e4.WrapFunc {
+					buf := new(strings.Builder)
+					for i, id := range path {
+						if i > 0 {
+							buf.WriteString(" -> ")
+						}
+						buf.WriteString(typeIDToType(id).String())
+					}
+					return e4.Info("path: %s", buf.String())
+				}(),
 			)(
 				ErrDependencyLoop,
 			)
@@ -165,7 +173,7 @@ func newForker(
 							ErrDependencyNotFound,
 						)
 					}
-					if err := traverse(value2, append(path, value.Type)); err != nil {
+					if err := traverse(value2, append(path, value.TypeID)); err != nil {
 						return err
 					}
 				}
@@ -202,14 +210,15 @@ func newForker(
 		}
 
 		if len(values) > 1 {
-			if getReducerType(values[0].Type) == nil {
+			t := typeIDToType(values[0].TypeID)
+			if getReducerType(t) == nil {
 				return we.With(
-					e4.Info("%v has multiple definitions", values[0].Type),
+					e4.Info("%v has multiple definitions", t),
 				)(
 					ErrBadDefinition,
 				)
 			}
-			reducers[values[0].TypeID] = values[0].Type
+			reducers[values[0].TypeID] = t
 		}
 
 		return nil
@@ -279,7 +288,6 @@ func newForker(
 		markType := getReducerMarkType(t)
 		resetReducers = append(resetReducers, reducerInfo{
 			_ValueInfo: &_ValueInfo{
-				Type:    markType,
 				TypeID:  getTypeID(markType),
 				DefType: reflect.TypeOf(func() {}),
 			},
