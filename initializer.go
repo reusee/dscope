@@ -26,7 +26,7 @@ func newInitializer(def any, reducerType *reflect.Type) *_Initializer {
 
 var nextInitializerID int64 = 42
 
-func (i *_Initializer) Get(scope Scope) (ret []reflect.Value, err error) {
+func (i *_Initializer) get(scope Scope) (ret []reflect.Value, err error) {
 	// detect dependency loop
 	for p := scope.path.Prev; p != nil; p = p.Prev {
 		if p.Type != scope.path.Type {
@@ -54,7 +54,7 @@ func (i *_Initializer) Get(scope Scope) (ret []reflect.Value, err error) {
 			vs := make([]reflect.Value, len(values))
 			for i, value := range values {
 				var values []reflect.Value
-				values, err = value.Initializer.Get(pathScope)
+				values, err = value.get(pathScope)
 				if err != nil { // NOCOVER
 					return
 				}
@@ -91,7 +91,7 @@ func (i *_Initializer) Get(scope Scope) (ret []reflect.Value, err error) {
 	return i.Values, err
 }
 
-func (s *_Initializer) Reset() *_Initializer {
+func (s *_Initializer) reset() *_Initializer {
 	return &_Initializer{
 		ID:          s.ID,
 		Def:         s.Def,

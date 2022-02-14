@@ -14,7 +14,7 @@ import (
 
 type _Value struct {
 	*_ValueInfo
-	Initializer *_Initializer
+	*_Initializer
 }
 
 type _ValueInfo struct {
@@ -144,7 +144,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 			)
 		}
 		var values []reflect.Value
-		values, err = value.Initializer.Get(scope.appendPath(t))
+		values, err = value.get(scope.appendPath(t))
 		if err != nil { // NOCOVER
 			return ret, err
 		}
