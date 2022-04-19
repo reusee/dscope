@@ -62,14 +62,14 @@ func FuzzFork(f *testing.F) {
 		).Interface()
 		scope = scope.Fork(fn)
 
-		for _, t := range types {
-			ptr := reflect.New(t.Type)
+		for _, typ := range types {
+			ptr := reflect.New(typ.Type)
 			scope.Assign(ptr.Interface())
 			if !reflect.DeepEqual(
 				ptr.Elem().Interface(),
-				t.Value(r),
+				typ.Value(r),
 			) {
-				f.Fatal()
+				t.Fatal()
 			}
 		}
 
