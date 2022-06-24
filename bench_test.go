@@ -587,22 +587,3 @@ func BenchmarkMultipleDispatch(b *testing.B) {
 		})
 	}
 }
-
-func BenchmarkFillStruct(b *testing.B) {
-	s := New(
-		func() int {
-			return 42
-		},
-		func() string {
-			return "foo"
-		},
-	)
-	var foo struct {
-		S string
-		I int
-	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		s.FillStruct(&foo)
-	}
-}

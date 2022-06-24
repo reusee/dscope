@@ -242,17 +242,3 @@ func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 	}
 	return
 }
-
-func (scope Scope) FillStruct(ptr any) {
-	v := reflect.ValueOf(ptr)
-	if v.Kind() != reflect.Ptr ||
-		v.Type().Elem().Kind() != reflect.Struct {
-		throw(we.With(
-			e4.NewInfo("expecting pointer to struct, got %T", ptr),
-		)(ErrBadArgument))
-	}
-	v = v.Elem()
-	for i, max := 0, v.NumField(); i < max; i++ {
-		scope.Assign(v.Field(i).Addr().Interface())
-	}
-}

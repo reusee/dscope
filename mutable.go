@@ -62,10 +62,6 @@ func (m *MutableScope) CallValue(fn reflect.Value) CallResult {
 	return m.GetScope().CallValue(fn)
 }
 
-func (m *MutableScope) FillStruct(ptr any) {
-	m.GetScope().FillStruct(ptr)
-}
-
 func (m *MutableScope) Mutate(defs ...any) Scope {
 	numRedo := 0
 mutate:
