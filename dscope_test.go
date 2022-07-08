@@ -1594,3 +1594,13 @@ func TestResetSameInitializer(t *testing.T) {
 		t.Fatal()
 	}
 }
+
+func TestMustGet(t *testing.T) {
+	s := New(func() int {
+		return 42
+	})
+	i := MustGet[int](s)
+	if i != 42 {
+		t.Fatal()
+	}
+}

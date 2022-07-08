@@ -166,6 +166,16 @@ func (scope Scope) Get(t reflect.Type) (
 	return scope.get(getTypeID(t), t)
 }
 
+func MustGet[T any](scope Scope) (o T) {
+	v := reflect.ValueOf(&o)
+	value, err := scope.Get(v.Type().Elem())
+	if err != nil {
+		throw(err)
+	}
+	v.Elem().Set(value)
+	return
+}
+
 func (scope Scope) Call(fn any) CallResult {
 	return scope.CallValue(reflect.ValueOf(fn))
 }

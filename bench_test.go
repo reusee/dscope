@@ -535,6 +535,16 @@ func BenchmarkFork1(b *testing.B) {
 	}
 }
 
+func BenchmarkMustGet(b *testing.B) {
+	s := New(func() int {
+		return 42
+	})
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = MustGet[int](s)
+	}
+}
+
 func BenchmarkGetTypeID(b *testing.B) {
 	scopeType := reflect.TypeOf((*Scope)(nil)).Elem()
 	b.ResetTimer()
