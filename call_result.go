@@ -3,7 +3,7 @@ package dscope
 import (
 	"reflect"
 
-	"github.com/reusee/e4"
+	"github.com/reusee/e5"
 )
 
 type CallResult struct {
@@ -19,14 +19,14 @@ func (c CallResult) Extract(targets ...any) {
 		targetValue := reflect.ValueOf(target)
 		if targetValue.Kind() != reflect.Ptr {
 			panic(we.With(
-				e4.Info("%T is not a pointer", target),
+				e5.Info("%T is not a pointer", target),
 			)(
 				ErrBadArgument,
 			))
 		}
 		if targetValue.Type().Elem() != c.Values[i].Type() {
 			panic(we.With(
-				e4.Info("%T is not a pointer to %v",
+				e5.Info("%T is not a pointer to %v",
 					target,
 					targetValue.Type().Elem()),
 			)(
@@ -45,7 +45,7 @@ func (c CallResult) Assign(targets ...any) {
 		targetValue := reflect.ValueOf(target)
 		if targetValue.Kind() != reflect.Ptr {
 			panic(we.With(
-				e4.Info("%v is not a pointer", target),
+				e5.Info("%v is not a pointer", target),
 			)(
 				ErrBadArgument,
 			))

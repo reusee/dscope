@@ -3,6 +3,6 @@ module github.com/reusee/dscope
 go 1.18
 
 require (
-	github.com/reusee/e4 v0.0.0-20220624024633-9eab321f05d6
-	github.com/reusee/pr v0.0.0-20220624024755-23e64bd7728c
+	github.com/reusee/e5 v0.0.0-20220902143513-42365073754d
+	github.com/reusee/pr v0.0.0-20220902144504-5f8b9d810f6f
 )

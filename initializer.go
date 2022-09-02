@@ -5,7 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/reusee/e4"
+	"github.com/reusee/e5"
 )
 
 type _Initializer struct {
@@ -33,8 +33,8 @@ func (i *_Initializer) get(scope Scope) (ret []reflect.Value, err error) {
 			continue
 		}
 		return nil, we.With(
-			e4.Info("found dependency loop when calling %T", i.Def),
-			e4.Info("path: %+v", scope.path),
+			e5.Info("found dependency loop when calling %T", i.Def),
+			e5.Info("path: %+v", scope.path),
 		)(
 			ErrDependencyLoop,
 		)

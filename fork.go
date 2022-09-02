@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/reusee/e4"
+	"github.com/reusee/e5"
 )
 
 type _Forker struct {
@@ -51,7 +51,7 @@ func newForker(
 			numOut := defType.NumOut()
 			if numOut == 0 {
 				throw(we.With(
-					e4.Info("%T returns nothing", def),
+					e5.Info("%T returns nothing", def),
 				)(
 					ErrBadArgument,
 				))
@@ -99,7 +99,7 @@ func newForker(
 
 		default:
 			throw(we.With(
-				e4.Info("%T is not a valid definition", def),
+				e5.Info("%T is not a valid definition", def),
 			)(
 				ErrBadArgument,
 			))
@@ -133,8 +133,8 @@ func newForker(
 		color := colors[id]
 		if color == 1 {
 			return we.With(
-				e4.Info("found dependency loop in definition %v", values[0].DefType),
-				func() e4.WrapFunc {
+				e5.Info("found dependency loop in definition %v", values[0].DefType),
+				func() e5.WrapFunc {
 					buf := new(strings.Builder)
 					for i, id := range path {
 						if i > 0 {
@@ -142,7 +142,7 @@ func newForker(
 						}
 						buf.WriteString(typeIDToType(id).String())
 					}
-					return e4.Info("path: %s", buf.String())
+					return e5.Info("path: %s", buf.String())
 				}(),
 			)(
 				ErrDependencyLoop,
@@ -167,8 +167,8 @@ func newForker(
 					value2, ok := valuesTemplate.Load(id2)
 					if !ok {
 						return we.With(
-							e4.Info("dependency not found in definition %v", value.DefType),
-							e4.Info("no definition for %v", requiredType),
+							e5.Info("dependency not found in definition %v", value.DefType),
+							e5.Info("no definition for %v", requiredType),
 						)(
 							ErrDependencyNotFound,
 						)
@@ -213,7 +213,7 @@ func newForker(
 			t := typeIDToType(values[0].TypeID)
 			if getReducerType(t) == nil {
 				return we.With(
-					e4.Info("%v has multiple definitions", t),
+					e5.Info("%v has multiple definitions", t),
 				)(
 					ErrBadDefinition,
 				)

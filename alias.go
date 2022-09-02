@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/reusee/e4"
+	"github.com/reusee/e5"
 )
 
 type (
@@ -15,7 +15,7 @@ var (
 	pt    = fmt.Printf
 	as    = errors.As
 	is    = errors.Is
-	he    = e4.Handle
-	we    = e4.Wrap
-	throw = e4.Throw
+	he    = e5.Handle
+	we    = e5.Wrap
+	throw = e5.Throw
 )

@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/reusee/e4"
+	"github.com/reusee/e5"
 	"github.com/reusee/pr"
 )
 
@@ -102,7 +102,7 @@ func (scope Scope) Assign(objs ...any) {
 		v := reflect.ValueOf(o)
 		if v.Kind() != reflect.Ptr {
 			throw(we.With(
-				e4.Info("%T is not a pointer", o),
+				e5.Info("%T is not a pointer", o),
 			)(
 				ErrBadArgument,
 			))
@@ -136,7 +136,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 		value, ok := scope.values.LoadOne(id)
 		if !ok {
 			return ret, we.With(
-				e4.Info("no definition for %v", t),
+				e5.Info("no definition for %v", t),
 			)(
 				ErrDependencyNotFound,
 			)
