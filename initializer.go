@@ -12,8 +12,9 @@ type _Initializer struct {
 	ID          int64
 	Def         any
 	ReducerType *reflect.Type
-	Once        sync.Once
 	Values      []reflect.Value
+	Once        sync.Once
+	ErrPtr      atomic.Pointer[error]
 }
 
 func newInitializer(def any, reducerType *reflect.Type) *_Initializer {
@@ -27,6 +28,14 @@ func newInitializer(def any, reducerType *reflect.Type) *_Initializer {
 var nextInitializerID int64 = 42
 
 func (i *_Initializer) get(scope Scope) (ret []reflect.Value, err error) {
+	if ptr := i.ErrPtr.Load(); ptr != nil {
+		return i.Values, *ptr
+	}
+	return i.getSlow(scope)
+}
+
+func (i *_Initializer) getSlow(scope Scope) (ret []reflect.Value, err error) {
+
 	// detect dependency loop
 	for p := scope.path.Prev; p != nil; p = p.Prev {
 		if p.Type != scope.path.Type {
@@ -41,6 +50,10 @@ func (i *_Initializer) get(scope Scope) (ret []reflect.Value, err error) {
 	}
 
 	i.Once.Do(func() {
+		defer func() {
+			i.Values = ret
+			i.ErrPtr.Store(&err)
+		}()
 
 		// reducer
 		if i.ReducerType != nil {
@@ -62,11 +75,11 @@ func (i *_Initializer) get(scope Scope) (ret []reflect.Value, err error) {
 			}
 			switch *i.ReducerType {
 			case reducerType:
-				i.Values = []reflect.Value{
+				ret = []reflect.Value{
 					Reduce(vs),
 				}
 			case customReducerType:
-				i.Values = []reflect.Value{
+				ret = []reflect.Value{
 					vs[0].Interface().(CustomReducer).Reduce(scope, vs),
 				}
 			}
@@ -80,15 +93,15 @@ func (i *_Initializer) get(scope Scope) (ret []reflect.Value, err error) {
 		if defKind == reflect.Func {
 			var result CallResult
 			result = scope.Call(i.Def)
-			i.Values = result.Values
+			ret = result.Values
 
 		} else if defKind == reflect.Ptr {
-			i.Values = []reflect.Value{defValue.Elem()}
+			ret = []reflect.Value{defValue.Elem()}
 		}
 
 	})
 
-	return i.Values, err
+	return i.Values, *i.ErrPtr.Load()
 }
 
 func (s *_Initializer) reset() *_Initializer {

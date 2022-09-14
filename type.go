@@ -25,6 +25,7 @@ var (
 	nextTypeID _TypeID
 )
 
+// TODO inline
 func getTypeID(t reflect.Type) _TypeID {
 	if i, ok := typeIDInfos.Load().(*_TypeIDInfos).TypeToID[t]; ok {
 		return i
