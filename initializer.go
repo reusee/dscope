@@ -14,7 +14,8 @@ type _Initializer struct {
 	ReducerType *reflect.Type
 	Values      []reflect.Value
 	Once        sync.Once
-	ErrPtr      atomic.Pointer[error]
+	done        atomic.Bool
+	err         error
 }
 
 func newInitializer(def any, reducerType *reflect.Type) *_Initializer {
@@ -28,8 +29,8 @@ func newInitializer(def any, reducerType *reflect.Type) *_Initializer {
 var nextInitializerID int64 = 42
 
 func (i *_Initializer) get(scope Scope) (ret []reflect.Value, err error) {
-	if ptr := i.ErrPtr.Load(); ptr != nil {
-		return i.Values, *ptr
+	if i.done.Load() {
+		return i.Values, i.err
 	}
 	return i.getSlow(scope)
 }
@@ -52,7 +53,8 @@ func (i *_Initializer) getSlow(scope Scope) (ret []reflect.Value, err error) {
 	i.Once.Do(func() {
 		defer func() {
 			i.Values = ret
-			i.ErrPtr.Store(&err)
+			i.err = err
+			i.done.Store(true)
 		}()
 
 		// reducer
@@ -101,7 +103,7 @@ func (i *_Initializer) getSlow(scope Scope) (ret []reflect.Value, err error) {
 
 	})
 
-	return i.Values, *i.ErrPtr.Load()
+	return i.Values, i.err
 }
 
 func (s *_Initializer) reset() *_Initializer {
