@@ -3,7 +3,6 @@ package dscope
 import (
 	"errors"
 	"fmt"
-	"reflect"
 	"strings"
 )
 
@@ -16,13 +15,13 @@ var ErrBadArgument = errors.New("bad argument")
 var ErrBadDefinition = errors.New("bad definition")
 
 type Path struct {
-	Prev *Path
-	Type reflect.Type
+	Prev   *Path
+	TypeID _TypeID
 }
 
 func (p *Path) String() string {
 	buf := new(strings.Builder)
-	buf.WriteString(fmt.Sprintf("%v", p.Type))
+	buf.WriteString(fmt.Sprintf("%v", typeIDToType(p.TypeID)))
 	if p.Prev != nil {
 		buf.WriteString(" <- ")
 		buf.WriteString(p.Prev.String())

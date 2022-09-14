@@ -38,7 +38,7 @@ func (i *_Initializer) getSlow(scope Scope) (ret []reflect.Value, err error) {
 
 	// detect dependency loop
 	for p := scope.path.Prev; p != nil; p = p.Prev {
-		if p.Type != scope.path.Type {
+		if p.TypeID != scope.path.TypeID {
 			continue
 		}
 		return nil, we.With(
@@ -63,7 +63,7 @@ func (i *_Initializer) getSlow(scope Scope) (ret []reflect.Value, err error) {
 			if !ok { // NOCOVER
 				panic("impossible")
 			}
-			pathScope := scope.appendPath(typ)
+			pathScope := scope.appendPath(typeID)
 			vs := make([]reflect.Value, len(values))
 			for i, value := range values {
 				var values []reflect.Value

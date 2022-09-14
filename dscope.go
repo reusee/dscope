@@ -41,10 +41,10 @@ func New(
 	return Universe.Fork(defs...)
 }
 
-func (scope Scope) appendPath(t reflect.Type) Scope {
+func (scope Scope) appendPath(typeID _TypeID) Scope {
 	path := &Path{
-		Prev: scope.path,
-		Type: t,
+		Prev:   scope.path,
+		TypeID: typeID,
 	}
 	scope.path = path
 	return scope
@@ -142,7 +142,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 			)
 		}
 		var values []reflect.Value
-		values, err = value.get(scope.appendPath(t))
+		values, err = value.get(scope.appendPath(id))
 		if err != nil { // NOCOVER
 			return ret, err
 		}
