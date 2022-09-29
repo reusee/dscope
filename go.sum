@@ -1,4 +1,10 @@
 github.com/reusee/e5 v0.0.0-20220902143513-42365073754d h1:Hbb0lWLMOmVl8p3KwsXLH8rKqJtHKhIEB7BTbZbvxm0=
 github.com/reusee/e5 v0.0.0-20220902143513-42365073754d/go.mod h1:kfVSDXYZocDqR1uRQfewKHmcLa/QtjGl/Ik0/vqhZ4s=
+github.com/reusee/e5 v0.0.0-20220929122804-4b43ea7eeeeb h1:orYNZqNE1Ztu6re7yP9ArArLEP1f0L6FlydbGdWFKOE=
+github.com/reusee/e5 v0.0.0-20220929122804-4b43ea7eeeeb/go.mod h1:kfVSDXYZocDqR1uRQfewKHmcLa/QtjGl/Ik0/vqhZ4s=
+github.com/reusee/e5 v0.0.0-20220929123139-58c62ec313eb h1:jHb65/malJFnK97o38qCAvPzJGiDzw/mc7cDYV0/U0g=
+github.com/reusee/e5 v0.0.0-20220929123139-58c62ec313eb/go.mod h1:kfVSDXYZocDqR1uRQfewKHmcLa/QtjGl/Ik0/vqhZ4s=
 github.com/reusee/pr v0.0.0-20220902144504-5f8b9d810f6f h1:mDDBdR+d2CvQjjm9EKEtVJqva9BSr4Aot6WpLv2h9jc=
 github.com/reusee/pr v0.0.0-20220902144504-5f8b9d810f6f/go.mod h1:ByEquMmqXZQzG7VHsfuwgutPe/utoaaDJS9VJJ46uik=
+github.com/reusee/pr v0.0.0-20220902154654-adb0578fc28b h1:JYUk+EfIMryWfSij3QoBTJd2BGSEDNUQPP4nAgsoT4E=
+github.com/reusee/pr v0.0.0-20220902154654-adb0578fc28b/go.mod h1:ByEquMmqXZQzG7VHsfuwgutPe/utoaaDJS9VJJ46uik=
