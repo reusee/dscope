@@ -92,13 +92,16 @@ func (i *_Initializer) getSlow(scope Scope) (ret []reflect.Value, err error) {
 		defValue := reflect.ValueOf(i.Def)
 		defKind := defValue.Kind()
 
-		if defKind == reflect.Func {
+		switch defKind {
+
+		case reflect.Func:
 			var result CallResult
 			result = scope.Call(i.Def)
 			ret = result.Values
 
-		} else if defKind == reflect.Ptr {
+		case reflect.Ptr:
 			ret = []reflect.Value{defValue.Elem()}
+
 		}
 
 	})

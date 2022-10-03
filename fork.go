@@ -131,7 +131,8 @@ func newForker(
 	traverse = func(values []_Value, path []_TypeID) error {
 		id := values[0].TypeID
 		color := colors[id]
-		if color == 1 {
+		switch color {
+		case 1:
 			return we.With(
 				e5.Info("found dependency loop in definition %v", values[0].DefType),
 				func() e5.WrapFunc {
@@ -147,7 +148,7 @@ func newForker(
 			)(
 				ErrDependencyLoop,
 			)
-		} else if color == 2 {
+		case 2:
 			return nil
 		}
 		colors[id] = 1
@@ -397,10 +398,10 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 						}
 					}
 					if !found {
-						value._Initializer = value._Initializer.reset()
+						value._Initializer = value.reset()
 					}
 				} else {
-					value._Initializer = value._Initializer.reset()
+					value._Initializer = value.reset()
 				}
 				resetValues = append(resetValues, value)
 			}

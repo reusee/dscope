@@ -953,7 +953,7 @@ func TestOverrideAndNewDep(t *testing.T) {
 			return "42"
 		},
 	)
-	scope = scope.Fork(
+	scope.Fork(
 		func() string {
 			return "42"
 		},
@@ -1134,7 +1134,7 @@ func TestForkFunc(t *testing.T) {
 		return 42
 	})
 
-	s2 = s2.Fork(func() I {
+	s2.Fork(func() I {
 		return 1
 	})
 	s1 = s1.Fork(func() I {
@@ -1313,13 +1313,13 @@ func (t testFunc) Reduce(_ Scope, vs []reflect.Value) reflect.Value {
 
 type testFuncDef struct{}
 
-func (_ testFuncDef) Foo() testFunc {
+func (testFuncDef) Foo() testFunc {
 	return func(p *int) {
 		*p++
 	}
 }
 
-func (_ testFuncDef) Bar() testFunc {
+func (testFuncDef) Bar() testFunc {
 	return func(p *int) {
 		*p += 2
 	}
@@ -1426,7 +1426,7 @@ type acc2 int
 
 var _ CustomReducer = acc2(0)
 
-func (_ acc2) Reduce(scope Scope, vs []reflect.Value) reflect.Value {
+func (acc2) Reduce(scope Scope, vs []reflect.Value) reflect.Value {
 	return Reduce(vs)
 }
 
@@ -1557,7 +1557,7 @@ func TestReducerReset(t *testing.T) {
 
 type testReducerInt int
 
-func (_ testReducerInt) IsReducer() {}
+func (testReducerInt) IsReducer() {}
 
 func TestReducer(t *testing.T) {
 	s := New(
@@ -1575,7 +1575,7 @@ func TestReducer(t *testing.T) {
 func TestResetSameInitializer(t *testing.T) {
 	n := 0
 	s := New(
-		func(i int) (int8, int16) {
+		func(_ int) (int8, int16) {
 			n++
 			return 42, 42
 		},

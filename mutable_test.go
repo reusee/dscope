@@ -123,8 +123,8 @@ func TestMutateCallReturnsNil(t *testing.T) {
 		t.Fatal()
 	}
 	d.MutateCall(func() any {
-		i := 88
-		return &i
+		n := 88
+		return &n
 	})
 	d.Assign(&i)
 	if i != 88 {

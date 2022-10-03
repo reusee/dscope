@@ -575,7 +575,7 @@ type benchMultiFunc func()
 
 var _ CustomReducer = benchMultiFunc(nil)
 
-func (_ benchMultiFunc) Reduce(_ Scope, vs []reflect.Value) reflect.Value {
+func (benchMultiFunc) Reduce(_ Scope, vs []reflect.Value) reflect.Value {
 	return Reduce(vs)
 }
 

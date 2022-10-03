@@ -7,10 +7,6 @@ import (
 	"github.com/reusee/e5"
 )
 
-type (
-	any = interface{}
-)
-
 var (
 	pt    = fmt.Printf
 	as    = errors.As

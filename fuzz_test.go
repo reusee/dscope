@@ -53,7 +53,7 @@ func FuzzFork(f *testing.F) {
 				}(),
 				false,
 			),
-			func(args []reflect.Value) (ret []reflect.Value) {
+			func(_ []reflect.Value) (ret []reflect.Value) {
 				for _, t := range types {
 					ret = append(ret, reflect.ValueOf(t.Value(r)))
 				}

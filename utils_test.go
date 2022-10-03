@@ -18,7 +18,7 @@ func TestMethods(t *testing.T) {
 
 type TestMethodsFoo struct{}
 
-func (_ TestMethodsFoo) Foo() int {
+func (TestMethodsFoo) Foo() int {
 	return 42
 }
 
