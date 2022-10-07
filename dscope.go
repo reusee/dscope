@@ -116,6 +116,14 @@ func (scope Scope) Assign(objs ...any) {
 	}
 }
 
+func Assign[T any](scope Scope, ptr *T) {
+	value, err := scope.Get(reflect.TypeOf(ptr).Elem())
+	if err != nil {
+		throw(err)
+	}
+	*ptr = value.Interface().(T)
+}
+
 var (
 	scopeTypeID = getTypeID(reflect.TypeOf((*Scope)(nil)).Elem())
 )
@@ -166,14 +174,12 @@ func (scope Scope) Get(t reflect.Type) (
 	return scope.get(getTypeID(t), t)
 }
 
-func MustGet[T any](scope Scope) (o T) {
-	v := reflect.ValueOf(&o)
-	value, err := scope.Get(v.Type().Elem())
+func Get[T any](scope Scope) (o T) {
+	value, err := scope.Get(reflect.TypeOf(o))
 	if err != nil {
 		throw(err)
 	}
-	v.Elem().Set(value)
-	return
+	return value.Interface().(T)
 }
 
 func (scope Scope) Call(fn any) CallResult {

@@ -1595,12 +1595,17 @@ func TestResetSameInitializer(t *testing.T) {
 	}
 }
 
-func TestMustGet(t *testing.T) {
+func TestGenericFuncs(t *testing.T) {
 	s := New(func() int {
 		return 42
 	})
-	i := MustGet[int](s)
+	i := Get[int](s)
 	if i != 42 {
+		t.Fatal()
+	}
+	var i2 int
+	Assign(s, &i2)
+	if i2 != 42 {
 		t.Fatal()
 	}
 }

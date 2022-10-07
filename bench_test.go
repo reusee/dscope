@@ -475,46 +475,55 @@ func BenchmarkCallWithScope(b *testing.B) {
 	}
 }
 
-func BenchmarkAssign(b *testing.B) {
-	scope := New().Fork(
-		func() T1 { return 42 },
-		func(t1 T1) T2 { return T2(t1) },
-		func(t2 T2) T3 { return T3(t2) },
-		func(t3 T3) T4 { return T4(t3) },
-		func(t4 T4) T5 { return T5(t4) },
-		func(t5 T5) T6 { return T6(t5) },
-		func(t6 T6) T7 { return T7(t6) },
-		func(t7 T7) T8 { return T8(t7) },
-		func(t8 T8) T9 { return T9(t8) },
-		func(t9 T9) T10 { return T10(t9) },
-		func(t10 T10) T11 { return T11(t10) },
-		func(t11 T11) T12 { return T12(t11) },
-		func(t12 T12) T13 { return T13(t12) },
-		func(t13 T13) T14 { return T14(t13) },
-		func(t14 T14) T15 { return T15(t14) },
-		func(t15 T15) T16 { return T16(t15) },
-		func(t16 T16) T17 { return T17(t16) },
-		func(t17 T17) T18 { return T18(t17) },
-		func(t18 T18) T19 { return T19(t18) },
-		func(t19 T19) T20 { return T20(t19) },
-		func(t20 T20) T21 { return T21(t20) },
-		func(t21 T21) T22 { return T22(t21) },
-		func(t22 T22) T23 { return T23(t22) },
-		func(t23 T23) T24 { return T24(t23) },
-		func(t24 T24) T25 { return T25(t24) },
-		func(t25 T25) T26 { return T26(t25) },
-		func(t26 T26) T27 { return T27(t26) },
-		func(t27 T27) T28 { return T28(t27) },
-		func(t28 T28) T29 { return T29(t28) },
-		func(t29 T29) T30 { return T30(t29) },
-	)
+var assignBenchDefs = []any{
+	func() T1 { return 42 },
+	func(t1 T1) T2 { return T2(t1) },
+	func(t2 T2) T3 { return T3(t2) },
+	func(t3 T3) T4 { return T4(t3) },
+	func(t4 T4) T5 { return T5(t4) },
+	func(t5 T5) T6 { return T6(t5) },
+	func(t6 T6) T7 { return T7(t6) },
+	func(t7 T7) T8 { return T8(t7) },
+	func(t8 T8) T9 { return T9(t8) },
+	func(t9 T9) T10 { return T10(t9) },
+	func(t10 T10) T11 { return T11(t10) },
+	func(t11 T11) T12 { return T12(t11) },
+	func(t12 T12) T13 { return T13(t12) },
+	func(t13 T13) T14 { return T14(t13) },
+	func(t14 T14) T15 { return T15(t14) },
+	func(t15 T15) T16 { return T16(t15) },
+	func(t16 T16) T17 { return T17(t16) },
+	func(t17 T17) T18 { return T18(t17) },
+	func(t18 T18) T19 { return T19(t18) },
+	func(t19 T19) T20 { return T20(t19) },
+	func(t20 T20) T21 { return T21(t20) },
+	func(t21 T21) T22 { return T22(t21) },
+	func(t22 T22) T23 { return T23(t22) },
+	func(t23 T23) T24 { return T24(t23) },
+	func(t24 T24) T25 { return T25(t24) },
+	func(t25 T25) T26 { return T26(t25) },
+	func(t26 T26) T27 { return T27(t26) },
+	func(t27 T27) T28 { return T28(t27) },
+	func(t28 T28) T29 { return T29(t28) },
+	func(t29 T29) T30 { return T30(t29) },
+}
 
+func BenchmarkAssign(b *testing.B) {
+	scope := New().Fork(assignBenchDefs...)
 	b.ResetTimer()
 	var t30 T30
 	for i := 0; i < b.N; i++ {
 		scope.Assign(&t30)
 	}
+}
 
+func BenchmarkGenericAssign(b *testing.B) {
+	scope := New().Fork(assignBenchDefs...)
+	b.ResetTimer()
+	var t30 T30
+	for i := 0; i < b.N; i++ {
+		Assign(scope, &t30)
+	}
 }
 
 func BenchmarkFork(b *testing.B) {
@@ -535,13 +544,13 @@ func BenchmarkFork1(b *testing.B) {
 	}
 }
 
-func BenchmarkMustGet(b *testing.B) {
+func BenchmarkGenericGet(b *testing.B) {
 	s := New(func() int {
 		return 42
 	})
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = MustGet[int](s)
+		_ = Get[int](s)
 	}
 }
 
