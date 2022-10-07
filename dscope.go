@@ -117,11 +117,7 @@ func (scope Scope) Assign(objs ...any) {
 }
 
 func Assign[T any](scope Scope, ptr *T) {
-	value, err := scope.Get(reflect.TypeOf(ptr).Elem())
-	if err != nil {
-		throw(err)
-	}
-	*ptr = value.Interface().(T)
+	*ptr = Get[T](scope)
 }
 
 var (
