@@ -1,3 +1,5 @@
+github.com/alphadose/haxmap v1.0.2 h1:ZZwFf15DcsAz4O+SyqrpH/xeO5Plh7mNRXDM9QIcWQQ=
+github.com/alphadose/haxmap v1.0.2/go.mod h1:Pq2IXbl9/ytYHfrIAd7rIVtZQ2ezdIhZfvdqOizDeWY=
 github.com/reusee/e5 v0.0.0-20220902143513-42365073754d h1:Hbb0lWLMOmVl8p3KwsXLH8rKqJtHKhIEB7BTbZbvxm0=
 github.com/reusee/e5 v0.0.0-20220902143513-42365073754d/go.mod h1:kfVSDXYZocDqR1uRQfewKHmcLa/QtjGl/Ik0/vqhZ4s=
 github.com/reusee/e5 v0.0.0-20220929122804-4b43ea7eeeeb h1:orYNZqNE1Ztu6re7yP9ArArLEP1f0L6FlydbGdWFKOE=

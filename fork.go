@@ -3,6 +3,7 @@ package dscope
 import (
 	"encoding/binary"
 	"hash/maphash"
+	"math"
 	"reflect"
 	"sort"
 	"strings"
@@ -11,8 +12,8 @@ import (
 )
 
 type _Forker struct {
-	Signature         [2]uint64
-	Key               [2]uint64
+	Signature         complex128
+	Key               complex128
 	Reducers          map[_TypeID]reflect.Type
 	NewValuesTemplate []_Value
 	DefKinds          []reflect.Kind
@@ -33,7 +34,7 @@ type reducerInfo struct {
 func newForker(
 	scope Scope,
 	defs []any,
-	key [2]uint64,
+	key complex128,
 ) *_Forker {
 
 	// collect new values
@@ -239,10 +240,10 @@ func newForker(
 		h.Write(buf)
 		h2.Write(buf2)
 	}
-	signature := [2]uint64{
-		h.Sum64(),
-		h2.Sum64(),
-	}
+	signature := complex(
+		math.Float64frombits(h.Sum64()),
+		math.Float64frombits(h2.Sum64()),
+	)
 
 	// reset info
 	set := make(map[_TypeID]struct{})

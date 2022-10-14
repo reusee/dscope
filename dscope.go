@@ -3,10 +3,12 @@ package dscope
 import (
 	"encoding/binary"
 	"hash/maphash"
+	"math"
 	"reflect"
 	"runtime"
 	"sync"
 
+	"github.com/alphadose/haxmap"
 	"github.com/reusee/e5"
 	"github.com/reusee/pr"
 )
@@ -27,8 +29,8 @@ type _TypeID int
 
 type Scope struct {
 	reducers    map[_TypeID]reflect.Type
-	signature   [2]uint64
-	forkFuncKey [2]uint64
+	signature   complex128
+	forkFuncKey complex128
 	values      *_StackedMap
 	path        *Path
 }
@@ -50,7 +52,7 @@ func (scope Scope) appendPath(typeID _TypeID) Scope {
 	return scope
 }
 
-var forkers sync.Map
+var forkers = haxmap.New[complex128, *_Forker]()
 
 var (
 	hashSeed  = maphash.MakeSeed()
@@ -68,13 +70,13 @@ func (scope Scope) Fork(
 	h2.SetSeed(hashSeed2)
 	buf := make([]byte, 8)
 	buf2 := make([]byte, 8)
-	binary.LittleEndian.PutUint64(buf, scope.signature[0])
+	binary.LittleEndian.PutUint64(buf, math.Float64bits(real(scope.signature)))
 	h.Write(buf)
-	binary.LittleEndian.PutUint64(buf, scope.signature[1])
+	binary.LittleEndian.PutUint64(buf, math.Float64bits(imag(scope.signature)))
 	h.Write(buf)
-	binary.LittleEndian.PutUint64(buf2, scope.signature[0])
+	binary.LittleEndian.PutUint64(buf2, math.Float64bits(real(scope.signature)))
 	h.Write(buf2)
-	binary.LittleEndian.PutUint64(buf2, scope.signature[1])
+	binary.LittleEndian.PutUint64(buf2, math.Float64bits(imag(scope.signature)))
 	h.Write(buf2)
 	for _, def := range defs {
 		id := getTypeID(reflect.TypeOf(def))
@@ -83,18 +85,18 @@ func (scope Scope) Fork(
 		binary.LittleEndian.PutUint64(buf2, uint64(id))
 		h2.Write(buf2)
 	}
-	key := [2]uint64{
-		h.Sum64(),
-		h2.Sum64(),
-	}
+	key := complex(
+		math.Float64frombits(h.Sum64()),
+		math.Float64frombits(h2.Sum64()),
+	)
 
-	value, ok := forkers.Load(key)
+	value, ok := forkers.Get(key)
 	if ok {
-		return value.(*_Forker).Fork(scope, defs)
+		return value.Fork(scope, defs)
 	}
 
 	forker := newForker(scope, defs, key)
-	forkers.Store(key, forker)
+	forkers.Set(key, forker)
 
 	return forker.Fork(scope, defs)
 }
