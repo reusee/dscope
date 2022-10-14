@@ -8,7 +8,6 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/alphadose/haxmap"
 	"github.com/reusee/e5"
 	"github.com/reusee/pr"
 )
@@ -52,7 +51,7 @@ func (scope Scope) appendPath(typeID _TypeID) Scope {
 	return scope
 }
 
-var forkers = haxmap.New[complex128, *_Forker]()
+var forkers = NewCowMap[complex128, *_Forker]()
 
 var (
 	hashSeed  = maphash.MakeSeed()
