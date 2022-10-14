@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"sync"
 )
 
 // reducer types
@@ -38,11 +37,11 @@ type reducerMark struct{}
 
 var reducerMarkType = reflect.TypeOf((*reducerMark)(nil)).Elem()
 
-var reducerMarkTypes sync.Map
+var reducerMarkTypes = NewCowMap[_TypeID, reflect.Type]()
 
-func getReducerMarkType(t reflect.Type) reflect.Type {
-	if v, ok := reducerMarkTypes.Load(t); ok {
-		return v.(reflect.Type)
+func getReducerMarkType(t reflect.Type, id _TypeID) reflect.Type {
+	if v, ok := reducerMarkTypes.Get(id); ok {
+		return v
 	}
 	markType := reflect.FuncOf(
 		[]reflect.Type{
@@ -53,7 +52,7 @@ func getReducerMarkType(t reflect.Type) reflect.Type {
 		},
 		false,
 	)
-	reducerMarkTypes.Store(t, markType)
+	reducerMarkTypes.Set(id, markType)
 	return markType
 }
 

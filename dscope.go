@@ -157,7 +157,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 
 	} else {
 		// reducer
-		markType := getReducerMarkType(t)
+		markType := getReducerMarkType(t, id)
 		return scope.get(
 			getTypeID(markType),
 			markType,

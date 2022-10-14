@@ -287,7 +287,7 @@ func newForker(
 		if !ok {
 			return
 		}
-		markType := getReducerMarkType(t)
+		markType := getReducerMarkType(t, id)
 		resetReducers = append(resetReducers, reducerInfo{
 			_TypeInfo: &_TypeInfo{
 				TypeID:  getTypeID(markType),
