@@ -69,16 +69,18 @@ func (scope Scope) Fork(
 	buf := make([]byte, 8)
 	buf2 := make([]byte, 8)
 	binary.LittleEndian.PutUint64(buf, scope.signature[0])
-	binary.LittleEndian.PutUint64(buf, scope.signature[1])
-	binary.LittleEndian.PutUint64(buf2, scope.signature[0])
-	binary.LittleEndian.PutUint64(buf2, scope.signature[1])
 	h.Write(buf)
-	h2.Write(buf2)
+	binary.LittleEndian.PutUint64(buf, scope.signature[1])
+	h.Write(buf)
+	binary.LittleEndian.PutUint64(buf2, scope.signature[0])
+	h.Write(buf2)
+	binary.LittleEndian.PutUint64(buf2, scope.signature[1])
+	h.Write(buf2)
 	for _, def := range defs {
 		id := getTypeID(reflect.TypeOf(def))
 		binary.LittleEndian.PutUint64(buf, uint64(id))
-		binary.LittleEndian.PutUint64(buf2, uint64(id))
 		h.Write(buf)
+		binary.LittleEndian.PutUint64(buf2, uint64(id))
 		h2.Write(buf2)
 	}
 	key := [2]uint64{
