@@ -13,8 +13,8 @@ import (
 )
 
 type _Value struct {
-	*_TypeInfo
-	*_Initializer
+	typeInfo    *_TypeInfo
+	initializer *_Initializer
 }
 
 type _TypeInfo struct {
@@ -149,11 +149,11 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 			)
 		}
 		var values []reflect.Value
-		values, err = value.get(scope.appendPath(id))
+		values, err = value.initializer.get(scope.appendPath(id))
 		if err != nil { // NOCOVER
 			return ret, err
 		}
-		return values[value.Position], nil
+		return values[value.typeInfo.Position], nil
 
 	} else {
 		// reducer

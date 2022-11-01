@@ -20,7 +20,7 @@ func (s *_StackedMap) Load(id _TypeID) ([]_Value, bool) {
 		// find left bound
 		for left < right {
 			idx = (left + right) >> 1
-			id2 = s.Values[idx].TypeID
+			id2 = s.Values[idx].typeInfo.TypeID
 			// need to find the first value
 			if id2 >= id {
 				right = idx
@@ -30,7 +30,7 @@ func (s *_StackedMap) Load(id _TypeID) ([]_Value, bool) {
 		}
 		start = -1
 		for ; idx < l; idx++ {
-			id2 = s.Values[idx].TypeID
+			id2 = s.Values[idx].typeInfo.TypeID
 			if id2 == id {
 				if start < 0 {
 					// found start
@@ -63,7 +63,7 @@ func (s *_StackedMap) LoadOne(id _TypeID) (ret _Value, ok bool) {
 		right = uint(len(s.Values))
 		for left < right {
 			idx = (left + right) >> 1
-			id2 = s.Values[idx].TypeID
+			id2 = s.Values[idx].typeInfo.TypeID
 			if id2 > id {
 				right = idx
 			} else if id2 < id {
@@ -84,14 +84,14 @@ func (s *_StackedMap) Range(fn func([]_Value) error) error {
 	var start, end int
 	for s != nil {
 		for j, d := range s.Values {
-			if _, ok := keys[d.TypeID]; ok {
+			if _, ok := keys[d.typeInfo.TypeID]; ok {
 				continue
 			}
-			keys[d.TypeID] = struct{}{}
+			keys[d.typeInfo.TypeID] = struct{}{}
 			start = j
 			end = start + 1
 			for _, follow := range s.Values[j+1:] {
-				if follow.TypeID == d.TypeID {
+				if follow.typeInfo.TypeID == d.typeInfo.TypeID {
 					end++
 				} else {
 					break

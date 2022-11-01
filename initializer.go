@@ -69,11 +69,11 @@ func (i *_Initializer) getSlow(scope Scope) (ret []reflect.Value, err error) {
 			vs := make([]reflect.Value, len(values))
 			for i, value := range values {
 				var values []reflect.Value
-				values, err = value.get(pathScope)
+				values, err = value.initializer.get(pathScope)
 				if err != nil { // NOCOVER
 					return
 				}
-				vs[i] = values[value.Position]
+				vs[i] = values[value.typeInfo.Position]
 			}
 			switch *i.ReducerType {
 			case reducerType:

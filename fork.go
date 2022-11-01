@@ -26,9 +26,9 @@ type _Forker struct {
 type posAtSorted int
 
 type reducerInfo struct {
-	*_TypeInfo
-	OriginType  reflect.Type
-	ReducerType *reflect.Type
+	typeInfo    *_TypeInfo
+	originType  reflect.Type
+	reducerType *reflect.Type
 }
 
 func newForker(
@@ -63,7 +63,7 @@ func newForker(
 				id := getTypeID(t)
 
 				newValuesTemplate = append(newValuesTemplate, _Value{
-					_TypeInfo: &_TypeInfo{
+					typeInfo: &_TypeInfo{
 						TypeID:     id,
 						DefType:    defType,
 						Position:   i,
@@ -84,7 +84,7 @@ func newForker(
 			t := defType.Elem()
 			id := getTypeID(t)
 			newValuesTemplate = append(newValuesTemplate, _Value{
-				_TypeInfo: &_TypeInfo{
+				typeInfo: &_TypeInfo{
 					TypeID:     id,
 					DefType:    defType,
 					DefIsMulti: false,
@@ -113,7 +113,8 @@ func newForker(
 		posesAtTemplate = append(posesAtTemplate, posAtTemplate(i))
 	}
 	sort.Slice(posesAtTemplate, func(i, j int) bool {
-		return newValuesTemplate[posesAtTemplate[i]].TypeID < newValuesTemplate[posesAtTemplate[j]].TypeID
+		return newValuesTemplate[posesAtTemplate[i]].typeInfo.TypeID <
+			newValuesTemplate[posesAtTemplate[j]].typeInfo.TypeID
 	})
 	posesAtSorted := make([]posAtSorted, len(posesAtTemplate))
 	for i, j := range posesAtTemplate {
@@ -122,7 +123,8 @@ func newForker(
 
 	sortedNewValuesTemplate := append(newValuesTemplate[:0:0], newValuesTemplate...)
 	sort.Slice(sortedNewValuesTemplate, func(i, j int) bool {
-		return sortedNewValuesTemplate[i].TypeID < sortedNewValuesTemplate[j].TypeID
+		return sortedNewValuesTemplate[i].typeInfo.TypeID <
+			sortedNewValuesTemplate[j].typeInfo.TypeID
 	})
 	valuesTemplate := scope.values.Append(sortedNewValuesTemplate)
 
@@ -130,12 +132,12 @@ func newForker(
 	downstreams := make(map[_TypeID][]_Value)
 	var traverse func(values []_Value, path []_TypeID) error
 	traverse = func(values []_Value, path []_TypeID) error {
-		id := values[0].TypeID
+		id := values[0].typeInfo.TypeID
 		color := colors[id]
 		switch color {
 		case 1:
 			return we.With(
-				e5.Info("found dependency loop in definition %v", values[0].DefType),
+				e5.Info("found dependency loop in definition %v", values[0].typeInfo.DefType),
 				func() e5.WrapFunc {
 					buf := new(strings.Builder)
 					for i, id := range path {
@@ -154,12 +156,12 @@ func newForker(
 		}
 		colors[id] = 1
 		for _, value := range values {
-			if value.DefType.Kind() != reflect.Func {
+			if value.typeInfo.DefType.Kind() != reflect.Func {
 				continue
 			}
-			numIn := value.DefType.NumIn()
+			numIn := value.typeInfo.DefType.NumIn()
 			for i := 0; i < numIn; i++ {
-				requiredType := value.DefType.In(i)
+				requiredType := value.typeInfo.DefType.In(i)
 				id2 := getTypeID(requiredType)
 				downstreams[id2] = append(
 					downstreams[id2],
@@ -169,13 +171,13 @@ func newForker(
 					value2, ok := valuesTemplate.Load(id2)
 					if !ok {
 						return we.With(
-							e5.Info("dependency not found in definition %v", value.DefType),
+							e5.Info("dependency not found in definition %v", value.typeInfo.DefType),
 							e5.Info("no definition for %v", requiredType),
 						)(
 							ErrDependencyNotFound,
 						)
 					}
-					if err := traverse(value2, append(path, value.TypeID)); err != nil {
+					if err := traverse(value2, append(path, value.typeInfo.TypeID)); err != nil {
 						return err
 					}
 				}
@@ -193,7 +195,7 @@ func newForker(
 		}
 
 		for _, value := range values {
-			id := getTypeID(value.DefType)
+			id := getTypeID(value.typeInfo.DefType)
 			i := sort.Search(len(defTypeIDs), func(i int) bool {
 				return id >= defTypeIDs[i]
 			})
@@ -212,7 +214,7 @@ func newForker(
 		}
 
 		if len(values) > 1 {
-			t := typeIDToType(values[0].TypeID)
+			t := typeIDToType(values[0].typeInfo.TypeID)
 			if getReducerType(t) == nil {
 				return we.With(
 					e5.Info("%v has multiple definitions", t),
@@ -220,7 +222,7 @@ func newForker(
 					ErrBadDefinition,
 				)
 			}
-			reducers[values[0].TypeID] = t
+			reducers[values[0].typeInfo.TypeID] = t
 		}
 
 		return nil
@@ -255,14 +257,14 @@ func newForker(
 			return
 		}
 		for _, downstream := range downstreams[id] {
-			if _, ok := scope.values.LoadOne(downstream.TypeID); !ok {
+			if _, ok := scope.values.LoadOne(downstream.typeInfo.TypeID); !ok {
 				continue
 			}
-			if _, ok := set[downstream.TypeID]; !ok {
-				resetIDs = append(resetIDs, downstream.TypeID)
-				set[downstream.TypeID] = struct{}{}
+			if _, ok := set[downstream.typeInfo.TypeID]; !ok {
+				resetIDs = append(resetIDs, downstream.typeInfo.TypeID)
+				set[downstream.typeInfo.TypeID] = struct{}{}
 			}
-			resetDownstream(downstream.TypeID)
+			resetDownstream(downstream.typeInfo.TypeID)
 		}
 		colors[id] = 1
 	}
@@ -289,25 +291,25 @@ func newForker(
 		}
 		markType := getReducerMarkType(t, id)
 		resetReducers = append(resetReducers, reducerInfo{
-			_TypeInfo: &_TypeInfo{
+			typeInfo: &_TypeInfo{
 				TypeID:  getTypeID(markType),
 				DefType: reflect.TypeOf(func() {}),
 			},
-			OriginType:  t,
-			ReducerType: getReducerType(t),
+			originType:  t,
+			reducerType: getReducerType(t),
 		})
 		resetReducerSet[id] = true
 	}
 	// new reducers
 	for _, value := range newValuesTemplate {
-		resetReducer(value.TypeID)
+		resetReducer(value.typeInfo.TypeID)
 	}
 	// reset reducers
 	for _, id := range resetIDs {
 		resetReducer(id)
 	}
 	sort.Slice(resetReducers, func(i, j int) bool {
-		return resetReducers[i].TypeID < resetReducers[j].TypeID
+		return resetReducers[i].typeInfo.TypeID < resetReducers[j].typeInfo.TypeID
 	})
 
 	return &_Forker{
@@ -343,7 +345,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 			throw(err)
 		}
 		sort.Slice(values, func(i, j int) bool {
-			return values[i].TypeID < values[j].TypeID
+			return values[i].typeInfo.TypeID < values[j].typeInfo.TypeID
 		})
 		scope.values = &_StackedMap{
 			Values: values,
@@ -363,8 +365,8 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 			for i := 0; i < numValues; i++ {
 				info := f.NewValuesTemplate[n]
 				newValues[f.PosesAtSorted[n]] = _Value{
-					_TypeInfo:    info._TypeInfo,
-					_Initializer: initializer,
+					typeInfo:    info.typeInfo,
+					initializer: initializer,
 				}
 				n++
 			}
@@ -372,8 +374,8 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 			info := f.NewValuesTemplate[n]
 			initializer := newInitializer(def, nil)
 			newValues[f.PosesAtSorted[n]] = _Value{
-				_TypeInfo:    info._TypeInfo,
-				_Initializer: initializer,
+				typeInfo:    info.typeInfo,
+				initializer: initializer,
 			}
 			n++
 		}
@@ -389,20 +391,20 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 				panic("impossible")
 			}
 			for _, value := range vs {
-				if value.DefIsMulti {
+				if value.typeInfo.DefIsMulti {
 					// multiple types using the same definiton
 					found := false
 					for _, d := range resetValues {
-						if d.ID == value.ID {
+						if d.initializer.ID == value.initializer.ID {
 							found = true
-							value._Initializer = d._Initializer
+							value.initializer = d.initializer
 						}
 					}
 					if !found {
-						value._Initializer = value.reset()
+						value.initializer = value.initializer.reset()
 					}
 				} else {
-					value._Initializer = value.reset()
+					value.initializer = value.initializer.reset()
 				}
 				resetValues = append(resetValues, value)
 			}
@@ -415,8 +417,8 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 		reducerValues := make([]_Value, 0, len(f.ResetReducers))
 		for _, info := range f.ResetReducers {
 			reducerValues = append(reducerValues, _Value{
-				_TypeInfo:    info._TypeInfo,
-				_Initializer: newInitializer(info.OriginType, info.ReducerType),
+				typeInfo:    info.typeInfo,
+				initializer: newInitializer(info.originType, info.reducerType),
 			})
 		}
 		scope.values = scope.values.Append(reducerValues)

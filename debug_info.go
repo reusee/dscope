@@ -21,10 +21,10 @@ func DebugDefs(
 
 		var valueInfo ValueDebugInfo
 		for _, value := range values {
-			valueInfo.DefTypes = append(valueInfo.DefTypes, value.DefType)
+			valueInfo.DefTypes = append(valueInfo.DefTypes, value.typeInfo.DefType)
 		}
 
-		t := typeIDToType(values[0].TypeID)
+		t := typeIDToType(values[0].typeInfo.TypeID)
 		info.Values[t] = valueInfo
 
 		return nil
