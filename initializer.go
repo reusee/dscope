@@ -28,12 +28,12 @@ func newInitializer(def any, reducerType *reflect.Type) *_Initializer {
 
 var nextInitializerID int64 = 42
 
-func (i *_Initializer) get(scope Scope) (ret []reflect.Value, err error) {
+func (i *_Initializer) get(scope Scope, id _TypeID) (ret []reflect.Value, err error) {
 	if atomic.LoadUint32(&i.done) == 1 {
 		// init done
 		return i.Values, i.err
 	}
-	return i.getSlow(scope)
+	return i.getSlow(scope.appendPath(id))
 }
 
 func (i *_Initializer) getSlow(scope Scope) (ret []reflect.Value, err error) {
@@ -72,11 +72,10 @@ func (i *_Initializer) getSlow(scope Scope) (ret []reflect.Value, err error) {
 		if !ok { // NOCOVER
 			panic("impossible")
 		}
-		pathScope := scope.appendPath(typeID)
 		vs := make([]reflect.Value, len(values))
 		for i, value := range values {
 			var values []reflect.Value
-			values, err = value.initializer.get(pathScope)
+			values, err = value.initializer.get(scope, typeID)
 			if err != nil { // NOCOVER
 				return
 			}

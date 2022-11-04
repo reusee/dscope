@@ -149,7 +149,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 			)
 		}
 		var values []reflect.Value
-		values, err = value.initializer.get(scope.appendPath(id))
+		values, err = value.initializer.get(scope, id)
 		if err != nil { // NOCOVER
 			return ret, err
 		}
