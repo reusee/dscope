@@ -28,7 +28,7 @@ type posAtSorted int
 type reducerInfo struct {
 	typeInfo    *_TypeInfo
 	originType  reflect.Type
-	reducerType *reflect.Type
+	reducerKind reducerKind
 }
 
 func newForker(
@@ -215,7 +215,7 @@ func newForker(
 
 		if len(values) > 1 {
 			t := typeIDToType(values[0].typeInfo.TypeID)
-			if getReducerType(t) == nil {
+			if getReducerKind(t) == notReducer {
 				return we.With(
 					e5.Info("%v has multiple definitions", t),
 				)(
@@ -296,7 +296,7 @@ func newForker(
 				DefType: reflect.TypeOf(func() {}),
 			},
 			originType:  t,
-			reducerType: getReducerType(t),
+			reducerKind: getReducerKind(t),
 		})
 		resetReducerSet[id] = true
 	}
@@ -360,7 +360,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 	for idx, def := range defs {
 		switch f.DefKinds[idx] {
 		case reflect.Func:
-			initializer := newInitializer(def, nil)
+			initializer := newInitializer(def, notReducer)
 			numValues := f.DefNumValues[idx]
 			for i := 0; i < numValues; i++ {
 				info := f.NewValuesTemplate[n]
@@ -372,7 +372,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 			}
 		case reflect.Ptr:
 			info := f.NewValuesTemplate[n]
-			initializer := newInitializer(def, nil)
+			initializer := newInitializer(def, notReducer)
 			newValues[f.PosesAtSorted[n]] = _Value{
 				typeInfo:    info.typeInfo,
 				initializer: initializer,
@@ -418,7 +418,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 		for _, info := range f.ResetReducers {
 			reducerValues = append(reducerValues, _Value{
 				typeInfo:    info.typeInfo,
-				initializer: newInitializer(info.originType, info.reducerType),
+				initializer: newInitializer(info.originType, info.reducerKind),
 			})
 		}
 		scope.values = scope.values.Append(reducerValues)

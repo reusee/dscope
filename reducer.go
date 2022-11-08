@@ -21,14 +21,14 @@ type Reducer interface {
 
 var reducerType = reflect.TypeOf((*Reducer)(nil)).Elem()
 
-func getReducerType(t reflect.Type) *reflect.Type {
+func getReducerKind(t reflect.Type) reducerKind {
 	if t.Implements(reducerType) {
-		return &reducerType
+		return isReducer
 	}
 	if t.Implements(customReducerType) {
-		return &customReducerType
+		return isCustomReducer
 	}
-	return nil
+	return notReducer
 }
 
 // reducer mark type

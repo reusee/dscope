@@ -11,18 +11,26 @@ import (
 type _Initializer struct {
 	ID          int64
 	Def         any
-	ReducerType *reflect.Type
+	ReducerKind reducerKind
 	Values      []reflect.Value
 	done        uint32
 	mu          sync.Mutex
 	err         error
 }
 
-func newInitializer(def any, reducerType *reflect.Type) *_Initializer {
+type reducerKind uint8
+
+const (
+	notReducer reducerKind = iota
+	isReducer
+	isCustomReducer
+)
+
+func newInitializer(def any, reducerKind reducerKind) *_Initializer {
 	return &_Initializer{
 		ID:          atomic.AddInt64(&nextInitializerID, 1),
 		Def:         def,
-		ReducerType: reducerType,
+		ReducerKind: reducerKind,
 	}
 }
 
@@ -65,7 +73,7 @@ func (i *_Initializer) getSlow(scope Scope) (ret []reflect.Value, err error) {
 	}()
 
 	// reducer
-	if i.ReducerType != nil {
+	if i.ReducerKind != notReducer {
 		typ := i.Def.(reflect.Type)
 		typeID := getTypeID(typ)
 		values, ok := scope.values.Load(typeID)
@@ -81,12 +89,12 @@ func (i *_Initializer) getSlow(scope Scope) (ret []reflect.Value, err error) {
 			}
 			vs[i] = values[value.typeInfo.Position]
 		}
-		switch *i.ReducerType {
-		case reducerType:
+		switch i.ReducerKind {
+		case isReducer:
 			ret = []reflect.Value{
 				Reduce(vs),
 			}
-		case customReducerType:
+		case isCustomReducer:
 			ret = []reflect.Value{
 				vs[0].Interface().(CustomReducer).Reduce(scope, vs),
 			}
@@ -117,6 +125,6 @@ func (s *_Initializer) reset() *_Initializer {
 	return &_Initializer{
 		ID:          s.ID,
 		Def:         s.Def,
-		ReducerType: s.ReducerType,
+		ReducerKind: s.ReducerKind,
 	}
 }
