@@ -141,7 +141,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 	if _, ok := scope.reducers[id]; !ok {
 		// non-reducer
 
-		if t.Implements(isWithForkType) {
+		if t.Implements(withForkType) {
 			return getWithForkForker(t)(scope), nil
 		}
 

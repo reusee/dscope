@@ -13,4 +13,18 @@ func TestWithFork(t *testing.T) {
 			t.Fatalf("got %v", n)
 		}
 	})
+
+	New(
+		PtrTo(1),
+		func(i int) uint {
+			return uint(i * 2)
+		},
+	).Call(func(
+		u WithFork[uint],
+	) {
+		if u(PtrTo(2)) != 4 {
+			t.Fatal()
+		}
+	})
+
 }
