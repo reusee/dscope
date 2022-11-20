@@ -142,7 +142,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 		// non-reducer
 
 		if t.Implements(isWithForkType) {
-			return reflect.New(t).Elem().Interface().(withFork).forker(scope), nil
+			return getWithForkForker(t)(scope), nil
 		}
 
 		value, ok := scope.values.LoadOne(id)

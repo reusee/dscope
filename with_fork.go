@@ -2,6 +2,7 @@ package dscope
 
 import (
 	"reflect"
+	"sync"
 )
 
 type WithFork[T any] func(defs ...any) T
@@ -21,3 +22,14 @@ type withFork interface {
 }
 
 var isWithForkType = reflect.TypeOf((*withFork)(nil)).Elem()
+
+var withForkForkers sync.Map
+
+func getWithForkForker(t reflect.Type) func(Scope) reflect.Value {
+	if v, ok := withForkForkers.Load(t); ok {
+		return v.(func(Scope) reflect.Value)
+	}
+	forker := reflect.New(t).Elem().Interface().(withFork).forker
+	withForkForkers.Store(t, forker)
+	return forker
+}
