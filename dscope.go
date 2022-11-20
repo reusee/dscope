@@ -141,12 +141,12 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 	if _, ok := scope.reducers[id]; !ok {
 		// non-reducer
 
+		if t.Implements(isWithForkType) {
+			return reflect.New(t).Elem().Interface().(withFork).forker(scope), nil
+		}
+
 		value, ok := scope.values.LoadOne(id)
 		if !ok {
-
-			if t.Implements(isWithForkType) {
-				return reflect.New(t).Elem().Interface().(withFork).forker(scope), nil
-			}
 
 			return ret, we.With(
 				e5.Info("no definition for %v", t),

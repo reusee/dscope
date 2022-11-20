@@ -606,3 +606,20 @@ func BenchmarkMultipleDispatch(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkWithFork(b *testing.B) {
+	s := New(
+		PtrTo(1),
+	)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		s.Call(func(
+			f WithFork[int],
+		) {
+			i := f(PtrTo(42))
+			if i != 42 {
+				b.Fatal()
+			}
+		})
+	}
+}
