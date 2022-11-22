@@ -162,6 +162,9 @@ func newForker(
 			numIn := value.typeInfo.DefType.NumIn()
 			for i := 0; i < numIn; i++ {
 				requiredType := value.typeInfo.DefType.In(i)
+				if requiredType.Implements(typeWrapperType) {
+					requiredType = unwrapType(requiredType)
+				}
 				id2 := getTypeID(requiredType)
 				downstreams[id2] = append(
 					downstreams[id2],

@@ -28,3 +28,20 @@ func TestWithFork(t *testing.T) {
 	})
 
 }
+
+func TestWithForkAsDeps(t *testing.T) {
+	var i int64
+	New(
+		PtrTo(42),
+		func(
+			i WithFork[int],
+		) int64 {
+			return int64(
+				i(PtrTo(1)) * 2,
+			)
+		},
+	).Assign(&i)
+	if i != 2 {
+		t.Fatal()
+	}
+}
