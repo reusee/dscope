@@ -150,6 +150,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 
 			return ret, we.With(
 				e5.Info("no definition for %v", t),
+				e5.Info("path: %+v", scope.path),
 			)(
 				ErrDependencyNotFound,
 			)
