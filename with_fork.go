@@ -21,6 +21,26 @@ func (w WithFork[T]) unwrapType() []reflect.Type {
 	return []reflect.Type{reflect.TypeOf(t)}
 }
 
+type WithFork2[T any, T2 any] func(defs ...any) (T, T2)
+
+func (w WithFork2[T, T2]) newWithForkValue(scope Scope) reflect.Value {
+	return reflect.ValueOf(WithFork2[T, T2](func(defs ...any) (t T, t2 T2) {
+		scope.Fork(defs...).Assign(&t, &t2)
+		return
+	}))
+}
+
+var _ typeWrapper = WithFork2[int, int](nil)
+
+func (w WithFork2[T, T2]) unwrapType() []reflect.Type {
+	var t T
+	var t2 T2
+	return []reflect.Type{
+		reflect.TypeOf(t),
+		reflect.TypeOf(t2),
+	}
+}
+
 type withFork interface {
 	newWithForkValue(scope Scope) reflect.Value
 }

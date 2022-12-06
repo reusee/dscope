@@ -45,3 +45,24 @@ func TestWithForkAsDeps(t *testing.T) {
 		t.Fatal()
 	}
 }
+
+func TestWithForkN(t *testing.T) {
+	s := New(
+		PtrTo(42),
+		func(i int) int8 {
+			return int8(i)
+		},
+		func(i int) int16 {
+			return int16(i * 2)
+		},
+	)
+	var with WithFork2[int8, int16]
+	s.Assign(&with)
+	i1, i2 := with(PtrTo(1))
+	if i1 != 1 {
+		t.Fatal()
+	}
+	if i2 != 2 {
+		t.Fatal()
+	}
+}
