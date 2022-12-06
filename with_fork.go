@@ -33,7 +33,7 @@ func getWithForkForker(t reflect.Type) func(Scope) reflect.Value {
 
 var _ typeWrapper = WithFork[int](nil)
 
-func (w WithFork[T]) unwrapType() reflect.Type {
+func (w WithFork[T]) unwrapType() []reflect.Type {
 	var t T
-	return reflect.TypeOf(t)
+	return []reflect.Type{reflect.TypeOf(t)}
 }

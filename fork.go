@@ -161,28 +161,33 @@ func newForker(
 			}
 			numIn := value.typeInfo.DefType.NumIn()
 			for i := 0; i < numIn; i++ {
-				requiredType := value.typeInfo.DefType.In(i)
-				if requiredType.Implements(typeWrapperType) {
-					requiredType = unwrapType(requiredType)
+				var requiredTypes []reflect.Type
+				inType := value.typeInfo.DefType.In(i)
+				if inType.Implements(typeWrapperType) {
+					requiredTypes = unwrapType(inType)
+				} else {
+					requiredTypes = []reflect.Type{inType}
 				}
-				id2 := getTypeID(requiredType)
-				downstreams[id2] = append(
-					downstreams[id2],
-					value,
-				)
-				if id2 != scopeTypeID {
-					value2, ok := valuesTemplate.Load(id2)
-					if !ok {
-						return we.With(
-							e5.Info("dependency not found in definition %v", value.typeInfo.DefType),
-							e5.Info("no definition for %v", requiredType),
-							e5.Info("path: %+v", scope.path),
-						)(
-							ErrDependencyNotFound,
-						)
-					}
-					if err := traverse(value2, append(path, value.typeInfo.TypeID)); err != nil {
-						return err
+				for _, requiredType := range requiredTypes {
+					id2 := getTypeID(requiredType)
+					downstreams[id2] = append(
+						downstreams[id2],
+						value,
+					)
+					if id2 != scopeTypeID {
+						value2, ok := valuesTemplate.Load(id2)
+						if !ok {
+							return we.With(
+								e5.Info("dependency not found in definition %v", value.typeInfo.DefType),
+								e5.Info("no definition for %v", requiredType),
+								e5.Info("path: %+v", scope.path),
+							)(
+								ErrDependencyNotFound,
+							)
+						}
+						if err := traverse(value2, append(path, value.typeInfo.TypeID)); err != nil {
+							return err
+						}
 					}
 				}
 			}
