@@ -14,6 +14,13 @@ func (w WithFork[T]) newWithForkValue(scope Scope) reflect.Value {
 	}))
 }
 
+var _ typeWrapper = WithFork[int](nil)
+
+func (w WithFork[T]) unwrapType() []reflect.Type {
+	var t T
+	return []reflect.Type{reflect.TypeOf(t)}
+}
+
 type withFork interface {
 	newWithForkValue(scope Scope) reflect.Value
 }
@@ -24,16 +31,16 @@ var withForkForkers sync.Map
 
 func getWithForkForker(t reflect.Type) func(Scope) reflect.Value {
 	if v, ok := withForkForkers.Load(t); ok {
-		return v.(func(Scope) reflect.Value)
+		if v != nil {
+			return v.(func(Scope) reflect.Value)
+		}
+		return nil
 	}
-	forker := reflect.New(t).Elem().Interface().(withFork).newWithForkValue
-	withForkForkers.Store(t, forker)
-	return forker
-}
-
-var _ typeWrapper = WithFork[int](nil)
-
-func (w WithFork[T]) unwrapType() []reflect.Type {
-	var t T
-	return []reflect.Type{reflect.TypeOf(t)}
+	if t.Implements(withForkType) {
+		forker := reflect.New(t).Elem().Interface().(withFork).newWithForkValue
+		withForkForkers.Store(t, forker)
+		return forker
+	}
+	withForkForkers.Store(t, nil)
+	return nil
 }
