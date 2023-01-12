@@ -9,13 +9,13 @@ import (
 )
 
 type _Initializer struct {
-	ID          int64
 	Def         any
-	ReducerKind reducerKind
-	Values      []reflect.Value
-	done        uint32
-	mu          sync.Mutex
 	err         error
+	Values      []reflect.Value
+	ID          int64
+	mu          sync.Mutex
+	done        uint32
+	ReducerKind reducerKind
 }
 
 type reducerKind uint8

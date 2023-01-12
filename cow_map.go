@@ -6,8 +6,8 @@ import (
 )
 
 type CowMap[K comparable, V any] struct {
-	mutex sync.Mutex
 	value atomic.Pointer[map[K]V]
+	mutex sync.Mutex
 }
 
 func NewCowMap[K comparable, V any]() *CowMap[K, V] {

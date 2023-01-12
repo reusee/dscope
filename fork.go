@@ -12,8 +12,6 @@ import (
 )
 
 type _Forker struct {
-	Signature         complex128
-	Key               complex128
 	Reducers          map[_TypeID]reflect.Type
 	NewValuesTemplate []_Value
 	DefKinds          []reflect.Kind
@@ -21,6 +19,8 @@ type _Forker struct {
 	PosesAtSorted     []posAtSorted
 	ResetIDs          []_TypeID
 	ResetReducers     []reducerInfo
+	Signature         complex128
+	Key               complex128
 }
 
 type posAtSorted int

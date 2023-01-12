@@ -18,8 +18,8 @@ type _Value struct {
 }
 
 type _TypeInfo struct {
-	TypeID     _TypeID
 	DefType    reflect.Type
+	TypeID     _TypeID
 	Position   int
 	DefIsMulti bool
 }
@@ -28,10 +28,10 @@ type _TypeID int
 
 type Scope struct {
 	reducers    map[_TypeID]reflect.Type
-	signature   complex128
-	forkFuncKey complex128
 	values      *_StackedMap
 	path        *Path
+	signature   complex128
+	forkFuncKey complex128
 }
 
 var Universe = Scope{}

@@ -1,8 +1,8 @@
 package dscope
 
 type _StackedMap struct {
-	Values []_Value
 	Next   *_StackedMap
+	Values []_Value
 	Height int8
 }
 
