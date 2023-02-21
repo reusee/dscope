@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	"github.com/reusee/e5"
-	"github.com/reusee/pr"
+	"github.com/reusee/pr2"
 )
 
 type _Value struct {
@@ -227,8 +227,8 @@ var fnRetTypes sync.Map
 
 const reflectValuesPoolMaxLen = 64
 
-var reflectValuesPool = pr.NewPool(
-	int32(runtime.NumCPU()),
+var reflectValuesPool = pr2.NewPool(
+	uint32(runtime.NumCPU()),
 	func() *[]reflect.Value {
 		slice := make([]reflect.Value, reflectValuesPoolMaxLen)
 		return &slice

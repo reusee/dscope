@@ -1,4 +1,4 @@
-github.com/reusee/e5 v0.0.0-20220929123139-58c62ec313eb h1:jHb65/malJFnK97o38qCAvPzJGiDzw/mc7cDYV0/U0g=
-github.com/reusee/e5 v0.0.0-20220929123139-58c62ec313eb/go.mod h1:kfVSDXYZocDqR1uRQfewKHmcLa/QtjGl/Ik0/vqhZ4s=
-github.com/reusee/pr v0.0.0-20220902154654-adb0578fc28b h1:JYUk+EfIMryWfSij3QoBTJd2BGSEDNUQPP4nAgsoT4E=
-github.com/reusee/pr v0.0.0-20220902154654-adb0578fc28b/go.mod h1:ByEquMmqXZQzG7VHsfuwgutPe/utoaaDJS9VJJ46uik=
+github.com/reusee/e5 v0.0.0-20221103014142-7fb507f8cb8f h1:GV5cB3lkNHJQTglvZwMxh9IsquZqm0bKkMA4SOcRFpo=
+github.com/reusee/e5 v0.0.0-20221103014142-7fb507f8cb8f/go.mod h1:kfVSDXYZocDqR1uRQfewKHmcLa/QtjGl/Ik0/vqhZ4s=
+github.com/reusee/pr2 v0.0.0-20230221022320-e074b9be574d h1:MQNBpyNoz8SCWqcNwVxq6yFg1EG+RmRoAcDh+D7Bnyw=
+github.com/reusee/pr2 v0.0.0-20230221022320-e074b9be574d/go.mod h1:6h1FGSwxR3R6Ro1FuAenQMEq/nn+WoR6N32HByu2UhY=
