@@ -6,7 +6,7 @@ import (
 )
 
 type MutableScope struct {
-	scope atomic.Value
+	scope *atomic.Pointer[Scope]
 }
 
 type MutateCall func(fn any) Scope
@@ -19,10 +19,12 @@ func NewMutable(
 	defs ...any,
 ) *MutableScope {
 
-	m := new(MutableScope)
+	m := &MutableScope{
+		scope: new(atomic.Pointer[Scope]),
+	}
 
 	get := GetScope(func() Scope {
-		return *m.scope.Load().(*Scope)
+		return *m.scope.Load()
 	})
 
 	mutateCall := MutateCall(m.MutateCall)
@@ -37,7 +39,7 @@ func NewMutable(
 }
 
 func (m *MutableScope) GetScope() Scope {
-	return *m.scope.Load().(*Scope)
+	return *m.scope.Load()
 }
 
 func (m *MutableScope) Fork(
@@ -68,7 +70,7 @@ mutate:
 	if numRedo > 1024 { // NOCOVER
 		panic("dependency loop or too much contention")
 	}
-	from := m.scope.Load().(*Scope)
+	from := m.scope.Load()
 	cur := *from
 	mutated := cur.Fork(defs...)
 	mutatedPtr := &mutated
@@ -85,7 +87,7 @@ mutate:
 	if numRedo > 1024 {
 		panic("dependency loop or too much contention")
 	}
-	from := m.scope.Load().(*Scope)
+	from := m.scope.Load()
 	cur := *from
 	res := cur.CallValue(reflect.ValueOf(fn))
 	var defs []any

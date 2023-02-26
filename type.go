@@ -12,12 +12,12 @@ type _TypeIDInfos struct {
 }
 
 var (
-	typeIDInfos = func() atomic.Value {
+	typeIDInfos = func() *atomic.Pointer[_TypeIDInfos] {
 		infos := &_TypeIDInfos{
 			TypeToID: make(map[reflect.Type]_TypeID),
 			IDToType: make(map[_TypeID]reflect.Type),
 		}
-		var v atomic.Value
+		v := new(atomic.Pointer[_TypeIDInfos])
 		v.Store(infos)
 		return v
 	}()
@@ -27,7 +27,7 @@ var (
 
 // TODO inline
 func getTypeID(t reflect.Type) _TypeID {
-	if i, ok := typeIDInfos.Load().(*_TypeIDInfos).TypeToID[t]; ok {
+	if i, ok := typeIDInfos.Load().TypeToID[t]; ok {
 		return i
 	}
 	return getTypeIDSlow(t)
@@ -35,7 +35,7 @@ func getTypeID(t reflect.Type) _TypeID {
 
 func getTypeIDSlow(t reflect.Type) _TypeID {
 	typeIDLock.Lock()
-	infos := typeIDInfos.Load().(*_TypeIDInfos)
+	infos := typeIDInfos.Load()
 	if i, ok := infos.TypeToID[t]; ok { // NOCOVER
 		typeIDLock.Unlock()
 		return i
@@ -61,5 +61,5 @@ func getTypeIDSlow(t reflect.Type) _TypeID {
 }
 
 func typeIDToType(id _TypeID) reflect.Type {
-	return typeIDInfos.Load().(*_TypeIDInfos).IDToType[id]
+	return typeIDInfos.Load().IDToType[id]
 }
