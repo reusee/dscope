@@ -229,7 +229,7 @@ const reflectValuesPoolMaxLen = 64
 
 var reflectValuesPool = pr2.NewPool(
 	uint32(runtime.NumCPU()),
-	func() *[]reflect.Value {
+	func(_ pr2.PoolPutFunc) *[]reflect.Value {
 		slice := make([]reflect.Value, reflectValuesPoolMaxLen)
 		return &slice
 	},
