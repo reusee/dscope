@@ -71,10 +71,8 @@ func newForker(
 					},
 				})
 				numValues++
-				if id != scopeTypeID {
-					if _, ok := scope.values.LoadOne(id); ok {
-						redefinedIDs[id] = struct{}{}
-					}
+				if _, ok := scope.values.LoadOne(id); ok {
+					redefinedIDs[id] = struct{}{}
 				}
 
 			}
@@ -90,10 +88,8 @@ func newForker(
 					DefIsMulti: false,
 				},
 			})
-			if id != scopeTypeID {
-				if _, ok := scope.values.LoadOne(id); ok {
-					redefinedIDs[id] = struct{}{}
-				}
+			if _, ok := scope.values.LoadOne(id); ok {
+				redefinedIDs[id] = struct{}{}
 			}
 
 			defNumValues = append(defNumValues, 1)
@@ -174,20 +170,18 @@ func newForker(
 						downstreams[id2],
 						value,
 					)
-					if id2 != scopeTypeID {
-						value2, ok := valuesTemplate.Load(id2)
-						if !ok {
-							return we.With(
-								e5.Info("dependency not found in definition %v", value.typeInfo.DefType),
-								e5.Info("no definition for %v", requiredType),
-								e5.Info("path: %+v", scope.path),
-							)(
-								ErrDependencyNotFound,
-							)
-						}
-						if err := traverse(value2, append(path, value.typeInfo.TypeID)); err != nil {
-							return err
-						}
+					value2, ok := valuesTemplate.Load(id2)
+					if !ok {
+						return we.With(
+							e5.Info("dependency not found in definition %v", value.typeInfo.DefType),
+							e5.Info("no definition for %v", requiredType),
+							e5.Info("path: %+v", scope.path),
+						)(
+							ErrDependencyNotFound,
+						)
+					}
+					if err := traverse(value2, append(path, value.typeInfo.TypeID)); err != nil {
+						return err
 					}
 				}
 			}
@@ -278,7 +272,6 @@ func newForker(
 		colors[id] = 1
 	}
 
-	redefinedIDs[scopeTypeID] = struct{}{}
 	for id := range redefinedIDs {
 		resetDownstream(id)
 	}
