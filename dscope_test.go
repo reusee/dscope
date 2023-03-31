@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestAssign(t *testing.T) {
@@ -247,10 +248,11 @@ func TestForkScope(t *testing.T) {
 	type Bar int
 	type Baz int
 	scope := New().Fork(
-		func(
-			bar Bar,
-			baz Baz,
-		) Foo {
+		func(scope Scope) Foo {
+			var bar Bar
+			var baz Baz
+			scope.Assign(&bar)
+			scope.Assign(&baz)
 			return Foo(bar) + Foo(baz)
 		},
 		func() Bar {
@@ -310,17 +312,26 @@ func TestForkScope2(t *testing.T) {
 }
 
 func TestLoadOnce(t *testing.T) {
+	type Setscope func(Scope)
 	var scope Scope
-	scope = New()
+	scope = New().Fork(
+		func() Setscope {
+			return func(c Scope) {
+				scope = c
+			}
+		},
+	)
 
 	n := 0
 	type Foo int
 	scope = scope.Fork(
-		func() Foo {
+		func(scope Scope, setscope Setscope) Foo {
 			n++
-			scope = scope.Fork(func() Foo {
-				return 44
-			})
+			setscope(scope.Fork(
+				func() Foo {
+					return 44
+				},
+			))
 			return 42
 		},
 	)
@@ -906,6 +917,12 @@ func TestRacing(t *testing.T) {
 	wg.Wait()
 }
 
+func TestAssignScope(t *testing.T) {
+	scope := New()
+	var scope2 Scope
+	scope.Assign(&scope2)
+}
+
 func TestOverwrite(t *testing.T) {
 	scope := New(
 		func() (int, string) {
@@ -1321,6 +1338,39 @@ func TestMultipleDispatch(t *testing.T) {
 	}
 }
 
+func TestRuntimeLoop(t *testing.T) {
+	s := New(
+		func(s Scope) int {
+			var err error
+			defer func() {
+				if err == nil {
+					t.Fatal()
+				}
+				if !is(err, ErrDependencyLoop) {
+					t.Fatal()
+				}
+			}()
+			defer he(&err)
+			var i int
+			s.Assign(&i)
+			return 42
+		},
+	)
+	done := make(chan struct{})
+	go func() {
+		defer func() {
+			close(done)
+		}()
+		var i int
+		s.Assign(&i)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal()
+	}
+}
+
 func TestCallResultFork(t *testing.T) {
 	var i int
 	New(func() int {
@@ -1341,6 +1391,33 @@ func TestCallResultAssign(t *testing.T) {
 		return 42, 1
 	}).Assign(nil, &i)
 	if i != 1 {
+		t.Fatal()
+	}
+}
+
+func TestScopeAsDependency(t *testing.T) {
+	s := New(
+		func(
+			scope Scope,
+		) int64 {
+			var i int32
+			scope.Assign(&i)
+			return int64(i)
+		},
+		func() int32 {
+			return 42
+		},
+	)
+	var i64 int64
+	s.Assign(&i64)
+	if i64 != 42 {
+		t.Fatal()
+	}
+	s = s.Fork(func() int32 {
+		return 2
+	})
+	s.Assign(&i64)
+	if i64 != 2 {
 		t.Fatal()
 	}
 }
