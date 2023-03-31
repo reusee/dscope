@@ -123,20 +123,10 @@ func Assign[T any](scope Scope, ptr *T) {
 	*ptr = Get[T](scope)
 }
 
-var (
-	scopeTypeID = getTypeID(reflect.TypeOf((*Scope)(nil)).Elem())
-)
-
 func (scope Scope) get(id _TypeID, t reflect.Type) (
 	ret reflect.Value,
 	err error,
 ) {
-
-	// built-ins
-	switch id {
-	case scopeTypeID:
-		return reflect.ValueOf(scope), nil
-	}
 
 	if _, ok := scope.reducers[id]; !ok {
 		// non-reducer

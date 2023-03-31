@@ -10,12 +10,7 @@ type ValueDebugInfo struct {
 	DefTypes []reflect.Type
 }
 
-func DebugDefs(
-	s Scope,
-) (
-	info DebugInfo,
-) {
-
+func (s Scope) GetDebugInfo() (info DebugInfo) {
 	info.Values = make(map[reflect.Type]ValueDebugInfo)
 	if err := s.values.Range(func(values []_Value) error {
 
