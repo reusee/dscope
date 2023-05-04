@@ -590,16 +590,6 @@ func BenchmarkSimpleCall(b *testing.B) {
 	}
 }
 
-func BenchmarkCallWithScope(b *testing.B) {
-	scope := New()
-	for i := 0; i < b.N; i++ {
-		scope.Call(func(
-			_ Scope,
-		) {
-		})
-	}
-}
-
 var assignBenchDefs = []any{
 	func() T1 { return 42 },
 	func(t1 T1) T2 { return T2(t1) },
