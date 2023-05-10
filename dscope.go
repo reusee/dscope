@@ -225,7 +225,8 @@ func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 	fnType := fnValue.Type()
 	var args []reflect.Value
 	if nArgs := fnType.NumIn(); nArgs <= reflectValuesPoolMaxLen {
-		ptr, put, _ := reflectValuesPool.GetRC()
+		var ptr *[]reflect.Value
+		put := reflectValuesPool.Get(&ptr)
 		defer put()
 		args = *ptr
 	} else {
