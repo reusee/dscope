@@ -8,3 +8,5 @@ github.com/reusee/pr2 v0.0.0-20230510022941-5568524a2a05 h1:0fdMzUzJnPUW4RjIJjLw
 github.com/reusee/pr2 v0.0.0-20230510022941-5568524a2a05/go.mod h1:6h1FGSwxR3R6Ro1FuAenQMEq/nn+WoR6N32HByu2UhY=
 github.com/reusee/pr2 v0.0.0-20230513023417-8fa983cd748f h1:2QCrWURbV25su4JcyqFcR9bMbC/LD306QWHSYE2Urio=
 github.com/reusee/pr2 v0.0.0-20230513023417-8fa983cd748f/go.mod h1:6h1FGSwxR3R6Ro1FuAenQMEq/nn+WoR6N32HByu2UhY=
+github.com/reusee/pr2 v0.0.0-20230513031402-df695c66b2a2 h1:zahKgKU1ykzc1cAtjtNatd9MgB47az8oN30ikq230/0=
+github.com/reusee/pr2 v0.0.0-20230513031402-df695c66b2a2/go.mod h1:6h1FGSwxR3R6Ro1FuAenQMEq/nn+WoR6N32HByu2UhY=
