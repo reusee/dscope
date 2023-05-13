@@ -219,6 +219,7 @@ var reflectValuesPool = pr2.NewPool(
 		slice := make([]reflect.Value, reflectValuesPoolMaxLen)
 		return &slice
 	},
+	pr2.ResetSlice[reflect.Value](reflectValuesPoolMaxLen),
 )
 
 func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
