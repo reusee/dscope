@@ -51,7 +51,7 @@ func newForker(
 		case reflect.Func:
 			numOut := defType.NumOut()
 			if numOut == 0 {
-				throw(we.With(
+				_ = throw(we.With(
 					e5.Info("%T returns nothing", def),
 				)(
 					ErrBadArgument,
@@ -95,7 +95,7 @@ func newForker(
 			defNumValues = append(defNumValues, 1)
 
 		default:
-			throw(we.With(
+			_ = throw(we.With(
 				e5.Info("%T is not a valid definition", def),
 			)(
 				ErrBadArgument,
@@ -230,7 +230,7 @@ func newForker(
 
 		return nil
 	}); err != nil {
-		throw(err)
+		_ = throw(err)
 	}
 
 	h := new(maphash.Hash)
@@ -242,8 +242,12 @@ func newForker(
 	for _, id := range defTypeIDs {
 		binary.LittleEndian.PutUint64(buf, uint64(id))
 		binary.LittleEndian.PutUint64(buf2, uint64(id))
-		h.Write(buf)
-		h2.Write(buf2)
+		if _, err := h.Write(buf); err != nil {
+			panic(err)
+		}
+		if _, err := h2.Write(buf2); err != nil {
+			panic(err)
+		}
 	}
 	signature := complex(
 		math.Float64frombits(h.Sum64()),
@@ -344,7 +348,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 			values = append(values, ds...)
 			return nil
 		}); err != nil { // NOCOVER
-			throw(err)
+			_ = throw(err)
 		}
 		sort.Slice(values, func(i, j int) bool {
 			return values[i].typeInfo.TypeID < values[j].typeInfo.TypeID

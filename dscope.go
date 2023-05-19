@@ -70,19 +70,31 @@ func (scope Scope) Fork(
 	buf := make([]byte, 8)
 	buf2 := make([]byte, 8)
 	binary.LittleEndian.PutUint64(buf, math.Float64bits(real(scope.signature)))
-	h.Write(buf)
+	if _, err := h.Write(buf); err != nil {
+		panic(err)
+	}
 	binary.LittleEndian.PutUint64(buf, math.Float64bits(imag(scope.signature)))
-	h.Write(buf)
+	if _, err := h.Write(buf); err != nil {
+		panic(err)
+	}
 	binary.LittleEndian.PutUint64(buf2, math.Float64bits(real(scope.signature)))
-	h.Write(buf2)
+	if _, err := h.Write(buf2); err != nil {
+		panic(err)
+	}
 	binary.LittleEndian.PutUint64(buf2, math.Float64bits(imag(scope.signature)))
-	h.Write(buf2)
+	if _, err := h.Write(buf2); err != nil {
+		panic(err)
+	}
 	for _, def := range defs {
 		id := getTypeID(reflect.TypeOf(def))
 		binary.LittleEndian.PutUint64(buf, uint64(id))
-		h.Write(buf)
+		if _, err := h.Write(buf); err != nil {
+			panic(err)
+		}
 		binary.LittleEndian.PutUint64(buf2, uint64(id))
-		h2.Write(buf2)
+		if _, err := h2.Write(buf2); err != nil {
+			panic(err)
+		}
 	}
 	key := complex(
 		math.Float64frombits(h.Sum64()),
@@ -104,7 +116,7 @@ func (scope Scope) Assign(objs ...any) {
 	for _, o := range objs {
 		v := reflect.ValueOf(o)
 		if v.Kind() != reflect.Ptr {
-			throw(we.With(
+			_ = throw(we.With(
 				e5.Info("%T is not a pointer", o),
 			)(
 				ErrBadArgument,
@@ -113,7 +125,7 @@ func (scope Scope) Assign(objs ...any) {
 		t := v.Type().Elem()
 		value, err := scope.Get(t)
 		if err != nil {
-			throw(err)
+			_ = throw(err)
 		}
 		v.Elem().Set(value)
 	}
@@ -169,7 +181,7 @@ func (scope Scope) Get(t reflect.Type) (
 func Get[T any](scope Scope) (o T) {
 	value, err := scope.Get(reflect.TypeOf(o))
 	if err != nil {
-		throw(err)
+		_ = throw(err)
 	}
 	return value.Interface().(T)
 }
@@ -235,7 +247,7 @@ func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 	}
 	n, err := scope.getArgs(fnType, args)
 	if err != nil {
-		throw(err)
+		_ = throw(err)
 	}
 	res.Values = fnValue.Call(args[:n])
 	v, ok := fnRetTypes.Load(fnType)
