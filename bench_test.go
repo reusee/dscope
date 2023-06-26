@@ -659,6 +659,18 @@ func BenchmarkFork1(b *testing.B) {
 	}
 }
 
+func BenchmarkFork2(b *testing.B) {
+	scope := New()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		scope.Fork(func() int {
+			return 42
+		}, func() string {
+			return "foo"
+		})
+	}
+}
+
 func BenchmarkGenericGet(b *testing.B) {
 	s := New(func() int {
 		return 42
