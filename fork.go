@@ -1,12 +1,12 @@
 package dscope
 
 import (
+	"cmp"
 	"encoding/binary"
 	"hash/maphash"
 	"math"
 	"reflect"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/reusee/e5"
@@ -109,9 +109,11 @@ func newForker(
 	for i := range newValuesTemplate {
 		posesAtTemplate = append(posesAtTemplate, posAtTemplate(i))
 	}
-	sort.Slice(posesAtTemplate, func(i, j int) bool {
-		return newValuesTemplate[posesAtTemplate[i]].typeInfo.TypeID <
-			newValuesTemplate[posesAtTemplate[j]].typeInfo.TypeID
+	slices.SortFunc(posesAtTemplate, func(a, b posAtTemplate) int {
+		return cmp.Compare(
+			newValuesTemplate[a].typeInfo.TypeID,
+			newValuesTemplate[b].typeInfo.TypeID,
+		)
 	})
 	posesAtSorted := make([]posAtSorted, len(posesAtTemplate))
 	for i, j := range posesAtTemplate {
@@ -119,9 +121,8 @@ func newForker(
 	}
 
 	sortedNewValuesTemplate := slices.Clone(newValuesTemplate)
-	sort.Slice(sortedNewValuesTemplate, func(i, j int) bool {
-		return sortedNewValuesTemplate[i].typeInfo.TypeID <
-			sortedNewValuesTemplate[j].typeInfo.TypeID
+	slices.SortFunc(sortedNewValuesTemplate, func(a, b _Value) int {
+		return cmp.Compare(a.typeInfo.TypeID, b.typeInfo.TypeID)
 	})
 	valuesTemplate := scope.values.Append(sortedNewValuesTemplate)
 
@@ -308,8 +309,8 @@ func newForker(
 	for _, id := range resetIDs {
 		resetReducer(id)
 	}
-	sort.Slice(resetReducers, func(i, j int) bool {
-		return resetReducers[i].typeInfo.TypeID < resetReducers[j].typeInfo.TypeID
+	slices.SortFunc(resetReducers, func(a, b reducerInfo) int {
+		return cmp.Compare(a.typeInfo.TypeID, b.typeInfo.TypeID)
 	})
 
 	return &_Forker{
@@ -344,8 +345,8 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 		}); err != nil { // NOCOVER
 			_ = throw(err)
 		}
-		sort.Slice(values, func(i, j int) bool {
-			return values[i].typeInfo.TypeID < values[j].typeInfo.TypeID
+		slices.SortFunc(values, func(a, b _Value) int {
+			return cmp.Compare(a.typeInfo.TypeID, b.typeInfo.TypeID)
 		})
 		scope.values = &_StackedMap{
 			Values: values,
