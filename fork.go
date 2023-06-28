@@ -5,6 +5,7 @@ import (
 	"hash/maphash"
 	"math"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 
@@ -280,9 +281,7 @@ func newForker(
 		resetDownstream(id)
 	}
 
-	sort.Slice(resetIDs, func(i, j int) bool {
-		return resetIDs[i] < resetIDs[j]
-	})
+	slices.Sort(resetIDs)
 
 	// reducer infos
 	var resetReducers []reducerInfo
