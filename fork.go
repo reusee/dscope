@@ -200,19 +200,17 @@ func newForker(
 
 		for _, value := range values {
 			id := getTypeID(value.typeInfo.DefType)
-			i := sort.Search(len(defTypeIDs), func(i int) bool {
-				return id >= defTypeIDs[i]
-			})
+			i, ok := slices.BinarySearch(defTypeIDs, id)
 			if i < len(defTypeIDs) {
-				if defTypeIDs[i] == id {
-					// existed
-				} else {
+				if !ok {
+					// insert
 					defTypeIDs = append(
 						defTypeIDs[:i],
 						append([]_TypeID{id}, defTypeIDs[i:]...)...,
 					)
 				}
 			} else {
+				// append
 				defTypeIDs = append(defTypeIDs, id)
 			}
 		}
