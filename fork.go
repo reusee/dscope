@@ -118,7 +118,7 @@ func newForker(
 		posesAtSorted[j] = posAtSorted(i)
 	}
 
-	sortedNewValuesTemplate := append(newValuesTemplate[:0:0], newValuesTemplate...)
+	sortedNewValuesTemplate := slices.Clone(newValuesTemplate)
 	sort.Slice(sortedNewValuesTemplate, func(i, j int) bool {
 		return sortedNewValuesTemplate[i].typeInfo.TypeID <
 			sortedNewValuesTemplate[j].typeInfo.TypeID
@@ -204,10 +204,7 @@ func newForker(
 			if i < len(defTypeIDs) {
 				if !ok {
 					// insert
-					defTypeIDs = append(
-						defTypeIDs[:i],
-						append([]_TypeID{id}, defTypeIDs[i:]...)...,
-					)
+					defTypeIDs = slices.Insert(defTypeIDs, i, id)
 				}
 			} else {
 				// append
