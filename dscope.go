@@ -1,9 +1,8 @@
 package dscope
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
-	"hash/maphash"
-	"math"
 	"reflect"
 	"runtime"
 	"sync"
@@ -26,12 +25,16 @@ type _TypeInfo struct {
 
 type _TypeID int
 
+type _Hash [32]byte
+
+var hashKey = make([]byte, 32)
+
 type Scope struct {
 	reducers    map[_TypeID]reflect.Type
 	values      *_StackedMap
 	path        *Path
-	signature   complex128
-	forkFuncKey complex128
+	signature   _Hash
+	forkFuncKey _Hash
 }
 
 var Universe = Scope{}
@@ -51,55 +54,24 @@ func (scope Scope) appendPath(typeID _TypeID) Scope {
 	return scope
 }
 
-var forkers = NewCowMap[complex128, *_Forker]()
-
-var (
-	hashSeed  = maphash.MakeSeed()
-	hashSeed2 = maphash.MakeSeed()
-)
+var forkers = NewCowMap[_Hash, *_Forker]()
 
 func (scope Scope) Fork(
 	defs ...any,
 ) Scope {
 
 	// get transition signature
-	h := new(maphash.Hash)
-	h2 := new(maphash.Hash)
-	h.SetSeed(hashSeed)
-	h2.SetSeed(hashSeed2)
+	h := sha256.New()
+	h.Write(scope.signature[:])
 	buf := make([]byte, 8)
-	buf2 := make([]byte, 8)
-	binary.LittleEndian.PutUint64(buf, math.Float64bits(real(scope.signature)))
-	if _, err := h.Write(buf); err != nil {
-		panic(err)
-	}
-	binary.LittleEndian.PutUint64(buf, math.Float64bits(imag(scope.signature)))
-	if _, err := h.Write(buf); err != nil {
-		panic(err)
-	}
-	binary.LittleEndian.PutUint64(buf2, math.Float64bits(real(scope.signature)))
-	if _, err := h.Write(buf2); err != nil {
-		panic(err)
-	}
-	binary.LittleEndian.PutUint64(buf2, math.Float64bits(imag(scope.signature)))
-	if _, err := h.Write(buf2); err != nil {
-		panic(err)
-	}
 	for _, def := range defs {
 		id := getTypeID(reflect.TypeOf(def))
 		binary.LittleEndian.PutUint64(buf, uint64(id))
 		if _, err := h.Write(buf); err != nil {
 			panic(err)
 		}
-		binary.LittleEndian.PutUint64(buf2, uint64(id))
-		if _, err := h2.Write(buf2); err != nil {
-			panic(err)
-		}
 	}
-	key := complex(
-		math.Float64frombits(h.Sum64()),
-		math.Float64frombits(h2.Sum64()),
-	)
+	key := *(*_Hash)(h.Sum(nil))
 
 	value, ok := forkers.Get(key)
 	if ok {

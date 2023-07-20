@@ -2,9 +2,8 @@ package dscope
 
 import (
 	"cmp"
+	"crypto/sha256"
 	"encoding/binary"
-	"hash/maphash"
-	"math"
 	"reflect"
 	"slices"
 	"strings"
@@ -20,8 +19,8 @@ type _Forker struct {
 	PosesAtSorted     []posAtSorted
 	ResetIDs          []_TypeID
 	ResetReducers     []reducerInfo
-	Signature         complex128
-	Key               complex128
+	Signature         _Hash
+	Key               _Hash
 }
 
 type posAtSorted int
@@ -35,7 +34,7 @@ type reducerInfo struct {
 func newForker(
 	scope Scope,
 	defs []any,
-	key complex128,
+	key _Hash,
 ) *_Forker {
 
 	// collect new values
@@ -230,26 +229,15 @@ func newForker(
 		_ = throw(err)
 	}
 
-	h := new(maphash.Hash)
-	h2 := new(maphash.Hash)
-	h.SetSeed(hashSeed)
-	h2.SetSeed(hashSeed2)
+	h := sha256.New()
 	buf := make([]byte, 8)
-	buf2 := make([]byte, 8)
 	for _, id := range defTypeIDs {
 		binary.LittleEndian.PutUint64(buf, uint64(id))
-		binary.LittleEndian.PutUint64(buf2, uint64(id))
 		if _, err := h.Write(buf); err != nil {
 			panic(err)
 		}
-		if _, err := h2.Write(buf2); err != nil {
-			panic(err)
-		}
 	}
-	signature := complex(
-		math.Float64frombits(h.Sum64()),
-		math.Float64frombits(h2.Sum64()),
-	)
+	signature := *(*_Hash)(h.Sum(nil))
 
 	// reset info
 	set := make(map[_TypeID]struct{})
