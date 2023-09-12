@@ -16,19 +16,19 @@ func FuzzFork(f *testing.F) {
 
 	allTypes := []Type{
 		{
-			Type:  reflect.TypeOf((*int)(nil)).Elem(),
+			Type:  reflect.TypeFor[int](),
 			Value: func(r int) any { return r },
 		},
 		{
-			Type:  reflect.TypeOf((*int64)(nil)).Elem(),
+			Type:  reflect.TypeFor[int64](),
 			Value: func(r int) any { return int64(r) },
 		},
 		{
-			Type:  reflect.TypeOf((*uint64)(nil)).Elem(),
+			Type:  reflect.TypeFor[uint64](),
 			Value: func(r int) any { return uint64(r) },
 		},
 		{
-			Type:  reflect.TypeOf((*string)(nil)).Elem(),
+			Type:  reflect.TypeFor[string](),
 			Value: func(r int) any { return fmt.Sprintf("%d", r) },
 		},
 	}

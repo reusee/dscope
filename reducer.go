@@ -13,13 +13,13 @@ type CustomReducer interface {
 	Reduce(Scope, []reflect.Value) reflect.Value
 }
 
-var customReducerType = reflect.TypeOf((*CustomReducer)(nil)).Elem()
+var customReducerType = reflect.TypeFor[CustomReducer]()
 
 type Reducer interface {
 	IsReducer()
 }
 
-var reducerType = reflect.TypeOf((*Reducer)(nil)).Elem()
+var reducerType = reflect.TypeFor[Reducer]()
 
 func getReducerKind(t reflect.Type) reducerKind {
 	if t.Implements(reducerType) {
@@ -35,7 +35,7 @@ func getReducerKind(t reflect.Type) reducerKind {
 
 type reducerMark struct{}
 
-var reducerMarkType = reflect.TypeOf((*reducerMark)(nil)).Elem()
+var reducerMarkType = reflect.TypeFor[reducerMark]()
 
 var reducerMarkTypes = NewCowMap[_TypeID, reflect.Type]()
 

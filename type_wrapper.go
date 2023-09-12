@@ -9,7 +9,7 @@ type typeWrapper interface {
 	unwrapType() []reflect.Type
 }
 
-var typeWrapperType = reflect.TypeOf((*typeWrapper)(nil)).Elem()
+var typeWrapperType = reflect.TypeFor[typeWrapper]()
 
 var wrappedTypes sync.Map
 

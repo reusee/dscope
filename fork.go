@@ -282,7 +282,7 @@ func newForker(
 		resetReducers = append(resetReducers, reducerInfo{
 			typeInfo: &_TypeInfo{
 				TypeID:  getTypeID(markType),
-				DefType: reflect.TypeOf(func() {}),
+				DefType: reflect.TypeFor[func()](),
 			},
 			originType:  t,
 			reducerKind: getReducerKind(t),

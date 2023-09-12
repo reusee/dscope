@@ -682,7 +682,7 @@ func BenchmarkGenericGet(b *testing.B) {
 }
 
 func BenchmarkGetTypeID(b *testing.B) {
-	scopeType := reflect.TypeOf((*Scope)(nil)).Elem()
+	scopeType := reflect.TypeFor[Scope]()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		getTypeID(scopeType)

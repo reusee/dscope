@@ -642,11 +642,11 @@ func TestGeneratedFunc(t *testing.T) {
 	type S string
 	fnType := reflect.FuncOf(
 		[]reflect.Type{
-			reflect.TypeOf((*int)(nil)).Elem(),
-			reflect.TypeOf((*string)(nil)).Elem(),
+			reflect.TypeFor[int](),
+			reflect.TypeFor[string](),
 		},
 		[]reflect.Type{
-			reflect.TypeOf((*S)(nil)).Elem(),
+			reflect.TypeFor[S](),
 		},
 		false,
 	)
@@ -1202,7 +1202,7 @@ func TestPcallValueArgs(t *testing.T) {
 	scope := New(func() int {
 		return 42
 	})
-	intType := reflect.TypeOf((*int)(nil)).Elem()
+	intType := reflect.TypeFor[int]()
 	for i := 0; i <= 50; i++ {
 		var args []reflect.Type
 		for j := 0; j < i; j++ {
