@@ -689,6 +689,16 @@ func BenchmarkGetTypeID(b *testing.B) {
 	}
 }
 
+func BenchmarkGetTypeIDParallel(b *testing.B) {
+	scopeType := reflect.TypeFor[Scope]()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			getTypeID(scopeType)
+		}
+	})
+}
+
 func BenchmarkRecursiveFork(b *testing.B) {
 	scope := New(
 		func() int {

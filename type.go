@@ -6,60 +6,39 @@ import (
 	"sync/atomic"
 )
 
-type _TypeIDInfos struct {
-	TypeToID map[reflect.Type]_TypeID
-	IDToType map[_TypeID]reflect.Type
-}
-
 var (
-	typeIDInfos = func() *atomic.Pointer[_TypeIDInfos] {
-		infos := &_TypeIDInfos{
-			TypeToID: make(map[reflect.Type]_TypeID),
-			IDToType: make(map[_TypeID]reflect.Type),
-		}
-		v := new(atomic.Pointer[_TypeIDInfos])
-		v.Store(infos)
-		return v
-	}()
-	typeIDLock sync.Mutex
-	nextTypeID _TypeID
+	typeToID sync.Map // reflect.Type -> _TypeID
+	idToType sync.Map // _TypeID -> reflect.Type
 )
 
-// TODO inline
+var (
+	nextTypeID atomic.Int64
+)
+
 func getTypeID(t reflect.Type) _TypeID {
-	if i, ok := typeIDInfos.Load().TypeToID[t]; ok {
-		return i
+	if v, ok := typeToID.Load(t); ok {
+		return v.(_TypeID)
 	}
 	return getTypeIDSlow(t)
 }
 
 func getTypeIDSlow(t reflect.Type) _TypeID {
-	typeIDLock.Lock()
-	infos := typeIDInfos.Load()
-	if i, ok := infos.TypeToID[t]; ok { // NOCOVER
-		typeIDLock.Unlock()
-		return i
+	id := _TypeID(nextTypeID.Add(1))
+	v, loaded := typeToID.LoadOrStore(t, id)
+	if loaded {
+		// not inserted
+		return v.(_TypeID)
+	} else {
+		// inserted
+		idToType.Store(id, t)
+		return id
 	}
-	newTypeToID := make(map[reflect.Type]_TypeID, len(infos.TypeToID)+1)
-	for k, v := range infos.TypeToID {
-		newTypeToID[k] = v
-	}
-	newIDToType := make(map[_TypeID]reflect.Type, len(infos.IDToType)+1)
-	for k, v := range infos.IDToType {
-		newIDToType[k] = v
-	}
-	nextTypeID++
-	id := _TypeID(nextTypeID)
-	newTypeToID[t] = id
-	newIDToType[id] = t
-	typeIDInfos.Store(&_TypeIDInfos{
-		TypeToID: newTypeToID,
-		IDToType: newIDToType,
-	})
-	typeIDLock.Unlock()
-	return id
 }
 
 func typeIDToType(id _TypeID) reflect.Type {
-	return typeIDInfos.Load().IDToType[id]
+	v, ok := idToType.Load(id)
+	if !ok {
+		panic("impossible")
+	}
+	return v.(reflect.Type)
 }
