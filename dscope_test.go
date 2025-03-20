@@ -626,7 +626,7 @@ func TestCallReturn(t *testing.T) {
 			if !is(err, ErrBadArgument) {
 				t.Fatal()
 			}
-			if !strings.Contains(err.Error(), "is not a pointer to string") {
+			if !strings.Contains(err.Error(), "is not assignable to string") {
 				t.Fatal()
 			}
 		}()

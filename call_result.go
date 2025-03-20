@@ -17,16 +17,16 @@ func (c CallResult) Extract(targets ...any) {
 			continue
 		}
 		targetValue := reflect.ValueOf(target)
-		if targetValue.Kind() != reflect.Ptr {
+		if targetValue.Kind() != reflect.Pointer {
 			panic(we.With(
 				e5.Info("%T is not a pointer", target),
 			)(
 				ErrBadArgument,
 			))
 		}
-		if targetValue.Type().Elem() != c.Values[i].Type() {
+		if !targetValue.Type().Elem().AssignableTo(c.Values[i].Type()) {
 			panic(we.With(
-				e5.Info("%T is not a pointer to %v",
+				e5.Info("%T is not assignable to %v",
 					target,
 					targetValue.Type().Elem()),
 			)(
@@ -43,7 +43,7 @@ func (c CallResult) Assign(targets ...any) {
 			continue
 		}
 		targetValue := reflect.ValueOf(target)
-		if targetValue.Kind() != reflect.Ptr {
+		if targetValue.Kind() != reflect.Pointer {
 			panic(we.With(
 				e5.Info("%v is not a pointer", target),
 			)(
