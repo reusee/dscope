@@ -24,10 +24,16 @@ func (c *CowMap[K, V]) Get(k K) (v V, ok bool) {
 	return
 }
 
-func (c *CowMap[K, V]) Set(k K, v V) {
+func (c *CowMap[K, V]) LoadOrStore(k K, v V) (ret V, loaded bool) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	newMap := maps.Clone(*c.value.Load())
+	m := *c.value.Load()
+	ret, loaded = m[k]
+	if loaded {
+		return
+	}
+	newMap := maps.Clone(m)
 	newMap[k] = v
 	c.value.Store(&newMap)
+	return v, false
 }

@@ -52,7 +52,7 @@ func getReducerMarkType(t reflect.Type, id _TypeID) reflect.Type {
 		},
 		false,
 	)
-	reducerMarkTypes.Set(id, markType)
+	markType, _ = reducerMarkTypes.LoadOrStore(id, markType)
 	return markType
 }
 

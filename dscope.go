@@ -79,7 +79,7 @@ func (scope Scope) Fork(
 	}
 
 	forker := newForker(scope, defs, key)
-	forkers.Set(key, forker)
+	forker, _ = forkers.LoadOrStore(key, forker)
 
 	return forker.Fork(scope, defs)
 }
@@ -87,7 +87,7 @@ func (scope Scope) Fork(
 func (scope Scope) Assign(objs ...any) {
 	for _, o := range objs {
 		v := reflect.ValueOf(o)
-		if v.Kind() != reflect.Ptr {
+		if v.Kind() != reflect.Pointer {
 			_ = throw(we.With(
 				e5.Info("%T is not a pointer", o),
 			)(
