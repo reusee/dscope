@@ -170,8 +170,7 @@ var getArgsFunc sync.Map
 
 func (scope Scope) getArgs(fnType reflect.Type, args []reflect.Value) (int, error) {
 	if v, ok := getArgsFunc.Load(fnType); ok {
-		getArgs := v.(func(Scope, []reflect.Value) (int, error))
-		return getArgs(scope, args)
+		return v.(func(Scope, []reflect.Value) (int, error))(scope, args)
 	}
 	return scope.getArgsSlow(fnType, args)
 }
