@@ -207,7 +207,7 @@ func newForker(
 	}
 
 	defTypeIDs := make([]_TypeID, 0, valuesTemplate.Len())
-	reducers := make(map[_TypeID]reflect.Type)
+	reducers := make(map[_TypeID]reflect.Type) // no need to copy scope.reducers here, since valuesTemplate.Range will iterate all types.
 	if err := valuesTemplate.Range(func(values []_Value) error {
 		if err := traverse(values, nil); err != nil {
 			return err
