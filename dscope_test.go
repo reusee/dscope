@@ -1563,3 +1563,34 @@ func TestNilPointerDef(t *testing.T) {
 		New((*I)(nil))
 	}()
 }
+
+type loopReducer []int
+
+func (loopReducer) IsReducer() {}
+
+func TestReducerDependencyLoop(t *testing.T) {
+	func() {
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			str := fmt.Sprintf("%v", p)
+			if !strings.Contains(str, "dependency loop") {
+				t.Fatalf("got %v", str)
+			}
+		}()
+
+		New(
+			func() loopReducer {
+				return nil
+			},
+			func() loopReducer {
+				return nil
+			},
+			func(loopReducer) loopReducer {
+				return nil
+			},
+		)
+	}()
+}
