@@ -113,7 +113,7 @@ func (i *_Initializer) getSlow(scope Scope) (ret []reflect.Value, err error) {
 		result = scope.Call(i.Def)
 		ret = result.Values
 
-	case reflect.Ptr:
+	case reflect.Pointer:
 		ret = []reflect.Value{defValue.Elem()}
 
 	}
@@ -121,8 +121,10 @@ func (i *_Initializer) getSlow(scope Scope) (ret []reflect.Value, err error) {
 	return ret, nil
 }
 
+// reset make the initializer re-evaluate Values
 func (s *_Initializer) reset() *_Initializer {
 	return &_Initializer{
+		// these fields recognize the provided type and def to get the values, so not changing
 		ID:          s.ID,
 		Def:         s.Def,
 		ReducerKind: s.ReducerKind,
