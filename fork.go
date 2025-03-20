@@ -78,7 +78,7 @@ func newForker(
 			}
 			defNumValues = append(defNumValues, numValues)
 
-		case reflect.Ptr:
+		case reflect.Pointer:
 			t := defType.Elem()
 			id := getTypeID(t)
 			newValuesTemplate = append(newValuesTemplate, _Value{
@@ -157,7 +157,7 @@ func newForker(
 				continue
 			}
 			numIn := value.typeInfo.DefType.NumIn()
-			for i := 0; i < numIn; i++ {
+			for i := range numIn {
 				var requiredTypes []reflect.Type
 				inType := value.typeInfo.DefType.In(i)
 				if inType.Implements(typeWrapperType) {
