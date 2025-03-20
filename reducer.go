@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+
+	"github.com/reusee/e5"
 )
 
 // reducer types
@@ -75,7 +77,7 @@ func Reduce(vs []reflect.Value) reflect.Value {
 	case reflect.Slice:
 		for _, v := range vs {
 			var elems []reflect.Value
-			for i := 0; i < v.Len(); i++ {
+			for i := range v.Len() {
 				elems = append(elems, v.Index(i))
 			}
 			ret = reflect.Append(ret, elems...)
@@ -91,16 +93,22 @@ func Reduce(vs []reflect.Value) reflect.Value {
 		ret = ret.Elem()
 
 	case reflect.Func:
+		// Ensure function has no return values
+		if t.NumOut() > 0 {
+			throw(we.With(
+				e5.Info("function reducers must have no return values"),
+			)(ErrBadDefinition))
+		}
 		ret = reflect.MakeFunc(
 			t,
-			func(args []reflect.Value) (rets []reflect.Value) {
+			func(args []reflect.Value) []reflect.Value {
 				for _, v := range vs {
 					if v.IsNil() {
 						continue
 					}
-					rets = v.Call(args)
+					v.Call(args)
 				}
-				return
+				return nil
 			},
 		)
 
