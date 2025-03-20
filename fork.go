@@ -45,10 +45,18 @@ func newForker(
 	for _, def := range defs {
 		defType := reflect.TypeOf(def)
 		defKinds = append(defKinds, defType.Kind())
+		defValue := reflect.ValueOf(def)
 
 		switch defType.Kind() {
 
 		case reflect.Func:
+			if defValue.IsNil() {
+				_ = throw(we.With(
+					e5.Info("%T nil function provided", def),
+				)(
+					ErrBadArgument,
+				))
+			}
 			numOut := defType.NumOut()
 			if numOut == 0 {
 				_ = throw(we.With(
@@ -58,7 +66,7 @@ func newForker(
 				))
 			}
 			var numValues int
-			for i := 0; i < numOut; i++ {
+			for i := range numOut {
 				t := defType.Out(i)
 				id := getTypeID(t)
 
@@ -79,6 +87,13 @@ func newForker(
 			defNumValues = append(defNumValues, numValues)
 
 		case reflect.Pointer:
+			if defValue.IsNil() {
+				_ = throw(we.With(
+					e5.Info("%T nil pointer provided", def),
+				)(
+					ErrBadArgument,
+				))
+			}
 			t := defType.Elem()
 			id := getTypeID(t)
 			newValuesTemplate = append(newValuesTemplate, _Value{

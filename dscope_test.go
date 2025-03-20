@@ -1531,3 +1531,35 @@ func TestGenericFuncs(t *testing.T) {
 		t.Fatal()
 	}
 }
+
+func TestNilFuncDef(t *testing.T) {
+	func() {
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			if str := fmt.Sprintf("%v", p); !strings.Contains(str, "nil function provided") {
+				t.Fatalf("got %v", str)
+			}
+		}()
+		type I int
+		New((func() I)(nil))
+	}()
+}
+
+func TestNilPointerDef(t *testing.T) {
+	func() {
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			if str := fmt.Sprintf("%v", p); !strings.Contains(str, "nil pointer provided") {
+				t.Fatalf("got %v", str)
+			}
+		}()
+		type I int
+		New((*I)(nil))
+	}()
+}
