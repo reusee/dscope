@@ -54,7 +54,8 @@ func (scope Scope) appendPath(typeID _TypeID) Scope {
 	return scope
 }
 
-var forkers = NewCowMap[_Hash, *_Forker]()
+// _Hash -> *_Forker
+var forkers sync.Map
 
 func (scope Scope) Fork(
 	defs ...any,
@@ -76,15 +77,15 @@ func (scope Scope) Fork(
 	}
 	key := *(*_Hash)(h.Sum(nil))
 
-	value, ok := forkers.Get(key)
+	v, ok := forkers.Load(key)
 	if ok {
-		return value.Fork(scope, defs)
+		return v.(*_Forker).Fork(scope, defs)
 	}
 
 	forker := newForker(scope, defs, key)
-	forker, _ = forkers.LoadOrStore(key, forker)
+	v, _ = forkers.LoadOrStore(key, forker)
 
-	return forker.Fork(scope, defs)
+	return v.(*_Forker).Fork(scope, defs)
 }
 
 func (scope Scope) Assign(objs ...any) {
