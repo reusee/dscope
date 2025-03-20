@@ -169,31 +169,34 @@ func (scope Scope) Call(fn any) CallResult {
 var getArgsFunc sync.Map
 
 func (scope Scope) getArgs(fnType reflect.Type, args []reflect.Value) (int, error) {
-	var getArgs func(Scope, []reflect.Value) (int, error)
-	if v, ok := getArgsFunc.Load(fnType); !ok {
-		var types []reflect.Type
-		var ids []_TypeID
-		numIn := fnType.NumIn()
-		for i := 0; i < numIn; i++ {
-			t := fnType.In(i)
-			types = append(types, t)
-			ids = append(ids, getTypeID(t))
-		}
-		n := len(ids)
-		getArgs = func(scope Scope, args []reflect.Value) (int, error) {
-			for i := range ids {
-				var err error
-				args[i], err = scope.get(ids[i], types[i])
-				if err != nil {
-					return 0, err
-				}
-			}
-			return n, nil
-		}
-		getArgsFunc.Store(fnType, getArgs)
-	} else {
-		getArgs = v.(func(Scope, []reflect.Value) (int, error))
+	if v, ok := getArgsFunc.Load(fnType); ok {
+		getArgs := v.(func(Scope, []reflect.Value) (int, error))
+		return getArgs(scope, args)
 	}
+	return scope.getArgsSlow(fnType, args)
+}
+
+func (scope Scope) getArgsSlow(fnType reflect.Type, args []reflect.Value) (int, error) {
+	var types []reflect.Type
+	var ids []_TypeID
+	numIn := fnType.NumIn()
+	for i := 0; i < numIn; i++ {
+		t := fnType.In(i)
+		types = append(types, t)
+		ids = append(ids, getTypeID(t))
+	}
+	n := len(ids)
+	getArgs := func(scope Scope, args []reflect.Value) (int, error) {
+		for i := range ids {
+			var err error
+			args[i], err = scope.get(ids[i], types[i])
+			if err != nil {
+				return 0, err
+			}
+		}
+		return n, nil
+	}
+	getArgsFunc.Store(fnType, getArgs)
 	return getArgs(scope, args)
 }
 
