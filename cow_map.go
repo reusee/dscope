@@ -1,6 +1,7 @@
 package dscope
 
 import (
+	"maps"
 	"sync"
 	"sync/atomic"
 )
@@ -26,11 +27,7 @@ func (c *CowMap[K, V]) Get(k K) (v V, ok bool) {
 func (c *CowMap[K, V]) Set(k K, v V) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	ptr := c.value.Load()
-	newMap := make(map[K]V)
-	for k, v := range *ptr {
-		newMap[k] = v
-	}
+	newMap := maps.Clone(*c.value.Load())
 	newMap[k] = v
 	c.value.Store(&newMap)
 }
