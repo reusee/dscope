@@ -60,6 +60,9 @@ func (scope Scope) Fork(
 	defs ...any,
 ) Scope {
 
+	// sorting defs may reduce memory consumption if there're calls with same defs but different order
+	// but sorting will increase heap allocations, causing performance drop
+
 	// get transition signature
 	h := sha256.New()
 	h.Write(scope.signature[:])
