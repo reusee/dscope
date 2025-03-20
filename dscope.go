@@ -180,7 +180,7 @@ func (scope Scope) getArgsSlow(fnType reflect.Type, args []reflect.Value) (int, 
 	var types []reflect.Type
 	var ids []_TypeID
 	numIn := fnType.NumIn()
-	for i := 0; i < numIn; i++ {
+	for i := range numIn {
 		t := fnType.In(i)
 		types = append(types, t)
 		ids = append(ids, getTypeID(t))
