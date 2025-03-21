@@ -339,7 +339,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 	}
 
 	// values
-	if s.values != nil && s.values.Height > 32 {
+	if s.values != nil && s.values.Height > 16 {
 		// flatten
 		var values []_Value
 		if err := s.values.Range(func(ds []_Value) error {
