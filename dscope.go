@@ -177,15 +177,14 @@ func (scope Scope) getArgs(fnType reflect.Type, args []reflect.Value) (int, erro
 }
 
 func (scope Scope) getArgsSlow(fnType reflect.Type, args []reflect.Value) (int, error) {
-	var types []reflect.Type
-	var ids []_TypeID
 	numIn := fnType.NumIn()
+	types := make([]reflect.Type, numIn)
+	ids := make([]_TypeID, numIn)
 	for i := range numIn {
 		t := fnType.In(i)
-		types = append(types, t)
-		ids = append(ids, getTypeID(t))
+		types[i] = t
+		ids[i] = getTypeID(t)
 	}
-	n := len(ids)
 	getArgs := func(scope Scope, args []reflect.Value) (int, error) {
 		for i := range ids {
 			var err error
@@ -194,7 +193,7 @@ func (scope Scope) getArgsSlow(fnType reflect.Type, args []reflect.Value) (int, 
 				return 0, err
 			}
 		}
-		return n, nil
+		return numIn, nil
 	}
 	getArgsFunc.Store(fnType, getArgs)
 	return getArgs(scope, args)
