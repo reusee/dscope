@@ -67,3 +67,24 @@ func TestStackedMap(t *testing.T) {
 	}
 
 }
+
+func BenchmarkStackedMap(b *testing.B) {
+	var m *_StackedMap
+	var values []_Value
+	for i := range 1024 {
+		values = append(values, _Value{
+			typeInfo: &_TypeInfo{
+				TypeID:   _TypeID(i),
+				Position: i,
+			},
+		})
+	}
+	m = m.Append(values)
+	b.ResetTimer()
+	for b.Loop() {
+		_, ok := m.Load(3)
+		if !ok {
+			b.Fatal()
+		}
+	}
+}
