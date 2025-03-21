@@ -66,15 +66,15 @@ func (scope Scope) Fork(
 	// but sorting will increase heap allocations, causing performance drop
 
 	// get transition signature
-	h := sha256.New()
+	h := sha256.New() // must be cryptographic hash to avoid collision
 	h.Write(scope.signature[:])
-	buf := make([]byte, 8)
+	buf := make([]byte, 0, len(defs)*8)
 	for _, def := range defs {
 		id := getTypeID(reflect.TypeOf(def))
-		binary.LittleEndian.PutUint64(buf, uint64(id))
-		if _, err := h.Write(buf); err != nil {
-			panic(err)
-		}
+		buf = binary.NativeEndian.AppendUint64(buf, uint64(id))
+	}
+	if _, err := h.Write(buf); err != nil {
+		panic(err)
 	}
 	key := *(*_Hash)(h.Sum(nil))
 

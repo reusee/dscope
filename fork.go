@@ -244,13 +244,13 @@ func newForker(
 		_ = throw(err)
 	}
 
-	h := sha256.New()
-	buf := make([]byte, 8)
+	h := sha256.New() // must be cryptographic hash to avoid collision
+	buf := make([]byte, 0, len(defTypeIDs)*8)
 	for _, id := range defTypeIDs {
-		binary.LittleEndian.PutUint64(buf, uint64(id))
-		if _, err := h.Write(buf); err != nil {
-			panic(err)
-		}
+		buf = binary.NativeEndian.AppendUint64(buf, uint64(id))
+	}
+	if _, err := h.Write(buf); err != nil {
+		panic(err)
 	}
 	signature := *(*_Hash)(h.Sum(nil))
 
