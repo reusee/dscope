@@ -57,6 +57,7 @@ func newForker(
 					ErrBadArgument,
 				))
 			}
+
 			numOut := defType.NumOut()
 			if numOut == 0 {
 				_ = throw(we.With(
@@ -65,6 +66,21 @@ func newForker(
 					ErrBadArgument,
 				))
 			}
+
+			var dependencies []_TypeID
+			numIn := defType.NumIn()
+			for i := range numIn {
+				inType := defType.In(i)
+				if inType.Implements(typeWrapperType) {
+					depTypes := unwrapType(inType)
+					for _, depType := range depTypes {
+						dependencies = append(dependencies, getTypeID(depType))
+					}
+				} else {
+					dependencies = append(dependencies, getTypeID(inType))
+				}
+			}
+
 			var numValues int
 			for i := range numOut {
 				t := defType.Out(i)
@@ -72,10 +88,11 @@ func newForker(
 
 				newValuesTemplate = append(newValuesTemplate, _Value{
 					typeInfo: &_TypeInfo{
-						TypeID:     id,
-						DefType:    defType,
-						Position:   i,
-						DefIsMulti: numOut > 1,
+						TypeID:       id,
+						DefType:      defType,
+						Position:     i,
+						DefIsMulti:   numOut > 1,
+						Dependencies: dependencies,
 					},
 				})
 				numValues++
@@ -168,37 +185,20 @@ func newForker(
 		}
 		colors[id] = 1
 		for _, value := range values {
-			if value.typeInfo.DefType.Kind() != reflect.Func {
-				continue
-			}
-			numIn := value.typeInfo.DefType.NumIn()
-			for i := range numIn {
-				var requiredTypes []reflect.Type
-				inType := value.typeInfo.DefType.In(i)
-				if inType.Implements(typeWrapperType) {
-					requiredTypes = unwrapType(inType)
-				} else {
-					requiredTypes = []reflect.Type{inType}
-				}
-				for _, requiredType := range requiredTypes {
-					id2 := getTypeID(requiredType)
-					downstreams[id2] = append(
-						downstreams[id2],
-						value,
+			for _, depID := range value.typeInfo.Dependencies {
+				downstreams[depID] = append(downstreams[depID], value)
+				value2, ok := valuesTemplate.Load(depID)
+				if !ok {
+					return we.With(
+						e5.Info("dependency not found in definition %v", value.typeInfo.DefType),
+						e5.Info("no definition for %v", typeIDToType(depID)),
+						e5.Info("path: %+v", scope.path),
+					)(
+						ErrDependencyNotFound,
 					)
-					value2, ok := valuesTemplate.Load(id2)
-					if !ok {
-						return we.With(
-							e5.Info("dependency not found in definition %v", value.typeInfo.DefType),
-							e5.Info("no definition for %v", requiredType),
-							e5.Info("path: %+v", scope.path),
-						)(
-							ErrDependencyNotFound,
-						)
-					}
-					if err := traverse(value2, append(path, value.typeInfo.TypeID)); err != nil {
-						return err
-					}
+				}
+				if err := traverse(value2, append(path, value.typeInfo.TypeID)); err != nil {
+					return err
 				}
 			}
 		}

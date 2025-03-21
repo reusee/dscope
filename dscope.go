@@ -17,10 +17,11 @@ type _Value struct {
 }
 
 type _TypeInfo struct {
-	DefType    reflect.Type
-	TypeID     _TypeID
-	Position   int
-	DefIsMulti bool
+	DefType      reflect.Type
+	TypeID       _TypeID
+	Position     int
+	DefIsMulti   bool
+	Dependencies []_TypeID
 }
 
 type _TypeID int
