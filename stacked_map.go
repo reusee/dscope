@@ -9,47 +9,37 @@ type _StackedMap struct {
 // Load loads values with specified id
 // MUST NOT modify returned slice
 func (s *_StackedMap) Load(id _TypeID) ([]_Value, bool) {
-	var left, right, idx, l uint
-	var start, end int
-	var id2 _TypeID
 	for s != nil {
-		// do binary search
-		left = 0
-		l = uint(len(s.Values))
-		right = l
-		// find left bound
+		values := s.Values
+		l := uint(len(values))
+		if l == 0 {
+			s = s.Next
+			continue
+		}
+
+		// Binary search to find the first matching value
+		left, right := uint(0), l
 		for left < right {
-			idx = (left + right) >> 1
-			id2 = s.Values[idx].typeInfo.TypeID
-			// need to find the first value
-			if id2 >= id {
-				right = idx
+			mid := (left + right) >> 1
+			midID := values[mid].typeInfo.TypeID
+			if midID >= id {
+				right = mid
 			} else {
-				left = idx + 1
+				left = mid + 1
 			}
 		}
-		start = -1
-		for ; idx < l; idx++ {
-			id2 = s.Values[idx].typeInfo.TypeID
-			if id2 == id {
-				if start < 0 {
-					// found start
-					start = int(idx)
-					end = start + 1
-				} else {
-					// expand
-					end++
-				}
-			} else if id2 > id {
-				// exceed right bound
-				break
+
+		// Check if we found a match
+		if left < l && values[left].typeInfo.TypeID == id {
+			// Found first match, now find the range
+			start := int(left)
+			end := start + 1
+			for end < int(l) && values[end].typeInfo.TypeID == id {
+				end++
 			}
-			// id2 < id, skip
+			return values[start:end], true
 		}
-		if start != -1 {
-			// found
-			return s.Values[start:end], true
-		}
+
 		s = s.Next
 	}
 	return nil, false
