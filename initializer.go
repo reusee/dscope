@@ -13,8 +13,7 @@ type _Initializer struct {
 	err         error
 	Values      []reflect.Value
 	ID          int64
-	mu          sync.Mutex
-	done        uint32
+	once        sync.Once
 	ReducerKind reducerKind
 }
 
@@ -37,15 +36,13 @@ func newInitializer(def any, reducerKind reducerKind) *_Initializer {
 var nextInitializerID int64 = 42
 
 func (i *_Initializer) get(scope Scope, id _TypeID) (ret []reflect.Value, err error) {
-	if atomic.LoadUint32(&i.done) == 1 {
-		// init done
-		return i.Values, i.err
-	}
-	return i.getSlow(scope.appendPath(id))
+	i.once.Do(func() {
+		i.Values, i.err = i.initialize(scope.appendPath(id))
+	})
+	return i.Values, i.err
 }
 
-func (i *_Initializer) getSlow(scope Scope) (ret []reflect.Value, err error) {
-
+func (i *_Initializer) initialize(scope Scope) (ret []reflect.Value, err error) {
 	// detect dependency loop
 	for p := scope.path.Prev; p != nil; p = p.Prev {
 		if p.TypeID != scope.path.TypeID {
@@ -59,17 +56,9 @@ func (i *_Initializer) getSlow(scope Scope) (ret []reflect.Value, err error) {
 		)
 	}
 
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	if i.done == 1 {
-		// init done
-		return i.Values, i.err
-	}
-
 	defer func() {
 		i.Values = ret
 		i.err = err
-		atomic.StoreUint32(&i.done, 1)
 	}()
 
 	// reducer
