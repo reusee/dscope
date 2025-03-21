@@ -46,20 +46,25 @@ func (s *_StackedMap) Load(id _TypeID) ([]_Value, bool) {
 }
 
 func (s *_StackedMap) LoadOne(id _TypeID) (ret _Value, ok bool) {
-	var left, right, idx uint
-	var id2 _TypeID
 	for s != nil {
-		left = 0
-		right = uint(len(s.Values))
+		values := s.Values
+		l := uint(len(values))
+		if l == 0 {
+			s = s.Next
+			continue
+		}
+
+		// Binary search
+		left, right := uint(0), l
 		for left < right {
-			idx = (left + right) >> 1
-			id2 = s.Values[idx].typeInfo.TypeID
-			if id2 > id {
-				right = idx
-			} else if id2 < id {
-				left = idx + 1
+			mid := (left + right) >> 1
+			midID := values[mid].typeInfo.TypeID
+			if midID > id {
+				right = mid
+			} else if midID < id {
+				left = mid + 1
 			} else {
-				return s.Values[idx], true
+				return values[mid], true
 			}
 		}
 		s = s.Next
