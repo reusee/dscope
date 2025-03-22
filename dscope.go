@@ -88,8 +88,10 @@ func (scope Scope) Fork(
 	return v.(*_Forker).Fork(scope, defs)
 }
 
-func (scope Scope) Assign(objs ...any) {
-	for _, o := range objs {
+// Assign assigns objects with values in the scope of the same type.
+// It's safe to call Assign on the same type in different goroutines.
+func (scope Scope) Assign(objects ...any) {
+	for _, o := range objects {
 		v := reflect.ValueOf(o)
 		if v.Kind() != reflect.Pointer {
 			_ = throw(we.With(
