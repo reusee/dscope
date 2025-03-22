@@ -26,9 +26,7 @@ type _TypeInfo struct {
 
 type _TypeID int
 
-type _Hash [32]byte
-
-var hashKey = make([]byte, 32)
+type _Hash [sha256.Size]byte
 
 type Scope struct {
 	reducers    map[_TypeID]reflect.Type
