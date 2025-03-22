@@ -17,8 +17,8 @@ type _Forker struct {
 	DefKinds          []reflect.Kind
 	DefNumValues      []int
 	PosesAtSorted     []posAtSorted
-	ResetIDs          []_TypeID
-	ResetReducers     []reducerInfo
+	ResetIDs          []_TypeID     // sorted
+	ResetReducers     []reducerInfo // sorted
 	Signature         _Hash
 	Key               _Hash
 }
@@ -413,7 +413,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 				resetValues = append(resetValues, value)
 			}
 		}
-		scope.values = scope.values.Append(resetValues)
+		scope.values = scope.values.Append(resetValues) // resetValues is construct from f.ResetIDs which is sorted, so it's OK to append resetValues
 	}
 
 	// reducers
@@ -425,7 +425,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 				initializer: newInitializer(info.originType, info.reducerKind),
 			})
 		}
-		scope.values = scope.values.Append(reducerValues)
+		scope.values = scope.values.Append(reducerValues) // reducerValues is construct from ResetReducers which is sorted, so it's OK to append reducerValues
 	}
 
 	return scope

@@ -101,6 +101,7 @@ func (s *_StackedMap) Range(fn func([]_Value) error) error {
 	return nil
 }
 
+// Append appends a new layer to the map. values must be sorted by type id.
 func (s *_StackedMap) Append(values []_Value) *_StackedMap {
 	if s != nil {
 		return &_StackedMap{
