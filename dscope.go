@@ -64,6 +64,7 @@ func (scope Scope) Fork(
 	// but sorting will increase heap allocations, causing performance drop
 
 	// get transition signature
+	// calculate cache key by def types, since only one instance is allowed for a type, so hashing types only is OK, no need to hash instance identity.
 	h := sha256.New() // must be cryptographic hash to avoid collision
 	h.Write(scope.signature[:])
 	buf := make([]byte, 0, len(defs)*8)
