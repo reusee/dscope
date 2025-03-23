@@ -74,8 +74,7 @@ func BenchmarkForkWithNewDeps(b *testing.B) {
 
 	type S string
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		scope.Fork(
 			func(s S) T2 {
 				return 29
@@ -122,8 +121,7 @@ func BenchmarkForkWithoutNewDeps(b *testing.B) {
 		func(t29 T29) T30 { return T30(t29) },
 	)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		scope.Fork(
 			func() T30 {
 				return 42
@@ -182,8 +180,7 @@ func BenchmarkCall(b *testing.B) {
 	var t21 T21
 	var t22 T22
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		scope.Call(func(
 			t1 T1,
 			t2 T2,
@@ -623,34 +620,34 @@ var assignBenchDefs = []any{
 
 func BenchmarkAssign(b *testing.B) {
 	scope := New().Fork(assignBenchDefs...)
-	b.ResetTimer()
+
 	var t30 T30
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		scope.Assign(&t30)
 	}
 }
 
 func BenchmarkGenericAssign(b *testing.B) {
 	scope := New().Fork(assignBenchDefs...)
-	b.ResetTimer()
+
 	var t30 T30
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		Assign(scope, &t30)
 	}
 }
 
 func BenchmarkFork(b *testing.B) {
 	scope := New()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		scope.Fork()
 	}
 }
 
 func BenchmarkFork1(b *testing.B) {
 	scope := New()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		scope.Fork(func() int {
 			return 42
 		})
@@ -659,8 +656,8 @@ func BenchmarkFork1(b *testing.B) {
 
 func BenchmarkFork2(b *testing.B) {
 	scope := New()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		scope.Fork(func() int {
 			return 42
 		}, func() string {
@@ -673,16 +670,16 @@ func BenchmarkGenericGet(b *testing.B) {
 	s := New(func() int {
 		return 42
 	})
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		_ = Get[int](s)
 	}
 }
 
 func BenchmarkGetTypeID(b *testing.B) {
 	scopeType := reflect.TypeFor[Scope]()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		getTypeID(scopeType)
 	}
 }
@@ -704,8 +701,8 @@ func BenchmarkRecursiveFork(b *testing.B) {
 		},
 	)
 	var n int
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		scope = scope.Fork(
 			func() string {
 				return "42"
@@ -734,8 +731,8 @@ func BenchmarkMultipleDispatch(b *testing.B) {
 			}
 		},
 	)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		s.Call(func(fn benchMultiFunc) {
 			fn()
 		})
