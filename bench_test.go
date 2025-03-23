@@ -308,8 +308,7 @@ func BenchmarkGetAndCall(b *testing.B) {
 		func() T22 { return 22 },
 	)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		func(
 			t1 T1,
 			t2 T2,
@@ -477,8 +476,7 @@ func BenchmarkCallPointerProvider(b *testing.B) {
 	var r21 T21
 	var r22 T22
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		scope.Call(func(
 			t1 T1,
 			t2 T2,
@@ -581,7 +579,7 @@ func BenchmarkSimpleCall(b *testing.B) {
 	f := Foo(42)
 	scope := New(&f)
 	var ret Foo
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		scope.Call(func(
 			f Foo,
 		) Foo {
