@@ -157,7 +157,7 @@ func (scope Scope) Get(t reflect.Type) (
 }
 
 func Get[T any](scope Scope) (o T) {
-	value, err := scope.Get(reflect.TypeOf(o))
+	value, err := scope.Get(reflect.TypeFor[T]())
 	if err != nil {
 		_ = throw(err)
 	}

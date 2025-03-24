@@ -1594,3 +1594,14 @@ func TestReducerDependencyLoop(t *testing.T) {
 		)
 	}()
 }
+
+func TestGetInterface(t *testing.T) {
+	type I any
+	scope := New(func() I {
+		return 42
+	})
+	v := Get[I](scope)
+	if v != 42 {
+		t.Fatal()
+	}
+}
