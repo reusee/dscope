@@ -379,7 +379,7 @@ func TestOnce(t *testing.T) {
 	n := 1024
 	wg := new(sync.WaitGroup)
 	wg.Add(n)
-	for i := 0; i < n; i++ {
+	for range n {
 		go func() {
 			var i int
 			scope.Assign(&i)
@@ -456,7 +456,7 @@ func TestOnceFunc(t *testing.T) {
 	n := 1024
 	wg := new(sync.WaitGroup)
 	wg.Add(n)
-	for i := 0; i < n; i++ {
+	for range n {
 		go func() {
 			var fn func() int
 			scope.Assign(&fn)
@@ -494,7 +494,7 @@ func TestForkLazyMulti(t *testing.T) {
 	n := 1024
 	wg := new(sync.WaitGroup)
 	wg.Add(n * 2)
-	for i := 0; i < n; i++ {
+	for range n {
 		go func() {
 			var i int
 			scope.Assign(&i)
@@ -890,7 +890,7 @@ func TestRacing(t *testing.T) {
 	n := 16
 	wg := new(sync.WaitGroup)
 	wg.Add(n)
-	for i := 0; i < n; i++ {
+	for range n {
 		go func() {
 			defer wg.Done()
 			s := scope.Fork(
@@ -952,7 +952,7 @@ func TestFlatten(t *testing.T) {
 		},
 	)
 	s := scope
-	for i := 0; i < 128; i++ {
+	for range 128 {
 		s = s.Fork(
 			func() int {
 				return 43
@@ -1080,7 +1080,7 @@ func TestRacyCall(t *testing.T) {
 	s := New(func() int {
 		return 42
 	})
-	for i := 0; i < 512; i++ {
+	for range 512 {
 		go func() {
 			s.Call(func(i int) {
 			})
@@ -1205,7 +1205,7 @@ func TestPcallValueArgs(t *testing.T) {
 	intType := reflect.TypeFor[int]()
 	for i := 0; i <= 50; i++ {
 		var args []reflect.Type
-		for j := 0; j < i; j++ {
+		for range i {
 			args = append(args, intType)
 		}
 		fn := reflect.MakeFunc(
