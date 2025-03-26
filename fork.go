@@ -346,7 +346,8 @@ func newForker(
 	if _, err := h.Write(buf); err != nil {
 		panic(err)
 	}
-	signature := *(*_Hash)(h.Sum(nil))
+	var signature _Hash
+	h.Sum(signature[:0])
 
 	// Collect TypeIDs that both need reset (from analysis) and existed in the parent scope.
 	resetIDs := make([]_TypeID, 0, len(redefinedIDs))

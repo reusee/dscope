@@ -97,7 +97,8 @@ func (scope Scope) Fork(
 	if _, err := h.Write(buf); err != nil {
 		panic(err)
 	}
-	key := *(*_Hash)(h.Sum(nil))
+	var key _Hash
+	h.Sum(key[:0])
 
 	v, ok := forkers.Load(key)
 	if ok {
