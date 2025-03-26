@@ -38,7 +38,7 @@ func newForker(
 ) *_Forker {
 
 	// collect new values
-	var newValuesTemplate []_Value
+	newValuesTemplate := make([]_Value, 0, len(defs))
 	redefinedIDs := make(map[_TypeID]struct{})
 	defNumValues := make([]int, 0, len(defs))
 	defKinds := make([]reflect.Kind, 0, len(defs))
@@ -67,8 +67,8 @@ func newForker(
 				))
 			}
 
-			var dependencies []_TypeID
 			numIn := defType.NumIn()
+			dependencies := make([]_TypeID, 0, numIn)
 			for i := range numIn {
 				inType := defType.In(i)
 				if inType.Implements(typeWrapperType) {
@@ -256,7 +256,7 @@ func newForker(
 
 	// reset info
 	set := make(map[_TypeID]struct{})
-	var resetIDs []_TypeID
+	resetIDs := make([]_TypeID, 0, len(redefinedIDs))
 	colors = make(map[_TypeID]int)
 	var resetDownstream func(id _TypeID)
 	resetDownstream = func(id _TypeID) {
@@ -283,7 +283,7 @@ func newForker(
 	slices.Sort(resetIDs)
 
 	// reducer infos
-	var resetReducers []reducerInfo
+	resetReducers := make([]reducerInfo, 0, len(reducers))
 	resetReducerSet := make(map[_TypeID]bool)
 	resetReducer := func(id _TypeID) {
 		if _, ok := resetReducerSet[id]; ok {
