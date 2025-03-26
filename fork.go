@@ -218,7 +218,7 @@ func newForker(
 				reset = reset || depResets
 			}
 		}
-		colors[id] = 2
+
 		return
 	}
 
