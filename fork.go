@@ -157,15 +157,16 @@ func newForker(
 	})
 	valuesTemplate := scope.values.Append(sortedNewValuesTemplate)
 
+	// loop detection and reset analysis
 	colors := make(map[_TypeID]int)
-	downstreams := make(map[_TypeID][]_Value)
-	var traverse func(values []_Value, path []_TypeID) error
-	traverse = func(values []_Value, path []_TypeID) error {
+	needsReset := make(map[_TypeID]bool)
+	var traverse func(values []_Value, path []_TypeID) (reset bool, err error)
+	traverse = func(values []_Value, path []_TypeID) (reset bool, err error) {
 		id := values[0].typeInfo.TypeID
 		color := colors[id]
 		switch color {
 		case 1:
-			return we.With(
+			return false, we.With(
 				e5.Info("found dependency loop in definition %v", values[0].typeInfo.DefType),
 				func() e5.WrapFunc {
 					buf := new(strings.Builder)
@@ -181,15 +182,28 @@ func newForker(
 				ErrDependencyLoop,
 			)
 		case 2:
-			return nil
+			// already visited
+			return needsReset[id], nil
 		}
+
 		colors[id] = 1
+		defer func() {
+			if err == nil {
+				colors[id] = 2
+				needsReset[id] = reset
+			}
+		}()
+
+		// check if directly redefined
+		if _, ok := redefinedIDs[id]; ok {
+			reset = true
+		}
+
 		for _, value := range values {
 			for _, depID := range value.typeInfo.Dependencies {
-				downstreams[depID] = append(downstreams[depID], value)
 				value2, ok := valuesTemplate.Load(depID)
 				if !ok {
-					return we.With(
+					return false, we.With(
 						e5.Info("dependency not found in definition %v", value.typeInfo.DefType),
 						e5.Info("no definition for %v", typeIDToType(depID)),
 						e5.Info("path: %+v", scope.path),
@@ -197,19 +211,21 @@ func newForker(
 						ErrDependencyNotFound,
 					)
 				}
-				if err := traverse(value2, append(path, value.typeInfo.TypeID)); err != nil {
-					return err
+				depResets, err := traverse(value2, append(path, value.typeInfo.TypeID))
+				if err != nil {
+					return false, err
 				}
+				reset = reset || depResets
 			}
 		}
 		colors[id] = 2
-		return nil
+		return
 	}
 
 	defTypeIDs := make([]_TypeID, 0, valuesTemplate.Len())
 	reducers := make(map[_TypeID]reflect.Type) // no need to copy scope.reducers here, since valuesTemplate.Range will iterate all types.
 	if err := valuesTemplate.Range(func(values []_Value) error {
-		if err := traverse(values, nil); err != nil {
+		if _, err := traverse(values, nil); err != nil {
 			return err
 		}
 
@@ -255,29 +271,16 @@ func newForker(
 	signature := *(*_Hash)(h.Sum(nil))
 
 	// reset info
-	set := make(map[_TypeID]struct{})
 	resetIDs := make([]_TypeID, 0, len(redefinedIDs))
-	colors = make(map[_TypeID]int)
-	var resetDownstream func(id _TypeID)
-	resetDownstream = func(id _TypeID) {
-		if colors[id] == 1 {
-			return
-		}
-		for _, downstream := range downstreams[id] {
-			if _, ok := scope.values.LoadOne(downstream.typeInfo.TypeID); !ok {
-				continue
-			}
-			if _, ok := set[downstream.typeInfo.TypeID]; !ok {
-				resetIDs = append(resetIDs, downstream.typeInfo.TypeID)
-				set[downstream.typeInfo.TypeID] = struct{}{}
-			}
-			resetDownstream(downstream.typeInfo.TypeID)
-		}
-		colors[id] = 1
-	}
 
-	for id := range redefinedIDs {
-		resetDownstream(id)
+	for id, reset := range needsReset {
+		if !reset {
+			continue
+		}
+		// exclude newly defined values (those not present in the parent scope)
+		if _, ok := scope.values.LoadOne(id); ok {
+			resetIDs = append(resetIDs, id)
+		}
 	}
 
 	slices.Sort(resetIDs)
