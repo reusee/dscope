@@ -99,7 +99,7 @@ func (i *_Initializer) initialize(scope Scope) (ret []reflect.Value, err error) 
 
 	case reflect.Func:
 		var result CallResult
-		result = scope.Call(i.Def)
+		result = scope.CallValue(defValue)
 		ret = result.Values
 
 	case reflect.Pointer:
