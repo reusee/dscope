@@ -738,3 +738,12 @@ func BenchmarkMultipleDispatch(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkForkNewType(b *testing.B) {
+	for b.Loop() {
+		type T int
+		Universe.Fork(func() T {
+			return T(0)
+		})
+	}
+}
