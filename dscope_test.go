@@ -1605,3 +1605,53 @@ func TestGetInterface(t *testing.T) {
 		t.Fatal()
 	}
 }
+
+type reducingInt int
+
+func (reducingInt) IsReducer() {}
+
+func TestReducerInitializeOnce(t *testing.T) {
+	numInit := 0
+	scope := New(
+		func() int {
+			return 42
+		},
+		func(int) reducingInt {
+			numInit++
+			return 1
+		},
+		func() reducingInt {
+			numInit++
+			return 2
+		},
+	)
+
+	i := Get[reducingInt](scope)
+	if i != 3 {
+		t.Fatal()
+	}
+	if numInit != 2 {
+		t.Fatal()
+	}
+
+	// Reduce values are cached, so numInit will not increase
+	i = Get[reducingInt](scope)
+	if i != 3 {
+		t.Fatal()
+	}
+	if numInit != 2 {
+		t.Fatal()
+	}
+
+	// fork with new int, will trigger re-calculate of reducingInt
+	scope = scope.Fork(func() int {
+		return 42
+	})
+	i = Get[reducingInt](scope)
+	if i != 3 {
+		t.Fatal()
+	}
+	if numInit != 4 {
+		t.Fatal()
+	}
+}
