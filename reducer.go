@@ -154,4 +154,3 @@ func Reduce(vs []reflect.Value) reflect.Value {
 
 	return ret
 }
-

@@ -1,13 +1,16 @@
 package dscope
 
+// _StackedMap implements an immutable, singly-linked list acting as a stack of key-value maps.
+// Each node holds a batch of sorted _Value entries. Searches start from the head.
 type _StackedMap struct {
-	Next   *_StackedMap
-	Values []_Value
-	Height int8
+	Next   *_StackedMap // Previous layer in the stack.
+	Values []_Value     // Values in this layer, sorted by TypeID.
+	Height int8         // Height of the stack from this node downwards.
 }
 
-// Load loads values with specified id
-// MUST NOT modify returned slice
+// Load finds all values associated with a given TypeID.
+// It searches from the top layer downwards.
+// The returned slice MUST NOT be modified.
 func (s *_StackedMap) Load(id _TypeID) ([]_Value, bool) {
 	for s != nil {
 		values := s.Values
@@ -29,9 +32,8 @@ func (s *_StackedMap) Load(id _TypeID) ([]_Value, bool) {
 			}
 		}
 
-		// Check if we found a match
+		// Check if we found a match and return the range
 		if left < l && values[left].typeInfo.TypeID == id {
-			// Found first match, now find the range
 			start := int(left)
 			end := start + 1
 			for end < int(l) && values[end].typeInfo.TypeID == id {
@@ -45,6 +47,8 @@ func (s *_StackedMap) Load(id _TypeID) ([]_Value, bool) {
 	return nil, false
 }
 
+// LoadOne finds the first occurrence of a value with the specified TypeID.
+// It's generally faster than Load when only one value is expected (e.g., non-reducers).
 func (s *_StackedMap) LoadOne(id _TypeID) (ret _Value, ok bool) {
 	for s != nil {
 		values := s.Values
@@ -64,25 +68,29 @@ func (s *_StackedMap) LoadOne(id _TypeID) (ret _Value, ok bool) {
 			} else if midID < id {
 				left = mid + 1
 			} else {
-				return values[mid], true
+				return values[mid], true // Found
 			}
 		}
 		s = s.Next
 	}
-	return
+	return // Not found
 }
 
-// Range iterates all values
-// MUST NOT modify []_Value argument in callback function
+// Range iterates over the unique TypeIDs present in the stacked map, calling fn for each.
+// It provides all values associated with that TypeID from the topmost layer where it appears.
+// The []_Value argument passed to fn MUST NOT be modified.
 func (s *_StackedMap) Range(fn func([]_Value) error) error {
-	keys := make(map[_TypeID]struct{})
+	keys := make(map[_TypeID]struct{}) // Track visited TypeIDs
 	var start, end int
 	for s != nil {
 		for j, d := range s.Values {
+			// Skip if this TypeID was already processed from a higher layer
 			if _, ok := keys[d.typeInfo.TypeID]; ok {
 				continue
 			}
 			keys[d.typeInfo.TypeID] = struct{}{}
+
+			// Find the range of values for this TypeID in the current layer
 			start = j
 			end = start + 1
 			for _, follow := range s.Values[j+1:] {
@@ -92,6 +100,8 @@ func (s *_StackedMap) Range(fn func([]_Value) error) error {
 					break
 				}
 			}
+
+			// Call fn with the found values
 			if err := fn(s.Values[start:end]); err != nil {
 				return err
 			}
@@ -101,22 +111,21 @@ func (s *_StackedMap) Range(fn func([]_Value) error) error {
 	return nil
 }
 
-// Append appends a new layer to the map. values must be sorted by type id.
+// Append creates a new _StackedMap layer on top of the current one.
+// The provided values must be pre-sorted by TypeID.
 func (s *_StackedMap) Append(values []_Value) *_StackedMap {
+	var height int8 = 1
 	if s != nil {
-		return &_StackedMap{
-			Values: values,
-			Next:   s,
-			Height: s.Height + 1,
-		}
+		height = s.Height + 1
 	}
 	return &_StackedMap{
 		Values: values,
 		Next:   s,
-		Height: 1,
+		Height: height,
 	}
 }
 
+// Len returns the total number of individual _Value entries across all layers.
 func (s *_StackedMap) Len() int {
 	ret := 0
 	for s != nil {
@@ -125,3 +134,4 @@ func (s *_StackedMap) Len() int {
 	}
 	return ret
 }
+
