@@ -11,13 +11,11 @@ import (
 	"github.com/reusee/pr3"
 )
 
-// _Value represents a single defined value within a scope layer.
 type _Value struct {
 	typeInfo    *_TypeInfo
 	initializer *_Initializer
 }
 
-// _TypeInfo contains metadata about a specific type provided by a definition.
 type _TypeInfo struct {
 	DefType      reflect.Type
 	TypeID       _TypeID
@@ -26,7 +24,7 @@ type _TypeInfo struct {
 	Dependencies []_TypeID
 }
 
-// _TypeID is a unique identifier assigned to each reflect.Type encountered.
+// _TypeID is a unique identifier for a reflect.Type.
 type _TypeID int
 
 // _Hash is used for scope signatures and cache keys.
@@ -85,9 +83,10 @@ func (scope Scope) Fork(
 	// sorting defs may reduce memory consumption if there're calls with same defs but different order
 	// but sorting will increase heap allocations, causing performance drop
 
-	// get transition signature
-	// calculate cache key by def types, since only one instance is allowed for a type, so hashing types only is OK, no need to hash instance identity.
-	h := sha256.New() // must be cryptographic hash to avoid collision
+	// Calculate cache key for this Fork operation.
+	// Key is based on parent signature and the types of new definitions.
+	// Hashing types is sufficient as only one definition instance per type is effectively used.
+	h := sha256.New() // use cryptographic hash to avoid collision
 	h.Write(scope.signature[:])
 	buf := make([]byte, 0, len(defs)*8)
 	for _, def := range defs {
@@ -100,11 +99,13 @@ func (scope Scope) Fork(
 	var key _Hash
 	h.Sum(key[:0])
 
+	// Check cache
 	v, ok := forkers.Load(key)
 	if ok {
 		return v.(*_Forker).Fork(scope, defs)
 	}
 
+	// Cache miss, create and cache forker
 	forker := newForker(scope, defs, key)
 	v, _ = forkers.LoadOrStore(key, forker)
 
@@ -114,7 +115,7 @@ func (scope Scope) Fork(
 // Assign retrieves values from the scope matching the types of the provided pointers
 // and assigns the values to the pointers.
 // It panics if any argument is not a pointer or if a required type is not found.
-// It's safe to call Assign concurrently for different types or even the same type.
+// It's safe to call Assign concurrently.
 func (scope Scope) Assign(objects ...any) {
 	for _, o := range objects {
 		v := reflect.ValueOf(o)
@@ -149,10 +150,8 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 
 	if _, ok := scope.reducers[id]; !ok {
 		// non-reducer
-
 		value, ok := scope.values.LoadOne(id)
 		if !ok {
-
 			return ret, we.With(
 				e5.Info("no definition for %v", t),
 				e5.Info("path: %+v", scope.path),
@@ -168,7 +167,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 		return values[value.typeInfo.Position], nil
 
 	} else {
-		// reducer
+		// reducer: get the reduced value via its internal marker type
 		markType := getReducerMarkType(t, id)
 		return scope.get(
 			getTypeID(markType),
@@ -210,7 +209,7 @@ func (scope Scope) Call(fn any) CallResult {
 var getArgsFunc sync.Map
 
 // getArgs resolves the arguments for a function of type `fnType` from the scope
-// and places them into the `args` slice. It returns the number of arguments.
+// and places them into the `args` slice. It returns the number of arguments resolved.
 func (scope Scope) getArgs(fnType reflect.Type, args []reflect.Value) (int, error) {
 	if v, ok := getArgsFunc.Load(fnType); ok {
 		return v.(func(Scope, []reflect.Value) (int, error))(scope, args)
@@ -260,6 +259,7 @@ var reflectValuesPool = pr3.NewPool(
 func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 	fnType := fnValue.Type()
 	var args []reflect.Value
+	// Use pool for small number of arguments
 	if nArgs := fnType.NumIn(); nArgs <= reflectValuesPoolMaxLen {
 		elem := reflectValuesPool.Get(&args)
 		defer elem.Put()
@@ -271,6 +271,8 @@ func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 		_ = throw(err)
 	}
 	res.Values = fnValue.Call(args[:n])
+
+	// Cache return type positions
 	v, ok := fnRetTypes.Load(fnType)
 	if !ok {
 		m := make(map[reflect.Type]int)
@@ -285,3 +287,4 @@ func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 	}
 	return
 }
+
