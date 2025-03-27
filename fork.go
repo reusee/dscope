@@ -489,7 +489,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 			}
 			for _, value := range vs {
 				if value.typeInfo.DefIsMulti {
-					// multiple types using the same definiton
+					// multiple types using the same definition
 					found := false
 					for _, d := range resetValues {
 						if d.initializer.ID == value.initializer.ID {
