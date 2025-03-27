@@ -1,4 +1,3 @@
-```markdown
 # dscope - Immutable Dependency Injection for Go
 
 `dscope` is a dependency injection container for Go, built with a focus on immutability, lazy initialization, and performance. It leverages Go's type system to provide a type-safe way to manage dependencies within your application.
