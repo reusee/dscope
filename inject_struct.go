@@ -11,7 +11,7 @@ type _InjectStructFunc = func(scope Scope, value reflect.Value) error
 // reflect.Type -> _InjectStructFunc
 var injectStructFuncs sync.Map
 
-func InjectStruct(scope Scope, target any) error {
+func injectStruct(scope Scope, target any) error {
 	v := reflect.ValueOf(target)
 	if fn, ok := injectStructFuncs.Load(v.Type()); ok {
 		return fn.(_InjectStructFunc)(scope, v)

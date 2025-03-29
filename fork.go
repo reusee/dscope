@@ -325,7 +325,7 @@ func newForker(
 			return
 		}
 		kind := getReducerKind(originType)
-		markType := getReducerMarkType(originType, id) // Internal type for the reduced value
+		markType := getReducerMarkType(id) // Internal type for the reduced value
 		resetReducers = append(resetReducers, reducerInfo{
 			typeInfo: &_TypeInfo{
 				TypeID:  getTypeID(markType),
@@ -466,4 +466,3 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 	// 6. Return the fully constructed child scope.
 	return scope
 }
-

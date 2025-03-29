@@ -54,7 +54,7 @@ var reducerMarkTypes sync.Map
 // getReducerMarkType generates or retrieves a unique function type based on the
 // original reducer type `t`. This marker type (func(reducerMark) T) is used
 // internally to store the result of a reduction for type `T`.
-func getReducerMarkType(t reflect.Type, id _TypeID) reflect.Type {
+func getReducerMarkType(id _TypeID) reflect.Type {
 	if v, ok := reducerMarkTypes.Load(id); ok {
 		return v.(reflect.Type)
 	}
@@ -64,7 +64,7 @@ func getReducerMarkType(t reflect.Type, id _TypeID) reflect.Type {
 			reducerMarkType,
 		},
 		[]reflect.Type{
-			t,
+			typeIDToType(id),
 		},
 		false,
 	)

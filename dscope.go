@@ -143,7 +143,7 @@ func Assign[T any](scope Scope, ptr *T) {
 // get retrieves a value of a specific type ID and type from the scope.
 // It handles the distinction between regular values and reducers.
 // Internal function called by Get and Assign.
-func (scope Scope) get(id _TypeID, t reflect.Type) (
+func (scope Scope) get(id _TypeID) (
 	ret reflect.Value,
 	err error,
 ) {
@@ -153,7 +153,7 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 		value, ok := scope.values.LoadOne(id)
 		if !ok {
 			return ret, we.With(
-				e5.Info("no definition for %v", t),
+				e5.Info("no definition for %v", typeIDToType(id)),
 				e5.Info("path: %+v", scope.path),
 			)(
 				ErrDependencyNotFound,
@@ -168,10 +168,9 @@ func (scope Scope) get(id _TypeID, t reflect.Type) (
 
 	} else {
 		// reducer: get the reduced value via its internal marker type
-		markType := getReducerMarkType(t, id)
+		markType := getReducerMarkType(id)
 		return scope.get(
 			getTypeID(markType),
-			markType,
 		)
 	}
 
@@ -184,7 +183,7 @@ func (scope Scope) Get(t reflect.Type) (
 	ret reflect.Value,
 	err error,
 ) {
-	return scope.get(getTypeID(t), t)
+	return scope.get(getTypeID(t))
 }
 
 // Get is a type-safe generic function to retrieve a single value of type T.
@@ -220,17 +219,15 @@ func (scope Scope) getArgs(fnType reflect.Type, args []reflect.Value) (int, erro
 // getArgsSlow generates and caches the argument-fetching logic for a function type.
 func (scope Scope) getArgsSlow(fnType reflect.Type, args []reflect.Value) (int, error) {
 	numIn := fnType.NumIn()
-	types := make([]reflect.Type, numIn)
 	ids := make([]_TypeID, numIn)
 	for i := range numIn {
 		t := fnType.In(i)
-		types[i] = t
 		ids[i] = getTypeID(t)
 	}
 	getArgs := func(scope Scope, args []reflect.Value) (int, error) {
 		for i := range ids {
 			var err error
-			args[i], err = scope.get(ids[i], types[i])
+			args[i], err = scope.get(ids[i])
 			if err != nil {
 				return 0, err
 			}
