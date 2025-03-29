@@ -276,7 +276,7 @@ func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 	v, ok := fnRetTypes.Load(fnType)
 	if !ok {
 		m := make(map[reflect.Type]int)
-		for i := 0; i < fnType.NumOut(); i++ {
+		for i := range fnType.NumOut() {
 			t := fnType.Out(i)
 			m[t] = i
 		}
@@ -287,4 +287,3 @@ func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 	}
 	return
 }
-
