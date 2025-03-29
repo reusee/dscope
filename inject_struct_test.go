@@ -3,6 +3,13 @@ package dscope
 import "testing"
 
 func TestInjectStruct(t *testing.T) {
+	// dependable
+	New(func(
+		inject InjectStruct,
+	) int {
+		return 42
+	})
+
 	scope := New(
 		func() int {
 			return 42

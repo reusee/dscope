@@ -227,6 +227,9 @@ func newForker(
 		// Recursive Step: Check Dependencies
 		for _, value := range values {
 			for _, depID := range value.typeInfo.Dependencies {
+				if isAlwaysProvided(depID) {
+					continue
+				}
 				depValues, ok := valuesTemplate.Load(depID)
 				if !ok {
 					return false, we.With(
