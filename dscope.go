@@ -148,6 +148,12 @@ func (scope Scope) get(id _TypeID) (
 	err error,
 ) {
 
+	// special methods
+	switch id {
+	case injectStructTypeID:
+		return reflect.ValueOf(scope.InjectStruct), nil
+	}
+
 	if _, ok := scope.reducers[id]; !ok {
 		// non-reducer
 		value, ok := scope.values.LoadOne(id)

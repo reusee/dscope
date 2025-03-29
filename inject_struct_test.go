@@ -18,6 +18,20 @@ func TestInjectStruct(t *testing.T) {
 	if s.I != 42 {
 		t.Fatal()
 	}
+
+	scope.Call(func(
+		inject InjectStruct,
+	) {
+		var s struct {
+			I int `dscope:"."`
+		}
+		if err := inject(&s); err != nil {
+			t.Fatal(err)
+		}
+		if s.I != 42 {
+			t.Fatal()
+		}
+	})
 }
 
 func BenchmarkInjectStruct(b *testing.B) {

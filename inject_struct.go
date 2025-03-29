@@ -6,6 +6,14 @@ import (
 	"sync"
 )
 
+type InjectStruct func(target any) error
+
+var injectStructTypeID = getTypeID(reflect.TypeFor[InjectStruct]())
+
+func (scope Scope) InjectStruct(target any) error {
+	return injectStruct(scope, target)
+}
+
 type _InjectStructFunc = func(scope Scope, value reflect.Value) error
 
 // reflect.Type -> _InjectStructFunc
