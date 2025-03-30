@@ -1483,9 +1483,9 @@ func (testReducerInt) IsReducer() {}
 
 func TestReducer(t *testing.T) {
 	s := New(
-		PtrTo(testReducerInt(1)),
-		PtrTo(testReducerInt(2)),
-		PtrTo(testReducerInt(3)),
+		Provide(testReducerInt(1)),
+		Provide(testReducerInt(2)),
+		Provide(testReducerInt(3)),
 	)
 	var i testReducerInt
 	s.Assign(&i)
