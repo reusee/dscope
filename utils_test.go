@@ -56,3 +56,13 @@ func TestReduce(t *testing.T) {
 	}
 
 }
+
+func TestMethodFromFields(t *testing.T) {
+	type Foo struct {
+		Scope Scope `dscope:"."`
+	}
+	defs := Methods(Foo{})
+	if len(defs) == 0 {
+		t.Fatal()
+	}
+}
