@@ -24,7 +24,7 @@ func TestMethodFromFields(t *testing.T) {
 		Scope          Scope `dscope:"."`
 		DuplicateScope Scope `dscope:"methods"`
 	}
-	defs := Methods(Foo{})
+	defs := Methods(new(Foo))
 	if len(defs) == 0 {
 		t.Fatal()
 	}

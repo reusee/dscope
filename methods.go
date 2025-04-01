@@ -22,6 +22,11 @@ func Methods(objects ...any) (ret []any) {
 		}
 
 		// from fields
+		for t.Kind() == reflect.Pointer {
+			// deref
+			t = t.Elem()
+			v = v.Elem()
+		}
 		if t.Kind() == reflect.Struct {
 			for i := range t.NumField() {
 				field := t.Field(i)
