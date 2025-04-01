@@ -48,10 +48,9 @@ l:
 	for i := range t.NumField() {
 		field := t.Field(i)
 		directive := field.Tag.Get("dscope")
-		if directive == "" {
-			continue
+		if directive == "." || directive == "inject" {
+			fields = append(fields, field)
 		}
-		fields = append(fields, field)
 	}
 
 	return func(scope Scope, value reflect.Value) error {
