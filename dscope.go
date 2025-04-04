@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"reflect"
 	"runtime"
+	"slices"
 	"sync"
 
 	"github.com/reusee/e5"
@@ -79,6 +80,20 @@ var forkers sync.Map
 func (scope Scope) Fork(
 	defs ...any,
 ) Scope {
+
+	// handle modules
+	var moduleObjects []any
+	for i := 0; i < len(defs); {
+		if def, ok := defs[i].(isModule); ok {
+			defs = slices.Replace(defs, i, i+1)
+			moduleObjects = append(moduleObjects, def)
+		} else {
+			i++
+		}
+	}
+	if len(moduleObjects) > 0 {
+		defs = append(defs, Methods(moduleObjects...)...)
+	}
 
 	// sorting defs may reduce memory consumption if there're calls with same defs but different order
 	// but sorting will increase heap allocations, causing performance drop
