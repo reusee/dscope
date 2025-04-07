@@ -146,7 +146,9 @@ func (scope Scope) Assign(objects ...any) {
 		if err != nil {
 			_ = throw(err)
 		}
-		v.Elem().Set(value)
+		if !v.IsNil() {
+			v.Elem().Set(value)
+		}
 	}
 }
 
