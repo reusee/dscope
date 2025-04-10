@@ -139,13 +139,17 @@ func Reduce(vs []reflect.Value) reflect.Value {
 			}
 		}
 
-	case reflect.Int:
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		// Sum integers.
 		var i int64
 		for _, v := range vs {
 			i += v.Int()
 		}
 		ret = reflect.New(t).Elem()
+		// Check for overflow when setting the value for the specific target type t
+		if ret.OverflowInt(i) {
+			panic(fmt.Errorf("integer overflow reducing %v: sum %d exceeds type limits", t, i))
+		}
 		ret.SetInt(i)
 
 	default:
