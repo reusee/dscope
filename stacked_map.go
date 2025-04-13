@@ -1,5 +1,7 @@
 package dscope
 
+import "iter"
+
 // _StackedMap implements an immutable, singly-linked list acting as a stack of key-value maps.
 // Each node holds a batch of sorted _Value entries. Searches start from the head.
 type _StackedMap struct {
@@ -76,39 +78,38 @@ func (s *_StackedMap) LoadOne(id _TypeID) (ret _Value, ok bool) {
 	return // Not found
 }
 
-// Range iterates over the unique TypeIDs present in the stacked map, calling fn for each.
-// It provides all values associated with that TypeID from the topmost layer where it appears.
-// The []_Value argument passed to fn MUST NOT be modified.
-func (s *_StackedMap) Range(fn func([]_Value) error) error {
-	keys := make(map[_TypeID]struct{}) // Track visited TypeIDs
-	var start, end int
-	for s != nil {
-		for j, d := range s.Values {
-			// Skip if this TypeID was already processed from a higher layer
-			if _, ok := keys[d.typeInfo.TypeID]; ok {
-				continue
-			}
-			keys[d.typeInfo.TypeID] = struct{}{}
-
-			// Find the range of values for this TypeID in the current layer
-			start = j
-			end = start + 1
-			for _, follow := range s.Values[j+1:] {
-				if follow.typeInfo.TypeID == d.typeInfo.TypeID {
-					end++
-				} else {
-					break
+func (s *_StackedMap) AllValues() iter.Seq[[]_Value] {
+	return func(yield func([]_Value) bool) {
+		keys := make(map[_TypeID]struct{}) // Track visited TypeIDs
+		var start, end int
+		for s != nil {
+			for j, d := range s.Values {
+				// Skip if this TypeID was already processed from a higher layer
+				if _, ok := keys[d.typeInfo.TypeID]; ok {
+					continue
 				}
-			}
+				keys[d.typeInfo.TypeID] = struct{}{}
 
-			// Call fn with the found values
-			if err := fn(s.Values[start:end]); err != nil {
-				return err
+				// Find the range of values for this TypeID in the current layer
+				start = j
+				end = start + 1
+				for _, follow := range s.Values[j+1:] {
+					if follow.typeInfo.TypeID == d.typeInfo.TypeID {
+						end++
+					} else {
+						break
+					}
+				}
+
+				if !yield(s.Values[start:end]) {
+					return
+				}
+
 			}
+			s = s.Next
 		}
-		s = s.Next
 	}
-	return nil
+
 }
 
 // Append creates a new _StackedMap layer on top of the current one.
@@ -134,4 +135,3 @@ func (s *_StackedMap) Len() int {
 	}
 	return ret
 }
-

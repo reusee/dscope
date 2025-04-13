@@ -259,9 +259,9 @@ func newForker(
 	defTypeIDs := make([]_TypeID, 0, valuesTemplate.Len()) // For signature
 	reducers := make(map[_TypeID]reflect.Type)             // TypeID -> Reducer Type
 
-	if err := valuesTemplate.Range(func(values []_Value) error { // Iterates unique TypeIDs
+	for values := range valuesTemplate.AllValues() {
 		if _, err := traverse(values, nil); err != nil {
-			return err
+			_ = throw(err)
 		}
 
 		// Collect definition type IDs (sorted insert)
@@ -278,18 +278,15 @@ func newForker(
 			t := typeIDToType(values[0].typeInfo.TypeID)
 			kind := getReducerKind(t)
 			if kind == notReducer {
-				return we.With(
+				_ = throw(we.With(
 					e5.Info("%v has multiple definitions", t),
 				)(
 					ErrBadDefinition,
-				)
+				))
 			}
 			reducers[values[0].typeInfo.TypeID] = t
 		}
 
-		return nil
-	}); err != nil {
-		_ = throw(err)
 	}
 
 	// 5. Calculate Child Scope Signature: Hash sorted definition type IDs.
@@ -377,12 +374,10 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 	// 2. Handle Parent Scope Stack: Flatten if deep.
 	if s.values != nil && s.values.Height > 16 { // Threshold for flattening
 		var flatValues []_Value
-		if err := s.values.Range(func(parentValues []_Value) error {
+		for parentValues := range s.values.AllValues() {
 			flatValues = append(flatValues, parentValues...)
-			return nil
-		}); err != nil {
-			_ = throw(err)
 		}
+
 		slices.SortFunc(flatValues, func(a, b _Value) int { // Sort flattened values
 			return cmp.Compare(a.typeInfo.TypeID, b.typeInfo.TypeID)
 		})

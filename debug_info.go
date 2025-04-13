@@ -12,20 +12,13 @@ type ValueDebugInfo struct {
 
 func (s Scope) GetDebugInfo() (info DebugInfo) {
 	info.Values = make(map[reflect.Type]ValueDebugInfo)
-	if err := s.values.Range(func(values []_Value) error {
-
+	for values := range s.values.AllValues() {
 		var valueInfo ValueDebugInfo
 		for _, value := range values {
 			valueInfo.DefTypes = append(valueInfo.DefTypes, value.typeInfo.DefType)
 		}
-
 		t := typeIDToType(values[0].typeInfo.TypeID)
 		info.Values[t] = valueInfo
-
-		return nil
-	}); err != nil {
-		panic(err)
 	}
-
 	return
 }

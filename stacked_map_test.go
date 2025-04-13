@@ -49,7 +49,7 @@ func TestStackedMap(t *testing.T) {
 	}
 
 	n := 0
-	if err := m.Range(func(ds []_Value) error {
+	for ds := range m.AllValues() {
 		for _, d := range ds {
 			n++
 			if d.typeInfo.TypeID == 3 {
@@ -58,9 +58,6 @@ func TestStackedMap(t *testing.T) {
 				}
 			}
 		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
 	}
 	if n != 5 {
 		t.Fatalf("got %d", n)
