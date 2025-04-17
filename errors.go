@@ -3,7 +3,10 @@ package dscope
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
+
+	"github.com/reusee/e5"
 )
 
 var ErrDependencyLoop = errors.New("dependency loop")
@@ -31,4 +34,13 @@ func (p *Path) String() string {
 
 func (p Path) Error() string {
 	return p.String()
+}
+
+func throwErrDependencyNotFound(typ reflect.Type, path *Path) {
+	_ = throw(we.With(
+		e5.Info("no definition for %v", typ),
+		e5.Info("path: %+v", path),
+	)(
+		ErrDependencyNotFound,
+	))
 }

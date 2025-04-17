@@ -58,9 +58,9 @@ l:
 			value = value.Elem()
 		}
 		for _, field := range fields {
-			v, err := scope.Get(field.Type)
-			if err != nil {
-				return err
+			v, ok := scope.Get(field.Type)
+			if !ok {
+				throwErrDependencyNotFound(field.Type, scope.path)
 			}
 			value.FieldByIndex(field.Index).Set(v)
 		}

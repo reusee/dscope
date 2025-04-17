@@ -142,9 +142,9 @@ func (scope Scope) Assign(objects ...any) {
 			))
 		}
 		t := v.Type().Elem()
-		value, err := scope.Get(t)
-		if err != nil {
-			_ = throw(err)
+		value, ok := scope.Get(t)
+		if !ok {
+			throwErrDependencyNotFound(t, scope.path)
 		}
 		if !v.IsNil() {
 			v.Elem().Set(value)
@@ -162,28 +162,23 @@ func Assign[T any](scope Scope, ptr *T) {
 // Internal function called by Get and Assign.
 func (scope Scope) get(id _TypeID) (
 	ret reflect.Value,
-	err error,
+	ok bool,
 ) {
 
 	// special methods
 	switch id {
 	case injectStructTypeID:
-		return reflect.ValueOf(scope.InjectStruct), nil
+		return reflect.ValueOf(scope.InjectStruct), true
 	}
 
 	if _, ok := scope.reducers[id]; !ok {
 		// non-reducer
 		value, ok := scope.values.LoadOne(id)
 		if !ok {
-			return ret, we.With(
-				e5.Info("no definition for %v", typeIDToType(id)),
-				e5.Info("path: %+v", scope.path),
-			)(
-				ErrDependencyNotFound,
-			)
+			return ret, false
 		}
 		values := value.initializer.get(scope, id)
-		return values[value.typeInfo.Position], nil
+		return values[value.typeInfo.Position], true
 
 	} else {
 		// reducer: get the reduced value via its internal marker type
@@ -200,7 +195,7 @@ func (scope Scope) get(id _TypeID) (
 // Use Assign or the generic Get[T] for safer retrieval.
 func (scope Scope) Get(t reflect.Type) (
 	ret reflect.Value,
-	err error,
+	ok bool,
 ) {
 	return scope.get(getTypeID(t))
 }
@@ -208,9 +203,10 @@ func (scope Scope) Get(t reflect.Type) (
 // Get is a type-safe generic function to retrieve a single value of type T.
 // It panics if the type is not found or if an error occurs during resolution.
 func Get[T any](scope Scope) (o T) {
-	value, err := scope.Get(reflect.TypeFor[T]())
-	if err != nil {
-		_ = throw(err)
+	typ := reflect.TypeFor[T]()
+	value, ok := scope.Get(typ)
+	if !ok {
+		throwErrDependencyNotFound(typ, scope.path)
 	}
 	return value.Interface().(T)
 }
@@ -228,30 +224,30 @@ var getArgsFunc sync.Map
 
 // getArgs resolves the arguments for a function of type `fnType` from the scope
 // and places them into the `args` slice. It returns the number of arguments resolved.
-func (scope Scope) getArgs(fnType reflect.Type, args []reflect.Value) (int, error) {
+func (scope Scope) getArgs(fnType reflect.Type, args []reflect.Value) int {
 	if v, ok := getArgsFunc.Load(fnType); ok {
-		return v.(func(Scope, []reflect.Value) (int, error))(scope, args)
+		return v.(func(Scope, []reflect.Value) int)(scope, args)
 	}
 	return scope.getArgsSlow(fnType, args)
 }
 
 // getArgsSlow generates and caches the argument-fetching logic for a function type.
-func (scope Scope) getArgsSlow(fnType reflect.Type, args []reflect.Value) (int, error) {
+func (scope Scope) getArgsSlow(fnType reflect.Type, args []reflect.Value) int {
 	numIn := fnType.NumIn()
 	ids := make([]_TypeID, numIn)
 	for i := range numIn {
 		t := fnType.In(i)
 		ids[i] = getTypeID(t)
 	}
-	getArgs := func(scope Scope, args []reflect.Value) (int, error) {
+	getArgs := func(scope Scope, args []reflect.Value) int {
 		for i := range ids {
-			var err error
-			args[i], err = scope.get(ids[i])
-			if err != nil {
-				return 0, err
+			var ok bool
+			args[i], ok = scope.get(ids[i])
+			if !ok {
+				throwErrDependencyNotFound(typeIDToType(ids[i]), scope.path)
 			}
 		}
-		return numIn, nil
+		return numIn
 	}
 	getArgsFunc.Store(fnType, getArgs)
 	return getArgs(scope, args)
@@ -282,10 +278,7 @@ func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 	} else {
 		args = make([]reflect.Value, nArgs)
 	}
-	n, err := scope.getArgs(fnType, args)
-	if err != nil {
-		_ = throw(err)
-	}
+	n := scope.getArgs(fnType, args)
 	res.Values = fnValue.Call(args[:n])
 
 	// Cache return type positions
