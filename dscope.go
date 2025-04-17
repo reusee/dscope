@@ -182,11 +182,7 @@ func (scope Scope) get(id _TypeID) (
 				ErrDependencyNotFound,
 			)
 		}
-		var values []reflect.Value
-		values, err = value.initializer.get(scope, id)
-		if err != nil { // NOCOVER
-			return ret, err
-		}
+		values := value.initializer.get(scope, id)
 		return values[value.typeInfo.Position], nil
 
 	} else {
