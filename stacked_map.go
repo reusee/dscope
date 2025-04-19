@@ -50,7 +50,7 @@ func (s *_StackedMap) Load(id _TypeID) ([]_Value, bool) {
 }
 
 // LoadOne finds the first occurrence of a value with the specified TypeID.
-// It's generally faster than Load when only one value is expected (e.g., non-reducers).
+// It's generally faster than Load when only one value is expected
 func (s *_StackedMap) LoadOne(id _TypeID) (ret _Value, ok bool) {
 	for s != nil {
 		values := s.Values

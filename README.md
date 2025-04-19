@@ -1,35 +1,31 @@
-# dscope - Immutable Dependency Injection for Go
+# Getting Started with `dscope`
 
-`dscope` is a dependency injection container for Go, built with a focus on immutability, lazy initialization, and performance. It leverages Go's type system to provide a type-safe way to manage dependencies within your application.
-
-[![Go Reference](https://pkg.go.dev/badge/github.com/reusee/dscope.svg)](https://pkg.go.dev/github.com/reusee/dscope)
-[![Go Report Card](https://goreportcard.com/badge/github.com/reusee/dscope)](https://goreportcard.com/report/github.com/reusee/dscope)
-
-## Key Features
-
-*   **Immutability:** Scopes are immutable. Operations like `Fork` create new scopes, leaving the original unchanged. This makes scopes safe to share across goroutines without locking after creation.
-*   **Lazy Initialization:** Provider functions are executed only when the value they provide is first requested within a scope lineage, and the result is cached for subsequent requests within that scope.
-*   **Type Safety:** Relies on Go's static typing. Dependencies are resolved based on their types. Generic functions `Get[T]` and `Assign[T]` provide compile-time safety.
-*   **Value Overriding:** Child scopes created via `Fork` can provide new definitions for types already present in parent scopes, effectively overriding them for the child and its descendants.
-*   **Multiple Value Providers:** Provider functions can return multiple values. Each return value becomes an independently injectable dependency.
-*   **Function Calls with Injection:** `scope.Call(fn)` resolves the arguments of `fn` from the scope and executes it.
-*   **Value Assignment:** `scope.Assign(&target)` resolves dependencies based on the type of the target pointer and assigns the value.
-*   **Pointer Providers:** You can provide concrete values directly by passing pointers (e.g., `New(&myConfig)` makes `MyConfig` available).
-*   **Reducers:** A mechanism to combine multiple definitions of the same type into a single value (e.g., merging configuration slices, aggregating handler functions). Supports default behaviors (slices, maps, funcs, ints, strings) and custom reducer logic via the `CustomReducer` interface.
-*   **Dependency Cycle Detection:** Automatically detects and panics on circular dependencies during scope creation or value resolution.
-*   **Performance Conscious:** Uses internal caching (`_Forker`, type info, argument resolvers), optimized data structures (`_StackedMap` with binary search), and lazy evaluation to minimize overhead. Benchmarks are included (`bench_test.go`).
+`dscope` is a dependency injection library for Go designed with immutability and lazy initialization in mind. It helps manage dependencies between different parts of your application in a structured and testable way.
 
 ## Installation
+
+To use `dscope` in your project, you can install it using the standard `go get` command:
 
 ```bash
 go get github.com/reusee/dscope
 ```
 
-## Usage
+*(Note: The exact import path might differ based on the actual repository location. The path `github.com/reusee/dscope` is inferred from the context provided.)*
 
-### Basic Example
+## Core Concepts
 
-Define dependencies using provider functions. `Fork` creates a new scope with these definitions. `Assign` or `Get` retrieves values.
+1.  **Scope:** The central concept in `dscope` is the `Scope`. It acts as an immutable container holding definitions for various types. You retrieve dependencies *from* a scope.
+2.  **Definitions:** These are instructions on *how* to provide a value of a certain type. `dscope` primarily supports two kinds of definitions:
+    *   **Provider Functions:** Regular Go functions where the arguments are dependencies (resolved from the scope) and the return values are the types being provided.
+    *   **Pointer Values:** Providing a pointer to an existing value (e.g., `&myConfig`) makes the *value itself* available in the scope.
+3.  **Immutability & Forking:** Scopes are immutable. To add or override definitions, you `Fork` an existing scope. This creates a *new* child scope layered on top of the parent, without modifying the original. This makes scope management predictable.
+4.  **Lazy Initialization:** Provider functions are not executed until a value they provide (or a value that depends on them) is actually requested from the scope (via `Get`, `Assign`, or `Call`). The result is then cached within that scope instance for subsequent requests.
+
+## Basic Usage
+
+### 1. Creating a Scope (`New`)
+
+You start by creating a root scope using `dscope.New()`, passing your initial definitions.
 
 ```go
 package main
@@ -39,248 +35,235 @@ import (
 	"github.com/reusee/dscope"
 )
 
-type Config struct {
-	ConnectionString string
+// Define some types
+type Port int
+type Host string
+type DatabaseURL string
+
+func main() {
+	// Create a new scope with initial definitions
+	scope := dscope.New(
+		// Provider function for Port
+		func() Port {
+			fmt.Println("Providing Port...")
+			return 8080
+		},
+
+		// Provider function for Host (depends on Port)
+		func(p Port) Host {
+			fmt.Println("Providing Host...")
+			return Host(fmt.Sprintf("localhost:%d", p))
+		},
+
+		// Provide a configuration value directly using a pointer
+		// This makes the DatabaseURL value available in the scope.
+		&DatabaseURL{"postgres://user:pass@db:5432/mydb"},
+	)
+
+	fmt.Println("Scope created.")
+
+	// Dependencies are not resolved yet because nothing has been requested.
+}
+```
+
+### 2. Retrieving Values (`Get` and `Assign`)
+
+You can retrieve values from the scope using type-safe generics (`Get[T]`) or populate variables using `Assign`.
+
+```go
+package main
+
+import (
+	"fmt"
+	"github.com/reusee/dscope"
+)
+
+type Port int
+type Host string
+type DatabaseURL string
+
+func main() {
+	scope := dscope.New(
+		func() Port {
+			fmt.Println("Providing Port...")
+			return 8080
+		},
+		func(p Port) Host {
+			fmt.Println("Providing Host...")
+			return Host(fmt.Sprintf("localhost:%d", p))
+		},
+		&DatabaseURL{"postgres://user:pass@db:5432/mydb"},
+	)
+	fmt.Println("Scope created.")
+
+	// --- Retrieve using Get[T] ---
+	fmt.Println("Requesting Host...")
+	// Requesting Host requires Port, so both provider functions will run now.
+	host := dscope.Get[Host](scope)
+	fmt.Printf("Retrieved Host: %s\n", host)
+
+	// Requesting Host again uses the cached value
+	fmt.Println("Requesting Host again...")
+	host2 := dscope.Get[Host](scope)
+	fmt.Printf("Retrieved Host again: %s\n", host2)
+
+	// --- Retrieve using Assign ---
+	fmt.Println("Assigning variables...")
+	var dbURL DatabaseURL
+	var port Port
+	// Assign resolves dependencies as needed (Port is already cached)
+	scope.Assign(&dbURL, &port)
+	fmt.Printf("Assigned dbURL: %s, port: %d\n", dbURL, port)
+
+	// --- Panic on Not Found ---
+	// Uncommenting this will panic because float64 is not defined.
+	// f := dscope.Get[float64](scope)
+	// fmt.Println(f)
 }
 
+/* Example Output:
+Scope created.
+Requesting Host...
+Providing Port...
+Providing Host...
+Retrieved Host: localhost:8080
+Requesting Host again...
+Retrieved Host again: localhost:8080
+Assigning variables...
+Assigned dbURL: postgres://user:pass@db:5432/mydb, port: 8080
+*/
+```
+
+### 3. Calling Functions (`Call`)
+
+You can execute functions whose arguments are automatically resolved from the scope using `scope.Call()`.
+
+```go
+package main
+
+import (
+	"fmt"
+	"github.com/reusee/dscope"
+)
+
+type Port int
+type Host string
+type ServiceName string
+
+func main() {
+	scope := dscope.New(
+		func() Port { return 8080 },
+		func(p Port) Host { return Host(fmt.Sprintf("localhost:%d", p)) },
+		&ServiceName{"MyWebService"},
+	)
+
+	// Call a function whose arguments are dependencies from the scope
+	scope.Call(func(host Host, name ServiceName) {
+		fmt.Printf("Service '%s' running at %s\n", name, host)
+	})
+
+	// Call can also return values, wrapped in a CallResult
+	result := scope.Call(func(p Port) string {
+		return fmt.Sprintf("Configuration uses port %d", p)
+	})
+
+	var configSummary string
+	// Use Assign on the result to extract return values by type
+	result.Assign(&configSummary)
+	fmt.Println(configSummary)
+
+	// Or use Extract to get return values by position
+	var configSummary2 string
+	result.Extract(&configSummary2) // Extracts the first return value
+	fmt.Println("(Extract) " + configSummary2)
+}
+
+/* Example Output:
+Service 'MyWebService' running at localhost:8080
+Configuration uses port 8080
+(Extract) Configuration uses port 8080
+*/
+```
+
+### 4. Forking Scopes (`Fork`)
+
+Use `Fork` to create a new scope with additional or overriding definitions.
+
+```go
+package main
+
+import (
+	"fmt"
+	"github.com/reusee/dscope"
+)
+
+type Config string
 type Service struct {
-	Config Config
+	Conf Config
 }
 
 func main() {
-	// Create a scope with initial definitions
-	scope := dscope.New().Fork(
-
-		// Provider for Config
+	// Base configuration
+	baseScope := dscope.New(
 		func() Config {
-			fmt.Println("Initializing Config...") // Will be printed only once
-			return Config{
-				ConnectionString: "localhost:5432",
-			}
+			fmt.Println("Providing base Config")
+			return "BaseConfig"
 		},
-
-		// Provider for Service, depends on Config
-		func(cfg Config) Service {
-			fmt.Println("Initializing Service...") // Will be printed only once
-			return Service{
-				Config: cfg,
-			}
+		func(c Config) Service {
+			fmt.Println("Creating Service with config:", c)
+			return Service{Conf: c}
 		},
 	)
 
-	// Retrieve a Service instance
-	var service1 Service
-	scope.Assign(&service1)
-	fmt.Printf("Service 1 Config: %s\n", service1.Config.ConnectionString)
+	fmt.Println("--- Using baseScope ---")
+	service1 := dscope.Get[Service](baseScope)
+	fmt.Printf("Service 1 Config: %s\n", service1.Conf)
 
-	// Retrieve another Service instance (uses cached values)
-	var service2 Service
-	scope.Assign(&service2)
-	fmt.Printf("Service 2 Config: %s\n", service2.Config.ConnectionString)
-
-	// Using generic Get
-	config := dscope.Get[Config](scope)
-	fmt.Printf("Direct Config: %s\n", config.ConnectionString)
-}
-
-// Output:
-// Initializing Config...
-// Initializing Service...
-// Service 1 Config: localhost:5432
-// Service 2 Config: localhost:5432
-// Direct Config: localhost:5432
-```
-
-### Overriding Dependencies
-
-Use `Fork` to create a child scope with modified or additional dependencies.
-
-```go
-package main
-
-import (
-	"fmt"
-	"github.com/reusee/dscope"
-)
-
-type Config string // Simple config type
-
-func main() {
-	// Parent scope
-	parentScope := dscope.New(func() Config { return "parent_config" })
-
-	var parentConfig Config
-	parentScope.Assign(&parentConfig)
-	fmt.Printf("Parent scope config: %s\n", parentConfig)
-
-	// Child scope overriding Config
-	childScope := parentScope.Fork(func() Config { return "child_config" })
-
-	var childConfig Config
-	childScope.Assign(&childConfig)
-	fmt.Printf("Child scope config: %s\n", childConfig)
-
-	// Parent scope remains unchanged
-	parentScope.Assign(&parentConfig)
-	fmt.Printf("Parent scope config (after fork): %s\n", parentConfig)
-}
-
-// Output:
-// Parent scope config: parent_config
-// Child scope config: child_config
-// Parent scope config (after fork): parent_config
-```
-
-### Calling Functions with Injection
-
-Use `scope.Call` to execute a function, automatically injecting its dependencies.
-
-```go
-package main
-
-import (
-	"fmt"
-	"github.com/reusee/dscope"
-)
-
-type Foo int
-type Bar string
-
-func main() {
-	scope := dscope.New(
-		func() Foo { return 42 },
-		func() Bar { return "hello" },
+	// Create a derived scope with an overridden Config
+	devScope := baseScope.Fork(
+		func() Config {
+			fmt.Println("Providing DEV Config")
+			return "DevConfig"
+		},
 	)
 
-	// Call a function requiring Foo and Bar
-	scope.Call(func(f Foo, b Bar) {
-		fmt.Printf("Called with Foo=%d, Bar=%s\n", f, b)
-	})
+	fmt.Println("\n--- Using devScope ---")
+	// Requesting Service from devScope will use the overridden Config.
+	// The Service provider function itself is inherited but will be re-run
+	// because its dependency (Config) has changed in this scope lineage.
+	service2 := dscope.Get[Service](devScope)
+	fmt.Printf("Service 2 Config: %s\n", service2.Conf)
 
-	// Call can also return values
-	result := scope.Call(func(f Foo) string {
-		return fmt.Sprintf("Foo is %d", f)
-	})
-
-	var message string
-	result.Assign(&message) // Assign return value by type
-	fmt.Println(message)
+	fmt.Println("\n--- Using baseScope again ---")
+	// The original baseScope is unaffected
+	service3 := dscope.Get[Service](baseScope)
+	fmt.Printf("Service 3 Config: %s\n", service3.Conf)
 }
 
-// Output:
-// Called with Foo=42, Bar=hello
-// Foo is 42
+/* Example Output:
+--- Using baseScope ---
+Providing base Config
+Creating Service with config: BaseConfig
+Service 1 Config: BaseConfig
+
+--- Using devScope ---
+Providing DEV Config
+Creating Service with config: DevConfig
+Service 2 Config: DevConfig
+
+--- Using baseScope again ---
+Service 3 Config: BaseConfig
+*/
+
 ```
 
-### Reducers
+## Advanced Features (Brief Overview)
 
-Reducers combine multiple definitions of the same type.
+*   **Modules:** Group related definitions within structs using the `dscope:"."` tag on fields (see `module_test.go`, `methods.go`).
+*   **Struct Field Injection:** Automatically populate fields of a struct tagged with `dscope:"."` using `InjectStruct` (see `inject_struct.go`, `inject_struct_test.go`).
+*   **Debugging:** Visualize the dependency graph using `ToDOT` (requires Graphviz) or inspect definitions with `GetDebugInfo` (see `dot.go`, `debug_info.go`).
 
-```go
-package main
+## Next Steps
 
-import (
-	"fmt"
-	"github.com/reusee/dscope"
-	"reflect"
-)
-
-// Define a type that implements dscope.CustomReducer
-type ConfigSlice []string
-
-func (c ConfigSlice) Reduce(_ dscope.Scope, vs []reflect.Value) reflect.Value {
-	var result ConfigSlice
-	for _, v := range vs {
-		result = append(result, v.Interface().(ConfigSlice)...)
-	}
-	return reflect.ValueOf(result)
-}
-
-// Alternatively, use a marker interface for default reduction (slices, maps, etc.)
-type Handler func()
-func (Handler) IsReducer() {} // Implements dscope.Reducer
-
-func main() {
-	scope := dscope.New(
-		// Multiple providers for ConfigSlice
-		func() ConfigSlice { return []string{"a", "b"} },
-		func() ConfigSlice { return []string{"c"} },
-
-		// Multiple providers for Handler
-		func() Handler { return func() { fmt.Println("Handler 1") } },
-		func() Handler { return func() { fmt.Println("Handler 2") } },
-	)
-
-	// Retrieve the combined ConfigSlice
-	var configs ConfigSlice
-	scope.Assign(&configs)
-	fmt.Printf("Combined Configs: %v\n", configs) // Output: Combined Configs: [a b c]
-
-	// Retrieve the combined Handler
-	var handler Handler
-	scope.Assign(&handler)
-	handler() // Output: Handler 1 \n Handler 2
-}
-```
-
-### Pointer Providers
-
-Provide concrete values directly using pointers.
-
-```go
-package main
-
-import (
-	"fmt"
-	"github.com/reusee/dscope"
-)
-
-type MyConfig struct {
-	Value int
-}
-
-func main() {
-	config := MyConfig{Value: 123}
-
-	// Provide the config instance via its pointer
-	scope := dscope.New(&config)
-
-	// Retrieve it
-	retrievedConfig := dscope.Get[MyConfig](scope)
-	fmt.Printf("Retrieved Config Value: %d\n", retrievedConfig.Value) // Output: 123
-
-	// Can also retrieve the pointer itself if needed
-	ptrConfig := dscope.Get[*MyConfig](scope)
-	fmt.Printf("Pointer Config Value: %d\n", ptrConfig.Value)        // Output: 123
-	fmt.Printf("Pointers Match: %t\n", &config == ptrConfig)        // Output: true
-}
-```
-
-## Performance Considerations
-
-*   **Immutability:** Forking creates new `Scope` structs but shares underlying data structures where possible. The `_StackedMap` uses a persistent structure.
-*   **Lazy Loading:** Values are only computed when first needed.
-*   **Caching:**
-    *   Initialized values are cached within a `Scope`.
-    *   The process of creating a child scope (`_Forker`) is cached based on the parent signature and new definition types.
-    *   Reflection-based information (type IDs, argument resolvers) is cached globally.
-*   **Flattening:** To prevent performance degradation from deeply nested scopes, the underlying stack map is occasionally flattened during `Fork`.
-*   **Benchmarks:** Run `go test -bench=. ./...` to see performance metrics for various operations.
-
-## Error Handling
-
-`dscope` generally uses panics for errors that occur during scope configuration or dependency resolution. These typically indicate a programming error (like a missing dependency or a dependency cycle) rather than a runtime error.
-
-Common panic types (errors):
-
-*   `ErrDependencyNotFound`: A required type could not be found in the scope or its parents.
-*   `ErrDependencyLoop`: A circular dependency was detected.
-*   `ErrBadArgument`: An invalid argument was passed to `Assign`, `Call`, etc. (e.g., non-pointer to `Assign`).
-*   `ErrBadDefinition`: An invalid provider was used (e.g., a function returning no values, multiple providers for a non-reducer type).
-
-It's recommended to set up scopes during application initialization. If a panic occurs, it will likely happen early, making it easier to diagnose.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit issues or pull requests.
-
+*   Explore the `*_test.go` files in the `dscope` package for more detailed examples and usage patterns of various features.
+*   Review the public API in `dscope.go` and other files to understand the available functions and types.

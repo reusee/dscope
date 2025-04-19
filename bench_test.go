@@ -712,33 +712,6 @@ func BenchmarkRecursiveFork(b *testing.B) {
 	}
 }
 
-type benchMultiFunc func()
-
-var _ CustomReducer = benchMultiFunc(nil)
-
-func (benchMultiFunc) Reduce(_ Scope, vs []reflect.Value) reflect.Value {
-	return Reduce(vs)
-}
-
-func BenchmarkMultipleDispatch(b *testing.B) {
-	s := New(
-		func() benchMultiFunc {
-			return func() {
-			}
-		},
-		func() benchMultiFunc {
-			return func() {
-			}
-		},
-	)
-
-	for b.Loop() {
-		s.Call(func(fn benchMultiFunc) {
-			fn()
-		})
-	}
-}
-
 func BenchmarkForkNewType(b *testing.B) {
 	for b.Loop() {
 		type T int

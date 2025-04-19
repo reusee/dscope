@@ -14,8 +14,6 @@ import (
 // _Forker pre-calculates the information required to efficiently create a new child scope.
 // Instances are cached based on the parent scope's signature and the types of the new definitions.
 type _Forker struct {
-	// Reducers maps the TypeID of reducer types to their reflect.Type.
-	Reducers map[_TypeID]reflect.Type
 	// NewValuesTemplate contains template _Value objects (without initializers) for the new definitions.
 	NewValuesTemplate []_Value
 	// DefKinds stores the reflect.Kind (Func or Ptr) for each new definition.
@@ -26,8 +24,6 @@ type _Forker struct {
 	PosesAtSorted []posAtSorted
 	// ResetIDs lists TypeIDs (sorted) of values from the parent scope that need invalidation due to overrides or dependency changes.
 	ResetIDs []_TypeID // sorted
-	// ResetReducers lists info (sorted by marker TypeID) about reducers needing recalculation.
-	ResetReducers []reducerInfo // sorted
 	// Signature is a hash representing the structural identity of the scope *after* this fork.
 	Signature _Hash
 	// Key is the cache key for this _Forker, derived from parent signature and new definition types.
@@ -36,16 +32,6 @@ type _Forker struct {
 
 // posAtSorted represents the index of a value within the sorted slice of new values.
 type posAtSorted int
-
-// reducerInfo holds metadata for creating reducer marker values.
-type reducerInfo struct {
-	// typeInfo describes the internal marker type used to store the reduced value.
-	typeInfo *_TypeInfo
-	// originType is the actual reflect.Type of the reducer.
-	originType reflect.Type
-	// reducerKind indicates standard or custom reducer.
-	reducerKind reducerKind
-}
 
 // newForker analyzes the parent scope and new definitions to create a _Forker.
 // It performs dependency analysis, detects loops, determines resets, and calculates signatures.
@@ -254,10 +240,7 @@ func newForker(
 	// 4. Analyze All Types in Conceptual Scope:
 	//    - Populate `needsReset` and detect loops globally via `traverse`.
 	//    - Collect `defTypeIDs` for signature.
-	//    - Identify `reducers`.
-	//    - Check for multiple non-reducer definitions.
 	defTypeIDs := make([]_TypeID, 0, valuesTemplate.Len()) // For signature
-	reducers := make(map[_TypeID]reflect.Type)             // TypeID -> Reducer Type
 
 	for values := range valuesTemplate.AllValues() {
 		if _, err := traverse(values, nil); err != nil {
@@ -273,18 +256,14 @@ func newForker(
 			}
 		}
 
-		// Check for multiple definitions & identify reducers
+		// Check for multiple definitions
 		if len(values) > 1 {
 			t := typeIDToType(values[0].typeInfo.TypeID)
-			kind := getReducerKind(t)
-			if kind == notReducer {
-				_ = throw(we.With(
-					e5.Info("%v has multiple definitions", t),
-				)(
-					ErrBadDefinition,
-				))
-			}
-			reducers[values[0].typeInfo.TypeID] = t
+			_ = throw(we.With(
+				e5.Info("%v has multiple definitions", t),
+			)(
+				ErrBadDefinition,
+			))
 		}
 
 	}
@@ -313,51 +292,15 @@ func newForker(
 	}
 	slices.Sort(resetIDs)
 
-	// 7. Identify Reducers Requiring Recalculation: Collect info for new or reset reducers.
-	resetReducers := make([]reducerInfo, 0, len(reducers))
-	resetReducerSet := make(map[_TypeID]bool) // Avoid duplicates
-	addReducerToReset := func(id _TypeID) {
-		if _, ok := resetReducerSet[id]; ok {
-			return
-		}
-		originType, isReducer := reducers[id]
-		if !isReducer {
-			return
-		}
-		kind := getReducerKind(originType)
-		markType := getReducerMarkType(id) // Internal type for the reduced value
-		resetReducers = append(resetReducers, reducerInfo{
-			typeInfo: &_TypeInfo{
-				TypeID:  getTypeID(markType),
-				DefType: reflect.TypeFor[func()](), // Placeholder DefType
-			},
-			originType:  originType,
-			reducerKind: kind,
-		})
-		resetReducerSet[id] = true
-	}
-
-	for _, value := range newValuesTemplate { // Add reducers for new types
-		addReducerToReset(value.typeInfo.TypeID)
-	}
-	for _, id := range resetIDs { // Add reducers for reset types
-		addReducerToReset(id)
-	}
-	slices.SortFunc(resetReducers, func(a, b reducerInfo) int { // Sort by marker type ID
-		return cmp.Compare(a.typeInfo.TypeID, b.typeInfo.TypeID)
-	})
-
 	// 8. Return the completed _Forker.
 	return &_Forker{
 		Signature:         signature,
 		Key:               key,
-		Reducers:          reducers,
 		NewValuesTemplate: newValuesTemplate,
 		DefKinds:          defKinds,
 		DefNumValues:      defNumValues,
 		PosesAtSorted:     posesAtSorted,
 		ResetIDs:          resetIDs,
-		ResetReducers:     resetReducers,
 	}
 }
 
@@ -368,7 +311,6 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 	scope := Scope{
 		signature:   f.Signature,
 		forkFuncKey: f.Key,
-		reducers:    f.Reducers,
 	}
 
 	// 2. Handle Parent Scope Stack: Flatten if deep.
@@ -394,7 +336,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 	valueIdx := 0
 	for defIdx, def := range defs {
 		kind := f.DefKinds[defIdx]
-		initializer := newInitializer(def, notReducer) // One initializer per definition
+		initializer := newInitializer(def) // One initializer per definition
 
 		switch kind {
 		case reflect.Func:
@@ -446,21 +388,5 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 		scope.values = scope.values.Append(resetValues)
 	}
 
-	// 5. Create and Add Reducer Marker Layer: Triggers reducer recalculation.
-	if len(f.ResetReducers) > 0 {
-		reducerValues := make([]_Value, 0, len(f.ResetReducers))
-		for _, info := range f.ResetReducers {
-			// Initializer uses original reducer type but stored under marker type ID.
-			reducerInitializer := newInitializer(info.originType, info.reducerKind)
-			reducerValues = append(reducerValues, _Value{
-				typeInfo:    info.typeInfo, // Info for the marker type
-				initializer: reducerInitializer,
-			})
-		}
-		// reducerValues are implicitly sorted by marker type ID.
-		scope.values = scope.values.Append(reducerValues)
-	}
-
-	// 6. Return the fully constructed child scope.
 	return scope
 }

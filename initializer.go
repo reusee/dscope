@@ -9,26 +9,16 @@ import (
 )
 
 type _Initializer struct {
-	Def         any
-	Values      []reflect.Value
-	ID          int64
-	once        sync.Once
-	ReducerKind reducerKind
+	Def    any
+	Values []reflect.Value
+	ID     int64
+	once   sync.Once
 }
 
-type reducerKind uint8
-
-const (
-	notReducer reducerKind = iota
-	isReducer
-	isCustomReducer
-)
-
-func newInitializer(def any, reducerKind reducerKind) *_Initializer {
+func newInitializer(def any) *_Initializer {
 	return &_Initializer{
-		ID:          atomic.AddInt64(&nextInitializerID, 1),
-		Def:         def,
-		ReducerKind: reducerKind,
+		ID:  atomic.AddInt64(&nextInitializerID, 1),
+		Def: def,
 	}
 }
 
@@ -59,34 +49,6 @@ func (i *_Initializer) initialize(scope Scope) (ret []reflect.Value) {
 		i.Values = ret
 	}()
 
-	// reducer
-	if i.ReducerKind != notReducer {
-		typ := i.Def.(reflect.Type)
-		typeID := getTypeID(typ)
-		values, ok := scope.values.Load(typeID)
-		if !ok { // NOCOVER
-			panic("impossible")
-		}
-		vs := make([]reflect.Value, len(values))
-		for i, value := range values {
-			var values []reflect.Value
-			values = value.initializer.get(scope, typeID)
-			vs[i] = values[value.typeInfo.Position]
-		}
-		switch i.ReducerKind {
-		case isReducer:
-			ret = []reflect.Value{
-				Reduce(vs),
-			}
-		case isCustomReducer:
-			ret = []reflect.Value{
-				vs[0].Interface().(CustomReducer).Reduce(scope, vs),
-			}
-		}
-		return ret
-	}
-
-	// non-reducer
 	defValue := reflect.ValueOf(i.Def)
 	defKind := defValue.Kind()
 
@@ -109,8 +71,7 @@ func (i *_Initializer) initialize(scope Scope) (ret []reflect.Value) {
 func (s *_Initializer) reset() *_Initializer {
 	return &_Initializer{
 		// these fields recognize the provided type and def to get the values, so not changing
-		ID:          s.ID,
-		Def:         s.Def,
-		ReducerKind: s.ReducerKind,
+		ID:  s.ID,
+		Def: s.Def,
 	}
 }

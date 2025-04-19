@@ -144,27 +144,6 @@ func TestPanic(t *testing.T) {
 			if !is(err, ErrDependencyNotFound) {
 				t.Fatal()
 			}
-			if !strings.Contains(err.Error(), "not found") {
-				t.Fatal()
-			}
-		}()
-		var a acc
-		scope.Assign(&a)
-	}()
-
-	func() {
-		defer func() {
-			p := recover()
-			if p == nil {
-				t.Fatal("should panic")
-			}
-			err, ok := p.(error)
-			if !ok {
-				t.Fatal()
-			}
-			if !is(err, ErrDependencyNotFound) {
-				t.Fatal()
-			}
 		}()
 		scope.Call(func(string) {})
 	}()
@@ -1227,98 +1206,7 @@ func TestPcallValueArgs(t *testing.T) {
 	}
 }
 
-type acc int
-
-var _ CustomReducer = acc(0)
-
-func (a acc) Reduce(_ Scope, vs []reflect.Value) reflect.Value {
-	var ret acc
-	for _, v := range vs {
-		ret += v.Interface().(acc)
-	}
-	return reflect.ValueOf(ret)
-}
-
-func TestCustomReducer(t *testing.T) {
-	s := New(
-		func() acc {
-			return 1
-		},
-	)
-	var a acc
-	s.Assign(&a)
-	if a != 1 {
-		t.Fatal()
-	}
-
-	s = s.Fork(
-		func() acc {
-			return 2
-		},
-		func() string {
-			return "foo"
-		},
-		func() acc {
-			return 3
-		},
-	)
-	s.Assign(&a)
-	if a != 5 {
-		t.Fatal()
-	}
-
-	s = s.Fork(
-		func() acc {
-			return 3
-		},
-		func() string {
-			return "foo"
-		},
-		func() acc {
-			return 4
-		},
-	)
-	s.Assign(&a)
-	if a != 7 {
-		t.Fatal()
-	}
-
-}
-
-type testFunc func(*int)
-
-var _ CustomReducer = testFunc(nil)
-
-func (t testFunc) Reduce(_ Scope, vs []reflect.Value) reflect.Value {
-	return Reduce(vs)
-}
-
 type testFuncDef struct{}
-
-func (testFuncDef) Foo() testFunc {
-	return func(p *int) {
-		*p++
-	}
-}
-
-func (testFuncDef) Bar() testFunc {
-	return func(p *int) {
-		*p += 2
-	}
-}
-
-func TestMultipleDispatch(t *testing.T) {
-	s := New(Methods(new(testFuncDef))...)
-	var i int
-	s.Call(func(
-		fn testFunc,
-	) {
-		fn(&i)
-	})
-	if i != 3 {
-		t.Fatal()
-	}
-}
 
 func TestCallResultFork(t *testing.T) {
 	var i int
@@ -1346,95 +1234,6 @@ func TestCallResultAssign(t *testing.T) {
 
 type acc2 int
 
-var _ CustomReducer = acc2(0)
-
-func (acc2) Reduce(scope Scope, vs []reflect.Value) reflect.Value {
-	return Reduce(vs)
-}
-
-func TestCustomReducerRunOnce(t *testing.T) {
-	n := 0
-	m := 0
-	scope := New(func() acc {
-		n++
-		return 1
-	}, func() acc {
-		return 2
-	}, func() acc2 {
-		m++
-		return 1
-	}, func() acc2 {
-		return 2
-	})
-
-	var a acc
-	scope.Assign(&a)
-	if n != 1 {
-		t.Fatal()
-	}
-	scope.Assign(&a)
-	if n != 1 {
-		t.Fatal()
-	}
-	if a != 3 {
-		t.Fatal()
-	}
-
-	var b acc
-	scope.Assign(&b)
-	if n != 1 {
-		t.Fatal()
-	}
-
-	var a2 acc2
-	scope.Assign(&a2)
-	if a2 != 3 {
-		t.Fatal()
-	}
-	if m != 1 {
-		t.Fatal()
-	}
-
-	scope = scope.Fork(func() acc {
-		return 42
-	})
-	scope.Assign(&a)
-	if a != 42 {
-		t.Fatal()
-	}
-
-	scope.Assign(&a2)
-	if a2 != 3 {
-		t.Fatal()
-	}
-	if m != 1 {
-		t.Fatal()
-	}
-
-}
-
-func TestCustomReducerIndirectUpdate(t *testing.T) {
-	scope := New(func() acc {
-		return 1
-	}, func(a acc) acc2 {
-		return acc2(a)
-	})
-	var a2 acc2
-	scope.Assign(&a2)
-	if a2 != 1 {
-		t.Fatal()
-	}
-
-	scope = scope.Fork(func() acc {
-		return 2
-	})
-	scope.Assign(&a2)
-	if a2 != 2 {
-		t.Fatal()
-	}
-
-}
-
 func TestCallManyArgs(t *testing.T) {
 	New(func() int {
 		return 42
@@ -1442,56 +1241,6 @@ func TestCallManyArgs(t *testing.T) {
 		_ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int,
 	) {
 	})
-}
-
-type countedReducer struct {
-	N *int
-}
-
-var _ CustomReducer = countedReducer{}
-
-func (c countedReducer) Reduce(_ Scope, vs []reflect.Value) reflect.Value {
-	*c.N++
-	return vs[0]
-}
-
-func TestReducerReset(t *testing.T) {
-	nCall := 0
-	s := New(
-		&countedReducer{&nCall},
-		&countedReducer{&nCall},
-	)
-	var c countedReducer
-	s.Assign(&c)
-	if nCall != 1 {
-		t.Fatal()
-	}
-
-	// unrelated update
-	s = s.Fork(func() int {
-		return 42
-	})
-	s.Assign(&c)
-	if nCall != 1 {
-		t.Fatalf("got %d", nCall)
-	}
-}
-
-type testReducerInt int
-
-func (testReducerInt) IsReducer() {}
-
-func TestReducer(t *testing.T) {
-	s := New(
-		Provide(testReducerInt(1)),
-		Provide(testReducerInt(2)),
-		Provide(testReducerInt(3)),
-	)
-	var i testReducerInt
-	s.Assign(&i)
-	if i != 6 {
-		t.Fatal()
-	}
 }
 
 func TestResetSameInitializer(t *testing.T) {
@@ -1564,37 +1313,6 @@ func TestNilPointerDef(t *testing.T) {
 	}()
 }
 
-type loopReducer []int
-
-func (loopReducer) IsReducer() {}
-
-func TestReducerDependencyLoop(t *testing.T) {
-	func() {
-		defer func() {
-			p := recover()
-			if p == nil {
-				t.Fatal("should panic")
-			}
-			str := fmt.Sprintf("%v", p)
-			if !strings.Contains(str, "dependency loop") {
-				t.Fatalf("got %v", str)
-			}
-		}()
-
-		New(
-			func() loopReducer {
-				return nil
-			},
-			func() loopReducer {
-				return nil
-			},
-			func(loopReducer) loopReducer {
-				return nil
-			},
-		)
-	}()
-}
-
 func TestGetInterface(t *testing.T) {
 	type I any
 	scope := New(func() I {
@@ -1602,56 +1320,6 @@ func TestGetInterface(t *testing.T) {
 	})
 	v := Get[I](scope)
 	if v != 42 {
-		t.Fatal()
-	}
-}
-
-type reducingInt int
-
-func (reducingInt) IsReducer() {}
-
-func TestReducerInitializeOnce(t *testing.T) {
-	numInit := 0
-	scope := New(
-		func() int {
-			return 42
-		},
-		func(int) reducingInt {
-			numInit++
-			return 1
-		},
-		func() reducingInt {
-			numInit++
-			return 2
-		},
-	)
-
-	i := Get[reducingInt](scope)
-	if i != 3 {
-		t.Fatal()
-	}
-	if numInit != 2 {
-		t.Fatal()
-	}
-
-	// Reduce values are cached, so numInit will not increase
-	i = Get[reducingInt](scope)
-	if i != 3 {
-		t.Fatal()
-	}
-	if numInit != 2 {
-		t.Fatal()
-	}
-
-	// fork with new int, will trigger re-calculate of reducingInt
-	scope = scope.Fork(func() int {
-		return 42
-	})
-	i = Get[reducingInt](scope)
-	if i != 3 {
-		t.Fatal()
-	}
-	if numInit != 4 {
 		t.Fatal()
 	}
 }

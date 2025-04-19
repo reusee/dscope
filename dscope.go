@@ -34,8 +34,6 @@ type _Hash [sha256.Size]byte
 // Scope represents an immutable dependency injection container.
 // Operations like Fork create new Scope values.
 type Scope struct {
-	// reducers maps TypeID to reflect.Type for types that have reducer semantics.
-	reducers map[_TypeID]reflect.Type
 	// values points to the top layer of the immutable value stack (_StackedMap).
 	values *_StackedMap
 	// path tracks the dependency resolution path to detect loops. Nil when not resolving.
@@ -158,7 +156,6 @@ func Assign[T any](scope Scope, ptr *T) {
 }
 
 // get retrieves a value of a specific type ID and type from the scope.
-// It handles the distinction between regular values and reducers.
 // Internal function called by Get and Assign.
 func (scope Scope) get(id _TypeID) (
 	ret reflect.Value,
@@ -171,22 +168,12 @@ func (scope Scope) get(id _TypeID) (
 		return reflect.ValueOf(scope.InjectStruct), true
 	}
 
-	if _, ok := scope.reducers[id]; !ok {
-		// non-reducer
-		value, ok := scope.values.LoadOne(id)
-		if !ok {
-			return ret, false
-		}
-		values := value.initializer.get(scope, id)
-		return values[value.typeInfo.Position], true
-
-	} else {
-		// reducer: get the reduced value via its internal marker type
-		markType := getReducerMarkType(id)
-		return scope.get(
-			getTypeID(markType),
-		)
+	value, ok := scope.values.LoadOne(id)
+	if !ok {
+		return ret, false
 	}
+	values := value.initializer.get(scope, id)
+	return values[value.typeInfo.Position], true
 
 }
 
