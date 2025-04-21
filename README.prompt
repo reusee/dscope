@@ -1,1 +1,24 @@
-write a README.md file for this project.
+write a README.md file for this project, including but not limit to these contents:
+
+- why it's good to use this dependency injection library.
+  - type safe dependencies
+  - depends on interfaces, not implementation.
+  - separate method dependencies and its arguments, for cleaner method signature.
+  - enhanced testability
+  - immutable and predictable
+  - lazy initialization
+
+- core concepts
+  - scope
+  - definitions
+  - fork
+
+- basic usage examples
+  - create a new scope
+  - get values by type
+  - calling functions in a scope
+  - fork a scope
+  - modules
+  - struct field injection
+
+if some of the above key points do not match the code, just ignore them.
