@@ -78,14 +78,7 @@ func newForker(
 			dependencies := make([]_TypeID, 0, numIn)
 			for i := range numIn {
 				inType := defType.In(i)
-				if inType.Implements(typeWrapperType) { // Handle type wrappers
-					depTypes := unwrapType(inType)
-					for _, depType := range depTypes {
-						dependencies = append(dependencies, getTypeID(depType))
-					}
-				} else {
-					dependencies = append(dependencies, getTypeID(inType))
-				}
+				dependencies = append(dependencies, getTypeID(inType))
 			}
 
 			// Create Value Templates for Outputs
