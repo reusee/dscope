@@ -162,7 +162,7 @@ func (scope Scope) get(id _TypeID) (
 	ok bool,
 ) {
 
-	// special methods
+	// special types
 	switch id {
 	case injectStructTypeID:
 		return reflect.ValueOf(scope.InjectStruct), true

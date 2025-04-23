@@ -44,12 +44,26 @@ l:
 		}
 	}
 
-	var fields []reflect.StructField
+	type FieldInfo struct {
+		Field    reflect.StructField
+		IsInject bool
+		Type     reflect.Type
+	}
+	var infos []FieldInfo
 	for i := range t.NumField() {
 		field := t.Field(i)
 		directive := field.Tag.Get("dscope")
 		if directive == "." || directive == "inject" {
-			fields = append(fields, field)
+			infos = append(infos, FieldInfo{
+				Field: field,
+				Type:  field.Type,
+			})
+		} else if field.Type.Implements(isInjectType) {
+			infos = append(infos, FieldInfo{
+				Field:    field,
+				IsInject: true,
+				Type:     field.Type.Out(0),
+			})
 		}
 	}
 
@@ -57,12 +71,31 @@ l:
 		for range numDeref {
 			value = value.Elem()
 		}
-		for _, field := range fields {
-			v, ok := scope.Get(field.Type)
-			if !ok {
-				throwErrDependencyNotFound(field.Type, scope.path)
+		for _, info := range infos {
+			info := info
+
+			if info.IsInject {
+				value.FieldByIndex(info.Field.Index).Set(
+					reflect.MakeFunc(
+						info.Field.Type,
+						func(_ []reflect.Value) []reflect.Value {
+							v, ok := scope.Get(info.Type)
+							if !ok {
+								throwErrDependencyNotFound(info.Type, scope.path)
+							}
+							return []reflect.Value{v}
+						},
+					),
+				)
+
+			} else {
+				v, ok := scope.Get(info.Type)
+				if !ok {
+					throwErrDependencyNotFound(info.Type, scope.path)
+				}
+				value.FieldByIndex(info.Field.Index).Set(v)
 			}
-			value.FieldByIndex(field.Index).Set(v)
+
 		}
 		return nil
 	}
