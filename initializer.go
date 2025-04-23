@@ -24,16 +24,37 @@ func newInitializer(def any, isPointer bool) *_Initializer {
 	}
 }
 
+// reset make the initializer re-evaluate Values
+func (s *_Initializer) reset() *_Initializer {
+	return &_Initializer{
+		// these fields recognize the provided type and def to get the values, so not changing
+		ID:           s.ID,
+		Def:          s.Def,
+		DefIsPointer: s.DefIsPointer,
+	}
+}
+
 var nextInitializerID int64 = 42
 
 func (i *_Initializer) get(scope Scope, id _TypeID, position int) (ret reflect.Value) {
 	i.once.Do(func() {
-		i.Values = i.initialize(scope.appendPath(id))
+		if i.DefIsPointer {
+			i.initializePointer()
+		} else {
+			i.initializeFunction(scope.appendPath(id))
+		}
 	})
 	return i.Values[position]
 }
 
-func (i *_Initializer) initialize(scope Scope) (ret []reflect.Value) {
+func (i *_Initializer) initializePointer() {
+	// pointer provider does not introduce loops
+	i.Values = []reflect.Value{
+		reflect.ValueOf(i.Def).Elem(),
+	}
+}
+
+func (i *_Initializer) initializeFunction(scope Scope) {
 	// detect dependency loop
 	for p := scope.path.Prev; p != nil; p = p.Prev {
 		if p.TypeID != scope.path.TypeID {
@@ -47,33 +68,5 @@ func (i *_Initializer) initialize(scope Scope) (ret []reflect.Value) {
 		))
 	}
 
-	defer func() {
-		i.Values = ret
-	}()
-
-	defValue := reflect.ValueOf(i.Def)
-	defKind := defValue.Kind()
-
-	switch defKind {
-
-	case reflect.Func:
-		var result CallResult
-		result = scope.CallValue(defValue)
-		ret = result.Values
-
-	case reflect.Pointer:
-		ret = []reflect.Value{defValue.Elem()}
-
-	}
-
-	return ret
-}
-
-// reset make the initializer re-evaluate Values
-func (s *_Initializer) reset() *_Initializer {
-	return &_Initializer{
-		// these fields recognize the provided type and def to get the values, so not changing
-		ID:  s.ID,
-		Def: s.Def,
-	}
+	i.Values = scope.CallValue(reflect.ValueOf(i.Def)).Values
 }
