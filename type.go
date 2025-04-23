@@ -45,7 +45,7 @@ func typeIDToType(id _TypeID) reflect.Type {
 
 func isAlwaysProvided(id _TypeID) bool {
 	switch id {
-	case injectStructTypeID, forkTypeID:
+	case injectStructTypeID:
 		return true
 	}
 	return false

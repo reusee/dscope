@@ -11,10 +11,6 @@ import (
 	"github.com/reusee/e5"
 )
 
-type Fork func(defs ...any) Scope
-
-var forkTypeID = getTypeID(reflect.TypeFor[Fork]())
-
 // _Forker pre-calculates the information required to efficiently create a new child scope.
 // Instances are cached based on the parent scope's signature and the types of the new definitions.
 type _Forker struct {

@@ -166,8 +166,6 @@ func (scope Scope) get(id _TypeID) (
 	switch id {
 	case injectStructTypeID:
 		return reflect.ValueOf(scope.InjectStruct), true
-	case forkTypeID:
-		return reflect.ValueOf(scope.Fork), true
 	}
 
 	value, ok := scope.values.LoadOne(id)
