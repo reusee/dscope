@@ -31,7 +31,9 @@ func Methods(objects ...any) (ret []any) {
 			for i := range t.NumField() {
 				field := t.Field(i)
 				directive := field.Tag.Get("dscope")
-				if directive == "." || directive == "methods" {
+				if directive == "." ||
+					directive == "methods" ||
+					field.Type.Implements(isModuleType) {
 					extend(v.Field(i))
 				}
 			}
