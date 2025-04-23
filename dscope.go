@@ -174,9 +174,8 @@ func (scope Scope) get(id _TypeID) (
 	if !ok {
 		return ret, false
 	}
-	values := value.initializer.get(scope, id)
-	return values[value.typeInfo.Position], true
 
+	return value.initializer.get(scope, id, value.typeInfo.Position), true
 }
 
 // Get retrieves a single value of the specified type `t` from the scope.

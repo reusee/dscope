@@ -9,26 +9,28 @@ import (
 )
 
 type _Initializer struct {
-	Def    any
-	Values []reflect.Value
-	ID     int64
-	once   sync.Once
+	Def          any
+	DefIsPointer bool
+	Values       []reflect.Value
+	ID           int64
+	once         sync.Once
 }
 
-func newInitializer(def any) *_Initializer {
+func newInitializer(def any, isPointer bool) *_Initializer {
 	return &_Initializer{
-		ID:  atomic.AddInt64(&nextInitializerID, 1),
-		Def: def,
+		ID:           atomic.AddInt64(&nextInitializerID, 1),
+		Def:          def,
+		DefIsPointer: isPointer,
 	}
 }
 
 var nextInitializerID int64 = 42
 
-func (i *_Initializer) get(scope Scope, id _TypeID) (ret []reflect.Value) {
+func (i *_Initializer) get(scope Scope, id _TypeID, position int) (ret reflect.Value) {
 	i.once.Do(func() {
 		i.Values = i.initialize(scope.appendPath(id))
 	})
-	return i.Values
+	return i.Values[position]
 }
 
 func (i *_Initializer) initialize(scope Scope) (ret []reflect.Value) {

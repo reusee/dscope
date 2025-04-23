@@ -333,10 +333,10 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 	valueIdx := 0
 	for defIdx, def := range defs {
 		kind := f.DefKinds[defIdx]
-		initializer := newInitializer(def) // One initializer per definition
 
 		switch kind {
 		case reflect.Func:
+			initializer := newInitializer(def, false)
 			numValues := f.DefNumValues[defIdx]
 			for range numValues {
 				template := f.NewValuesTemplate[valueIdx]
@@ -348,6 +348,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 				valueIdx++
 			}
 		case reflect.Pointer:
+			initializer := newInitializer(def, true)
 			template := f.NewValuesTemplate[valueIdx]
 			sortedIdx := f.PosesAtSorted[valueIdx]
 			newValues[sortedIdx] = _Value{
