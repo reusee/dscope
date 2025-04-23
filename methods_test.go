@@ -13,7 +13,9 @@ func TestMethods(t *testing.T) {
 	})
 }
 
-type TestMethodsFoo struct{}
+type TestMethodsFoo struct {
+	Module
+}
 
 func (TestMethodsFoo) Foo() int {
 	return 42
@@ -21,8 +23,7 @@ func (TestMethodsFoo) Foo() int {
 
 func TestMethodFromFields(t *testing.T) {
 	type Foo struct {
-		Scope          Scope `dscope:"."`
-		DuplicateScope Scope `dscope:"methods"`
+		Foo TestMethodsFoo
 	}
 	defs := Methods(new(Foo))
 	if len(defs) == 0 {

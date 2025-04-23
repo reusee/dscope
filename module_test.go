@@ -4,11 +4,12 @@ import "testing"
 
 type mod1 struct {
 	Module
-	Mod2 mod2 `dscope:"."`
+	Mod2 mod2
 	Mod3 mod3
 }
 
 type mod2 struct {
+	Module
 }
 
 func (mod2) Int() int {
