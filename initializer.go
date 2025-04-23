@@ -4,8 +4,6 @@ import (
 	"reflect"
 	"sync"
 	"sync/atomic"
-
-	"github.com/reusee/e5"
 )
 
 type _Initializer struct {
@@ -36,37 +34,13 @@ func (s *_Initializer) reset() *_Initializer {
 
 var nextInitializerID int64 = 42
 
-func (i *_Initializer) get(scope Scope, id _TypeID, position int) (ret reflect.Value) {
+func (i *_Initializer) get(scope Scope, position int) (ret reflect.Value) {
 	i.once.Do(func() {
 		if i.DefIsPointer {
-			i.initializePointer()
+			i.Values = []reflect.Value{reflect.ValueOf(i.Def).Elem()}
 		} else {
-			i.initializeFunction(scope.appendPath(id))
+			i.Values = scope.CallValue(reflect.ValueOf(i.Def)).Values
 		}
 	})
 	return i.Values[position]
-}
-
-func (i *_Initializer) initializePointer() {
-	// pointer provider does not introduce loops
-	i.Values = []reflect.Value{
-		reflect.ValueOf(i.Def).Elem(),
-	}
-}
-
-func (i *_Initializer) initializeFunction(scope Scope) {
-	// detect dependency loop
-	for p := scope.path.Prev; p != nil; p = p.Prev {
-		if p.TypeID != scope.path.TypeID {
-			continue
-		}
-		panic(we.With(
-			e5.Info("found dependency loop when calling %T", i.Def),
-			e5.Info("path: %+v", scope.path),
-		)(
-			ErrDependencyLoop,
-		))
-	}
-
-	i.Values = scope.CallValue(reflect.ValueOf(i.Def)).Values
 }
