@@ -11,9 +11,7 @@ func TestInject(t *testing.T) {
 		var s struct {
 			I Inject[int]
 		}
-		if err := inject(&s); err != nil {
-			panic(err)
-		}
+		inject(&s)
 		if s.I() != 42 {
 			t.Fatal()
 		}

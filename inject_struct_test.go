@@ -18,10 +18,7 @@ func TestInjectStruct(t *testing.T) {
 	var s struct {
 		I int `dscope:"."`
 	}
-	err := injectStruct(scope, &s)
-	if err != nil {
-		t.Fatal(err)
-	}
+	injectStruct(scope, &s)
 	if s.I != 42 {
 		t.Fatal()
 	}
@@ -32,9 +29,7 @@ func TestInjectStruct(t *testing.T) {
 		var s struct {
 			I int `dscope:"."`
 		}
-		if err := inject(&s); err != nil {
-			t.Fatal(err)
-		}
+		inject(&s)
 		if s.I != 42 {
 			t.Fatal()
 		}
@@ -51,9 +46,6 @@ func BenchmarkInjectStruct(b *testing.B) {
 		I int `dscope:"."`
 	}
 	for b.Loop() {
-		err := injectStruct(scope, &s)
-		if err != nil {
-			b.Fatal(err)
-		}
+		injectStruct(scope, &s)
 	}
 }

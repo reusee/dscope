@@ -6,27 +6,27 @@ import (
 	"sync"
 )
 
-type InjectStruct func(target any) error
+type InjectStruct func(target any)
 
 var injectStructTypeID = getTypeID(reflect.TypeFor[InjectStruct]())
 
-func (scope Scope) InjectStruct(target any) error {
-	return injectStruct(scope, target)
+func (scope Scope) InjectStruct(target any) {
+	injectStruct(scope, target)
 }
 
-type _InjectStructFunc = func(scope Scope, value reflect.Value) error
+type _InjectStructFunc = func(scope Scope, value reflect.Value)
 
 // reflect.Type -> _InjectStructFunc
 var injectStructFuncs sync.Map
 
-func injectStruct(scope Scope, target any) error {
+func injectStruct(scope Scope, target any) {
 	v := reflect.ValueOf(target)
 	if fn, ok := injectStructFuncs.Load(v.Type()); ok {
-		return fn.(_InjectStructFunc)(scope, v)
+		fn.(_InjectStructFunc)(scope, v)
 	}
 	injectFunc := makeInjectStructFunc(v.Type())
 	fn, _ := injectStructFuncs.LoadOrStore(v.Type(), injectFunc)
-	return fn.(_InjectStructFunc)(scope, v)
+	fn.(_InjectStructFunc)(scope, v)
 }
 
 func makeInjectStructFunc(t reflect.Type) _InjectStructFunc {
@@ -67,7 +67,7 @@ l:
 		}
 	}
 
-	return func(scope Scope, value reflect.Value) error {
+	return func(scope Scope, value reflect.Value) {
 		for range numDeref {
 			value = value.Elem()
 		}
@@ -102,6 +102,5 @@ l:
 			}
 
 		}
-		return nil
 	}
 }
