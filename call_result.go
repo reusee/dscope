@@ -7,7 +7,7 @@ import (
 )
 
 type CallResult struct {
-	positionsByType map[reflect.Type]int
+	positionsByType map[reflect.Type][]int
 	Values          []reflect.Value
 }
 
@@ -18,14 +18,14 @@ func (c CallResult) Extract(targets ...any) {
 		}
 		targetValue := reflect.ValueOf(target)
 		if targetValue.Kind() != reflect.Pointer {
-			panic(we.With(
+			_ = throw(we.With(
 				e5.Info("%T is not a pointer", target),
 			)(
 				ErrBadArgument,
 			))
 		}
 		if !targetValue.Type().Elem().AssignableTo(c.Values[i].Type()) {
-			panic(we.With(
+			_ = throw(we.With(
 				e5.Info("%T is not assignable to %v",
 					target,
 					targetValue.Type().Elem()),
@@ -38,6 +38,7 @@ func (c CallResult) Extract(targets ...any) {
 }
 
 func (c CallResult) Assign(targets ...any) {
+	offsets := make(map[reflect.Type]int)
 	for _, target := range targets {
 		if target == nil {
 			continue
@@ -50,10 +51,13 @@ func (c CallResult) Assign(targets ...any) {
 				ErrBadArgument,
 			))
 		}
-		pos, ok := c.positionsByType[targetValue.Type().Elem()]
+		typ := targetValue.Type().Elem()
+		poses, ok := c.positionsByType[typ]
 		if !ok {
 			continue
 		}
-		targetValue.Elem().Set(c.Values[pos])
+		offset := offsets[typ]
+		offsets[typ]++
+		targetValue.Elem().Set(c.Values[poses[offset]])
 	}
 }

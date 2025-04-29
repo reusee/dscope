@@ -270,15 +270,15 @@ func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 	// Cache return type positions
 	v, ok := fnRetTypes.Load(fnType)
 	if !ok {
-		m := make(map[reflect.Type]int)
+		m := make(map[reflect.Type][]int)
 		for i := range fnType.NumOut() {
 			t := fnType.Out(i)
-			m[t] = i
+			m[t] = append(m[t], i)
 		}
 		res.positionsByType = m
 		fnRetTypes.Store(fnType, m)
 	} else {
-		res.positionsByType = v.(map[reflect.Type]int)
+		res.positionsByType = v.(map[reflect.Type][]int)
 	}
 	return
 }

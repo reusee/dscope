@@ -1230,15 +1230,27 @@ func TestCallResultFork(t *testing.T) {
 }
 
 func TestCallResultAssign(t *testing.T) {
-	var i int
-	New(func() int {
+	result := New(func() int {
 		return 42
 	}).Call(func(i int) (int, int) {
 		return 42, 1
-	}).Assign(nil, &i)
+	})
+
+	var i int
+	result.Assign(nil, &i)
+	if i != 42 {
+		t.Fatal()
+	}
+
+	var i2 int
+	result.Assign(&i2, &i)
 	if i != 1 {
 		t.Fatal()
 	}
+	if i2 != 42 {
+		t.Fatal()
+	}
+
 }
 
 type acc2 int
@@ -1330,5 +1342,18 @@ func TestGetInterface(t *testing.T) {
 	v := Get[I](scope)
 	if v != 42 {
 		t.Fatal()
+	}
+}
+
+func TestCallResultAssignDuplicateReturns(t *testing.T) {
+	scope := New()
+
+	var i1, i2 int
+	scope.Call(func() (int, string, int) {
+		return 1, "foo", 2
+	}).Assign(&i1, &i2)
+
+	if i1 != 1 || i2 != 2 {
+		t.Fatalf("Expected i1=1, i2=2, got i1=%d, i2=%d", i1, i2)
 	}
 }
