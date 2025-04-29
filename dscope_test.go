@@ -958,7 +958,7 @@ func TestOverwriteNew(t *testing.T) {
 			return strconv.Itoa(i)
 		},
 	)
-	scope = scope.Fork(
+	scope2 := scope.Fork(
 		func() int {
 			return 24
 		},
@@ -966,11 +966,20 @@ func TestOverwriteNew(t *testing.T) {
 			return "foo"
 		},
 	)
-	var s string
-	scope.Assign(&s)
-	if s != "foo" {
+
+	if Get[int](scope) != 42 {
 		t.Fatal()
 	}
+	if Get[string](scope) != "42" {
+		t.Fatal()
+	}
+	if Get[int](scope2) != 24 {
+		t.Fatal()
+	}
+	if Get[string](scope2) != "foo" {
+		t.Fatal()
+	}
+
 }
 
 func TestPointerProvider(t *testing.T) {
