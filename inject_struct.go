@@ -1,9 +1,10 @@
 package dscope
 
 import (
-	"fmt"
 	"reflect"
 	"sync"
+
+	"github.com/reusee/e5"
 )
 
 type InjectStruct func(target any)
@@ -40,7 +41,11 @@ l:
 		case reflect.Struct:
 			break l
 		default:
-			panic(fmt.Errorf("not injectable: %v", t))
+			_ = throw(we.With(
+				e5.Info("target type %v is not a struct or pointer to struct", t),
+			)(
+				ErrBadArgument,
+			))
 		}
 	}
 

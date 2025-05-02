@@ -45,7 +45,7 @@ func (c CallResult) Assign(targets ...any) {
 		}
 		targetValue := reflect.ValueOf(target)
 		if targetValue.Kind() != reflect.Pointer {
-			panic(we.With(
+			_ = throw(we.With(
 				e5.Info("%v is not a pointer", target),
 			)(
 				ErrBadArgument,
