@@ -11,6 +11,7 @@ type CallResult struct {
 	Values          []reflect.Value
 }
 
+// Extract extracts results by positions
 func (c CallResult) Extract(targets ...any) {
 	for i, target := range targets {
 		if target == nil {
@@ -37,6 +38,7 @@ func (c CallResult) Extract(targets ...any) {
 	}
 }
 
+// Assign assigns targets by types
 func (c CallResult) Assign(targets ...any) {
 	offsets := make(map[reflect.Type]int)
 	for _, target := range targets {

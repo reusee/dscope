@@ -1357,3 +1357,20 @@ func TestCallResultAssignDuplicateReturns(t *testing.T) {
 		t.Fatalf("Expected i1=1, i2=2, got i1=%d, i2=%d", i1, i2)
 	}
 }
+
+func TestGetDependencyNotFound(t *testing.T) {
+	scope := New()
+	func() {
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			msg := fmt.Sprintf("%v", p)
+			if !strings.Contains(msg, "no definition for int") {
+				t.Fatalf("got %v", msg)
+			}
+		}()
+		Get[int](scope)
+	}()
+}

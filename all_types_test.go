@@ -39,4 +39,9 @@ func TestAllTypes(t *testing.T) {
 		t.Fatalf("got %v", str)
 	}
 
+	// early break
+	for range scope.AllTypes() {
+		break
+	}
+
 }

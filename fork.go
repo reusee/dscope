@@ -214,7 +214,6 @@ func newForker(
 					return false, we.With(
 						e5.Info("dependency not found in definition %v", value.typeInfo.DefType),
 						e5.Info("no definition for %v", typeIDToType(depID)),
-						e5.Info("path: %+v", scope.path),
 					)(
 						ErrDependencyNotFound,
 					)

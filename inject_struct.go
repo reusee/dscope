@@ -89,7 +89,7 @@ l:
 							once.Do(func() {
 								value, ok := scope.Get(info.Type)
 								if !ok {
-									throwErrDependencyNotFound(info.Type, scope.path)
+									throwErrDependencyNotFound(info.Type)
 								}
 								ret = []reflect.Value{value}
 							})
@@ -101,7 +101,7 @@ l:
 			} else {
 				v, ok := scope.Get(info.Type)
 				if !ok {
-					throwErrDependencyNotFound(info.Type, scope.path)
+					throwErrDependencyNotFound(info.Type)
 				}
 				value.FieldByIndex(info.Field.Index).Set(v)
 			}

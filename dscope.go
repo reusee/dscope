@@ -36,8 +36,6 @@ type _Hash [sha256.Size]byte
 type Scope struct {
 	// values points to the top layer of the immutable value stack (_StackedMap).
 	values *_StackedMap
-	// path tracks the dependency resolution path to detect loops. Nil when not resolving.
-	path *Path
 	// signature is a hash representing the structural identity of this scope,
 	// based on all definition types involved in its creation.
 	signature _Hash
@@ -54,17 +52,6 @@ func New(
 	defs ...any,
 ) Scope {
 	return Universe.Fork(defs...)
-}
-
-// appendPath creates a new Scope with an extended dependency resolution path.
-// Used internally during value initialization.
-func (scope Scope) appendPath(typeID _TypeID) Scope {
-	path := &Path{
-		Prev:   scope.path,
-		TypeID: typeID,
-	}
-	scope.path = path
-	return scope
 }
 
 // forkers caches _Forker instances to speed up repeated Fork calls.
@@ -142,7 +129,7 @@ func (scope Scope) Assign(objects ...any) {
 		t := v.Type().Elem()
 		value, ok := scope.Get(t)
 		if !ok {
-			throwErrDependencyNotFound(t, scope.path)
+			throwErrDependencyNotFound(t)
 		}
 		if !v.IsNil() {
 			v.Elem().Set(value)
@@ -192,7 +179,7 @@ func Get[T any](scope Scope) (o T) {
 	typ := reflect.TypeFor[T]()
 	value, ok := scope.Get(typ)
 	if !ok {
-		throwErrDependencyNotFound(typ, scope.path)
+		throwErrDependencyNotFound(typ)
 	}
 	return value.Interface().(T)
 }
@@ -230,7 +217,7 @@ func (scope Scope) getArgsSlow(fnType reflect.Type, args []reflect.Value) int {
 			var ok bool
 			args[i], ok = scope.get(ids[i])
 			if !ok {
-				throwErrDependencyNotFound(typeIDToType(ids[i]), scope.path)
+				throwErrDependencyNotFound(typeIDToType(ids[i]))
 			}
 		}
 		return numIn
