@@ -37,10 +37,10 @@ func (c CallResult) Extract(targets ...any) {
 				ErrBadArgument,
 			))
 		}
-		if !targetValue.Type().Elem().AssignableTo(c.Values[i].Type()) {
+		if !c.Values[i].Type().AssignableTo(targetValue.Type().Elem()) {
 			_ = throw(we.With(
-				e5.Info("%T is not assignable to %v",
-					target,
+				e5.Info("cannot assign value of type %v to target of type %v",
+					c.Values[i].Type(),
 					targetValue.Type().Elem()),
 			)(
 				ErrBadArgument,

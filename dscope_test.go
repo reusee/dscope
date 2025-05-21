@@ -605,8 +605,9 @@ func TestCallReturn(t *testing.T) {
 			if !is(err, ErrBadArgument) {
 				t.Fatal()
 			}
-			if !strings.Contains(err.Error(), "is not assignable to string") {
-				t.Fatal()
+			msg := err.Error()
+			if !strings.Contains(msg, "cannot assign value of type int to target of type string") {
+				t.Fatalf("got %s", msg)
 			}
 		}()
 		var s string
