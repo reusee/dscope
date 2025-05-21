@@ -89,7 +89,6 @@ func newForker(
 						TypeID:       id,
 						DefType:      defType,
 						Position:     i,
-						DefIsMulti:   numOut > 1,
 						Dependencies: dependencies,
 					},
 				})
@@ -115,9 +114,8 @@ func newForker(
 			id := getTypeID(t)
 			newValuesTemplate = append(newValuesTemplate, _Value{
 				typeInfo: &_TypeInfo{
-					TypeID:     id,
-					DefType:    defType,
-					DefIsMulti: false,
+					TypeID:  id,
+					DefType: defType,
 				},
 			})
 			if _, ok := scope.values.LoadOne(id); ok {

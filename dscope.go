@@ -21,7 +21,6 @@ type _TypeInfo struct {
 	DefType      reflect.Type
 	TypeID       _TypeID
 	Position     int
-	DefIsMulti   bool
 	Dependencies []_TypeID
 }
 
