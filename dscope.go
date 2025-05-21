@@ -4,12 +4,10 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"reflect"
-	"runtime"
 	"slices"
 	"sync"
 
 	"github.com/reusee/e5"
-	"github.com/reusee/pr3"
 )
 
 type _Value struct {
@@ -231,12 +229,11 @@ var fnRetTypes sync.Map
 
 const reflectValuesPoolMaxLen = 64
 
-var reflectValuesPool = pr3.NewPool(
-	uint32(runtime.NumCPU()),
-	func() []reflect.Value {
-		return make([]reflect.Value, reflectValuesPoolMaxLen)
+var reflectValuesPool = sync.Pool{
+	New: func() any {
+		return new([reflectValuesPoolMaxLen]reflect.Value)
 	},
-)
+}
 
 // CallValue executes the given function `fnValue` after resolving its arguments from the scope.
 // It returns a CallResult containing the function's return values.
@@ -245,8 +242,12 @@ func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 	var args []reflect.Value
 	// Use pool for small number of arguments
 	if nArgs := fnType.NumIn(); nArgs <= reflectValuesPoolMaxLen {
-		elem := reflectValuesPool.Get(&args)
-		defer elem.Put()
+		ptr := reflectValuesPool.Get().(*[reflectValuesPoolMaxLen]reflect.Value)
+		args = (*ptr)[:]
+		defer func() {
+			clear(args)
+			reflectValuesPool.Put(ptr)
+		}()
 	} else {
 		args = make([]reflect.Value, nArgs)
 	}
