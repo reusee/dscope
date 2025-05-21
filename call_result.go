@@ -14,9 +14,21 @@ type CallResult struct {
 // Extract extracts results by positions
 func (c CallResult) Extract(targets ...any) {
 	for i, target := range targets {
+
 		if target == nil {
 			continue
 		}
+
+		// Ensure we have enough values for this target
+		if i >= len(c.Values) {
+			_ = throw(we.With(
+				e5.Info("not enough values for targets: have %d, want at least %d",
+					len(c.Values), i+1),
+			)(
+				ErrBadArgument,
+			))
+		}
+
 		targetValue := reflect.ValueOf(target)
 		if targetValue.Kind() != reflect.Pointer {
 			_ = throw(we.With(

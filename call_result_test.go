@@ -56,4 +56,24 @@ func TestCallResult(t *testing.T) {
 		res.Assign(&s)
 	})
 
+	t.Run("Extract too many", func(t *testing.T) {
+		res := scope.Call(func(i int) int {
+			return i * 2
+		})
+		var i, j int
+		func() {
+			defer func() {
+				p := recover()
+				if p == nil {
+					t.Fatal("should panic")
+				}
+				msg := fmt.Sprintf("%v", p)
+				if !strings.Contains(msg, "not enough values for targets") {
+					t.Fatalf("got %s", msg)
+				}
+			}()
+			res.Extract(&i, &j)
+		}()
+	})
+
 }
