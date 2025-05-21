@@ -1,6 +1,10 @@
 package dscope
 
-import "reflect"
+import (
+	"reflect"
+
+	"github.com/reusee/e5"
+)
 
 // Methods extracts all exported methods from the provided objects and any
 // It recursively traverses struct fields marked for extension to collect their methods as well.
@@ -9,11 +13,24 @@ func Methods(objects ...any) (ret []any) {
 	visitedTypes := make(map[reflect.Type]bool)
 	var extend func(reflect.Value)
 	extend = func(v reflect.Value) {
+		if !v.IsValid() {
+			_ = throw(we.With(
+				e5.Info("invalid value"),
+			)(
+				ErrBadArgument,
+			))
+		}
+
 		t := v.Type()
 		if visitedTypes[t] {
 			return
 		}
 		visitedTypes[t] = true
+
+		if t.Kind() == reflect.Pointer && v.IsNil() {
+			// construct object
+			v = reflect.New(t.Elem())
+		}
 
 		// method sets
 		for i := range v.NumMethod() {

@@ -1,6 +1,11 @@
 package dscope
 
-import "testing"
+import (
+	"fmt"
+	"io"
+	"strings"
+	"testing"
+)
 
 func TestMethods(t *testing.T) {
 	s := New(Methods(new(TestMethodsFoo))...)
@@ -29,4 +34,30 @@ func TestMethodFromFields(t *testing.T) {
 	if len(defs) == 0 {
 		t.Fatal()
 	}
+}
+
+func TestMethodsNil(t *testing.T) {
+
+	t.Run("nil typed", func(t *testing.T) {
+		type M struct {
+			Module
+		}
+		Methods((*M)(nil))
+	})
+
+	t.Run("nil interface", func(t *testing.T) {
+		func() {
+			defer func() {
+				p := recover()
+				if p == nil {
+					t.Fatal("should panic")
+				}
+				msg := fmt.Sprintf("%v", p)
+				if !strings.Contains(msg, "invalid value") {
+					t.Fatalf("got %s", msg)
+				}
+			}()
+			Methods((io.Reader)(nil))
+		}()
+	})
 }
