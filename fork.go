@@ -264,8 +264,12 @@ func newForker(
 	for _, id := range defTypeIDs {
 		buf = binary.NativeEndian.AppendUint64(buf, uint64(id))
 	}
+	// h.Write (from sha256.New()) is not expected to return an error,
+	// but check is included for robustness.
 	if _, err := h.Write(buf); err != nil {
-		panic(err) // Extremely unlikely
+		_ = throw(we.With(
+			e5.Info("unexpected error during signature hash calculation in newForker"),
+		)(err))
 	}
 	var signature _Hash
 	h.Sum(signature[:0])

@@ -90,8 +90,13 @@ func (scope Scope) Fork(
 		id := getTypeID(reflect.TypeOf(def))
 		buf = binary.NativeEndian.AppendUint64(buf, uint64(id))
 	}
+	// h.Write (from sha256.New()) is not expected to return an error,
+	// but check is included for robustness against potential future changes
+	// or different hash.Hash implementations.
 	if _, err := h.Write(buf); err != nil {
-		panic(err)
+		_ = throw(we.With(
+			e5.Info("unexpected error during hash calculation in Scope.Fork"),
+		)(err))
 	}
 	var key _Hash
 	h.Sum(key[:0])
