@@ -22,11 +22,13 @@ var injectStructFuncs sync.Map
 
 func injectStruct(scope Scope, target any) {
 	v := reflect.ValueOf(target)
-	if fn, ok := injectStructFuncs.Load(v.Type()); ok {
+	targetType := v.Type()
+	if fn, ok := injectStructFuncs.Load(targetType); ok {
 		fn.(_InjectStructFunc)(scope, v)
+		return
 	}
-	injectFunc := makeInjectStructFunc(v.Type())
-	fn, _ := injectStructFuncs.LoadOrStore(v.Type(), injectFunc)
+	injectFunc := makeInjectStructFunc(targetType)
+	fn, _ := injectStructFuncs.LoadOrStore(targetType, injectFunc)
 	fn.(_InjectStructFunc)(scope, v)
 }
 
