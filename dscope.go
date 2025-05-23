@@ -224,8 +224,8 @@ func (scope Scope) getArgsSlow(fnType reflect.Type, args []reflect.Value) int {
 		}
 		return numIn
 	}
-	getArgsFunc.Store(fnType, getArgs)
-	return getArgs(scope, args)
+	v, _ := getArgsFunc.LoadOrStore(fnType, getArgs)
+	return v.(func(Scope, []reflect.Value) int)(scope, args)
 }
 
 // Cache for mapping return types to their position index for a given function type.
@@ -260,17 +260,17 @@ func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 	res.Values = fnValue.Call(args[:n])
 
 	// Cache return type positions
-	v, ok := fnRetTypes.Load(fnType)
-	if !ok {
+	if v, ok := fnRetTypes.Load(fnType); ok {
+		res.positionsByType = v.(map[reflect.Type][]int)
+	} else {
 		m := make(map[reflect.Type][]int)
 		for i := range fnType.NumOut() {
 			t := fnType.Out(i)
 			m[t] = append(m[t], i)
 		}
-		res.positionsByType = m
-		fnRetTypes.Store(fnType, m)
-	} else {
-		res.positionsByType = v.(map[reflect.Type][]int)
+		actual, _ := fnRetTypes.LoadOrStore(fnType, m)
+		res.positionsByType = actual.(map[reflect.Type][]int)
 	}
+
 	return
 }
