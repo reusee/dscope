@@ -1230,30 +1230,6 @@ func TestCallResultFork(t *testing.T) {
 	}
 }
 
-func TestCallResultAssign(t *testing.T) {
-	result := New(func() int {
-		return 42
-	}).Call(func(i int) (int, int) {
-		return 42, 1
-	})
-
-	var i int
-	result.Assign(nil, &i)
-	if i != 42 {
-		t.Fatal()
-	}
-
-	var i2 int
-	result.Assign(&i2, &i)
-	if i != 1 {
-		t.Fatal()
-	}
-	if i2 != 42 {
-		t.Fatal()
-	}
-
-}
-
 type acc2 int
 
 func TestCallManyArgs(t *testing.T) {

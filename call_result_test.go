@@ -77,3 +77,55 @@ func TestCallResult(t *testing.T) {
 	})
 
 }
+
+func TestCallResultAssign(t *testing.T) {
+
+	t.Run("basic", func(t *testing.T) {
+		result := New(func() int {
+			return 42
+		}).Call(func(i int) (int, int) {
+			return 42, 1
+		})
+
+		var i int
+		result.Assign(nil, &i)
+		if i != 42 {
+			t.Fatal()
+		}
+
+		var i2 int
+		result.Assign(&i2, &i)
+		if i != 1 {
+			t.Fatal()
+		}
+		if i2 != 42 {
+			t.Fatal()
+		}
+	})
+
+	t.Run("too many target", func(t *testing.T) {
+		scope := New()
+		res := scope.Call(func() (int, string, int) {
+			return 1, "foo", 2
+		})
+		var i1, i2, i3 int
+
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			err, ok := p.(error)
+			if !ok {
+				t.Fatalf("panic value not an error: %v", p)
+			}
+			if !is(err, ErrBadArgument) {
+				t.Errorf("expected ErrBadArgument, got %T: %v", err, err)
+			}
+			if !strings.Contains(err.Error(), "not enough return values of type int to assign to target (wanted at least 3, have 2)") {
+				t.Errorf("unexpected error message: %s", err.Error())
+			}
+		}()
+		res.Assign(&i1, &i2, &i3)
+	})
+}

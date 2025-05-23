@@ -72,6 +72,14 @@ func (c CallResult) Assign(targets ...any) {
 		}
 		offset := offsets[typ]
 		offsets[typ]++
+		if offset >= len(poses) {
+			_ = throw(we.With(
+				e5.Info("not enough return values of type %v to assign to target (wanted at least %d, have %d)",
+					typ, offset+1, len(poses)),
+			)(
+				ErrBadArgument,
+			))
+		}
 		targetValue.Elem().Set(c.Values[poses[offset]])
 	}
 }
