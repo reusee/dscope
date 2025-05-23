@@ -21,6 +21,15 @@ func Methods(objects ...any) (ret []any) {
 			))
 		}
 
+		// nil interface
+		if v.Kind() == reflect.Interface && v.IsNil() {
+			_ = throw(we.With(
+				e5.Info("invalid value: nil interface %v", v.Type()),
+			)(
+				ErrBadArgument,
+			))
+		}
+
 		t := v.Type()
 		if visitedTypes[t] {
 			return
@@ -28,7 +37,14 @@ func Methods(objects ...any) (ret []any) {
 		visitedTypes[t] = true
 
 		if t.Kind() == reflect.Pointer && v.IsNil() {
-			// construct object
+			// If it's a pointer to an interface that's nil, we can't construct.
+			// e.g. var ptr *io.Reader; Methods(ptr)
+			if t.Elem().Kind() == reflect.Interface {
+				_ = throw(we.With(
+					e5.Info("invalid value: nil pointer to interface %v", t),
+				)(ErrBadArgument))
+			}
+			// Construct concrete object for typed nil pointers like (*MyStruct)(nil)
 			v = reflect.New(t.Elem())
 		}
 

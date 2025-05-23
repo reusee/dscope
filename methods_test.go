@@ -45,6 +45,20 @@ func TestMethodsNil(t *testing.T) {
 		Methods((*M)(nil))
 	})
 
+	t.Run("nil pointer to interface", func(t *testing.T) {
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			msg := fmt.Sprintf("%v", p)
+			if !strings.Contains(msg, "nil pointer to interface *io.Reader") {
+				t.Fatalf("got %s", msg)
+			}
+		}()
+		Methods((*io.Reader)(nil))
+	})
+
 	t.Run("nil interface", func(t *testing.T) {
 		func() {
 			defer func() {
