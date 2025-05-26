@@ -43,7 +43,8 @@ func newForker(
 
 	// 1. Process Definitions: Create templates, store metadata, identify overrides.
 	newValuesTemplate := make([]_Value, 0, len(defs))
-	redefinedIDs := make(map[_TypeID]struct{}) // Set of overridden TypeIDs
+	redefinedIDs := make(map[_TypeID]struct{})    // Set of overridden TypeIDs
+	newDefOutputIDs := make(map[_TypeID]struct{}) // Set of TypeIDs produced by new defs in this layer
 	defNumValues := make([]int, 0, len(defs))
 	defKinds := make([]reflect.Kind, 0, len(defs))
 	for _, def := range defs {
@@ -82,6 +83,14 @@ func newForker(
 				t := defType.Out(i)
 				id := getTypeID(t)
 
+				// Check for duplicate outputs within the new definitions slice
+				if _, ok := newDefOutputIDs[id]; ok {
+					panic(errors.Join(
+						fmt.Errorf("%v has multiple definitions", t),
+						ErrBadDefinition,
+					))
+				}
+
 				newValuesTemplate = append(newValuesTemplate, _Value{
 					typeInfo: &_TypeInfo{
 						TypeID:       id,
@@ -91,6 +100,7 @@ func newForker(
 					},
 				})
 				numValues++
+				newDefOutputIDs[id] = struct{}{}
 				if _, ok := scope.values.LoadOne(id); ok {
 					redefinedIDs[id] = struct{}{} // Mark override
 				}
@@ -109,6 +119,14 @@ func newForker(
 			// Create Value Template
 			t := defType.Elem()
 			id := getTypeID(t)
+
+			if _, ok := newDefOutputIDs[id]; ok {
+				panic(errors.Join(
+					fmt.Errorf("%s has multiple definitions", t),
+					ErrBadDefinition,
+				))
+			}
+
 			newValuesTemplate = append(newValuesTemplate, _Value{
 				typeInfo: &_TypeInfo{
 					TypeID:  id,
@@ -116,6 +134,7 @@ func newForker(
 				},
 			})
 			if _, ok := scope.values.LoadOne(id); ok {
+				newDefOutputIDs[id] = struct{}{}
 				redefinedIDs[id] = struct{}{} // Mark override
 			}
 			defNumValues = append(defNumValues, 1)
@@ -239,15 +258,6 @@ func newForker(
 			if !found {
 				defTypeIDs = slices.Insert(defTypeIDs, i, defTypeID)
 			}
-		}
-
-		// Check for multiple definitions
-		if len(values) > 1 {
-			t := typeIDToType(values[0].typeInfo.TypeID)
-			panic(errors.Join(
-				fmt.Errorf("%v has multiple definitions", t),
-				ErrBadDefinition,
-			))
 		}
 
 	}

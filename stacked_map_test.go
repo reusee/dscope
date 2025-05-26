@@ -6,9 +6,7 @@ func TestStackedMap(t *testing.T) {
 	var m *_StackedMap
 	m = m.Append([]_Value{
 		{typeInfo: &_TypeInfo{TypeID: 1, Position: 1}},
-		{typeInfo: &_TypeInfo{TypeID: 2, Position: 2}},
 		{typeInfo: &_TypeInfo{TypeID: 2, Position: 3}},
-		{typeInfo: &_TypeInfo{TypeID: 2, Position: 4}},
 		{typeInfo: &_TypeInfo{TypeID: 3, Position: 5}},
 	})
 	m = m.Append([]_Value{
@@ -30,16 +28,10 @@ func TestStackedMap(t *testing.T) {
 	if !ok {
 		t.Fatal()
 	}
-	if len(vs) != 3 {
+	if len(vs) != 1 {
 		t.Fatalf("got %d", len(vs))
 	}
-	if vs[0].typeInfo.Position != 2 {
-		t.Fatal()
-	}
-	if vs[1].typeInfo.Position != 3 {
-		t.Fatal()
-	}
-	if vs[2].typeInfo.Position != 4 {
+	if vs[0].typeInfo.Position != 3 {
 		t.Fatal()
 	}
 
@@ -59,7 +51,7 @@ func TestStackedMap(t *testing.T) {
 			}
 		}
 	}
-	if n != 5 {
+	if n != 3 {
 		t.Fatalf("got %d", n)
 	}
 

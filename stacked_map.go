@@ -41,6 +41,9 @@ func (s *_StackedMap) Load(id _TypeID) ([]_Value, bool) {
 			for end < int(l) && values[end].typeInfo.TypeID == id {
 				end++
 			}
+			if end != start+1 { //TODO remove support for multiple values for the same type
+				panic(end - start)
+			}
 			return values[start:end], true
 		}
 
