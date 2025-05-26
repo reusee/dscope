@@ -1,6 +1,7 @@
 package dscope
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -119,7 +120,7 @@ func TestCallResultAssign(t *testing.T) {
 			if !ok {
 				t.Fatalf("panic value not an error: %v", p)
 			}
-			if !is(err, ErrBadArgument) {
+			if !errors.Is(err, ErrBadArgument) {
 				t.Errorf("expected ErrBadArgument, got %T: %v", err, err)
 			}
 			if !strings.Contains(err.Error(), "not enough return values of type int to assign to target (wanted at least 3, have 2)") {

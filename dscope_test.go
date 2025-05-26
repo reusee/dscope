@@ -1,6 +1,7 @@
 package dscope
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -55,7 +56,7 @@ func TestPanic(t *testing.T) {
 			if !ok {
 				t.Fatal()
 			}
-			if !is(err, ErrBadArgument) {
+			if !errors.Is(err, ErrBadArgument) {
 				t.Fatal()
 			}
 			if !strings.Contains(err.Error(), "returns nothing") {
@@ -80,7 +81,7 @@ func TestPanic(t *testing.T) {
 			if !ok {
 				t.Fatal()
 			}
-			if !is(err, ErrBadArgument) {
+			if !errors.Is(err, ErrBadArgument) {
 				t.Fatal()
 			}
 			if !strings.Contains(err.Error(), "not a valid definition") {
@@ -100,7 +101,7 @@ func TestPanic(t *testing.T) {
 			if !ok {
 				t.Fatal()
 			}
-			if !is(err, ErrBadArgument) {
+			if !errors.Is(err, ErrBadArgument) {
 				t.Fatal()
 			}
 			if !strings.Contains(err.Error(), "not a pointer") {
@@ -120,7 +121,7 @@ func TestPanic(t *testing.T) {
 			if !ok {
 				t.Fatal()
 			}
-			if !is(err, ErrDependencyNotFound) {
+			if !errors.Is(err, ErrDependencyNotFound) {
 				t.Fatal()
 			}
 			if !strings.Contains(err.Error(), "not found") {
@@ -141,7 +142,7 @@ func TestPanic(t *testing.T) {
 			if !ok {
 				t.Fatal()
 			}
-			if !is(err, ErrDependencyNotFound) {
+			if !errors.Is(err, ErrDependencyNotFound) {
 				t.Fatal()
 			}
 		}()
@@ -158,7 +159,7 @@ func TestPanic(t *testing.T) {
 			if !ok {
 				t.Fatal()
 			}
-			if !is(err, ErrDependencyNotFound) {
+			if !errors.Is(err, ErrDependencyNotFound) {
 				t.Fatal()
 			}
 		}()
@@ -179,7 +180,7 @@ func TestPanic(t *testing.T) {
 			if !ok {
 				t.Fatal()
 			}
-			if !is(err, ErrDependencyLoop) {
+			if !errors.Is(err, ErrDependencyLoop) {
 				t.Fatal()
 			}
 		}()
@@ -202,7 +203,7 @@ func TestPanic(t *testing.T) {
 			if !ok {
 				t.Fatal()
 			}
-			if !is(err, ErrBadDefinition) {
+			if !errors.Is(err, ErrBadDefinition) {
 				t.Fatal()
 			}
 			if !strings.Contains(err.Error(), "has multiple definitions") {
@@ -580,7 +581,7 @@ func TestCallReturn(t *testing.T) {
 			if !ok {
 				t.Fatal()
 			}
-			if !is(err, ErrBadArgument) {
+			if !errors.Is(err, ErrBadArgument) {
 				t.Fatal()
 			}
 			if !strings.Contains(err.Error(), "is not a pointer") {
@@ -602,7 +603,7 @@ func TestCallReturn(t *testing.T) {
 			if !ok {
 				t.Fatal()
 			}
-			if !is(err, ErrBadArgument) {
+			if !errors.Is(err, ErrBadArgument) {
 				t.Fatal()
 			}
 			msg := err.Error()

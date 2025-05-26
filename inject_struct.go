@@ -1,10 +1,10 @@
 package dscope
 
 import (
+	"errors"
+	"fmt"
 	"reflect"
 	"sync"
-
-	"github.com/reusee/e5"
 )
 
 type InjectStruct func(target any)
@@ -43,9 +43,8 @@ l:
 		case reflect.Struct:
 			break l
 		default:
-			_ = throw(we.With(
-				e5.Info("target type %v is not a struct or pointer to struct", t),
-			)(
+			panic(errors.Join(
+				fmt.Errorf("target type %v is not a struct or pointer to struct", t),
 				ErrBadArgument,
 			))
 		}
@@ -84,9 +83,8 @@ l:
 	return func(scope Scope, value reflect.Value) {
 		// Check if the target pointer is nil before dereferencing
 		if value.Kind() == reflect.Pointer && value.IsNil() {
-			_ = throw(we.With(
-				e5.Info("cannot inject into a nil pointer target of type %v", value.Type()),
-			)(
+			panic(errors.Join(
+				fmt.Errorf("cannot inject into a nil pointer target of type %v", value.Type()),
 				ErrBadArgument,
 			))
 		}

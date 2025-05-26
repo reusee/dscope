@@ -1,9 +1,9 @@
 package dscope
 
 import (
+	"errors"
+	"fmt"
 	"reflect"
-
-	"github.com/reusee/e5"
 )
 
 // Methods extracts all exported methods from the provided objects and any
@@ -14,18 +14,16 @@ func Methods(objects ...any) (ret []any) {
 	var extend func(reflect.Value)
 	extend = func(v reflect.Value) {
 		if !v.IsValid() {
-			_ = throw(we.With(
-				e5.Info("invalid value"),
-			)(
+			panic(errors.Join(
+				fmt.Errorf("invalid value"),
 				ErrBadArgument,
 			))
 		}
 
 		// nil interface
 		if v.Kind() == reflect.Interface && v.IsNil() {
-			_ = throw(we.With(
-				e5.Info("invalid value: nil interface %v", v.Type()),
-			)(
+			panic(errors.Join(
+				fmt.Errorf("invalid value: nil interface %v", v.Type()),
 				ErrBadArgument,
 			))
 		}
@@ -40,9 +38,10 @@ func Methods(objects ...any) (ret []any) {
 			// If it's a pointer to an interface that's nil, we can't construct.
 			// e.g. var ptr *io.Reader; Methods(ptr)
 			if t.Elem().Kind() == reflect.Interface {
-				_ = throw(we.With(
-					e5.Info("invalid value: nil pointer to interface %v", t),
-				)(ErrBadArgument))
+				panic(errors.Join(
+					fmt.Errorf("invalid value: nil pointer to interface %v", t),
+					ErrBadArgument,
+				))
 			}
 			// Construct concrete object for typed nil pointers like (*MyStruct)(nil)
 			v = reflect.New(t.Elem())

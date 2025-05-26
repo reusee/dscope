@@ -4,11 +4,11 @@ import (
 	"cmp"
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"reflect"
 	"slices"
 	"strings"
-
-	"github.com/reusee/e5"
 )
 
 // _Forker pre-calculates the information required to efficiently create a new child scope.
@@ -55,16 +55,14 @@ func newForker(
 		case reflect.Func:
 			// Validate function
 			if defValue.IsNil() {
-				_ = throw(we.With(
-					e5.Info("%T nil function provided", def),
-				)(
+				panic(errors.Join(
+					fmt.Errorf("%T nil function provided", def),
 					ErrBadArgument,
 				))
 			}
 			if defType.NumOut() == 0 {
-				_ = throw(we.With(
-					e5.Info("%T returns nothing", def),
-				)(
+				panic(errors.Join(
+					fmt.Errorf("%T returns nothing", def),
 					ErrBadArgument,
 				))
 			}
@@ -102,9 +100,8 @@ func newForker(
 		case reflect.Pointer:
 			// Validate pointer
 			if defValue.IsNil() {
-				_ = throw(we.With(
-					e5.Info("%T nil pointer provided", def),
-				)(
+				panic(errors.Join(
+					fmt.Errorf("%T nil pointer provided", def),
 					ErrBadArgument,
 				))
 			}
@@ -124,9 +121,8 @@ func newForker(
 			defNumValues = append(defNumValues, 1)
 
 		default:
-			_ = throw(we.With(
-				e5.Info("%T is not a valid definition", def),
-			)(
+			panic(errors.Join(
+				fmt.Errorf("%T is not a valid definition", def),
 				ErrBadArgument,
 			))
 		}
@@ -168,10 +164,12 @@ func newForker(
 		// Cycle Detection & Memoization
 		color := colors[id]
 		switch color {
+
 		case 1: // Gray: Loop detected
-			return false, we.With(
-				e5.Info("found dependency loop in definition %v", values[0].typeInfo.DefType),
-				func() e5.WrapFunc { // Build path string lazily
+			return false, errors.Join(
+				fmt.Errorf("found dependency loop in definition %v", values[0].typeInfo.DefType),
+				ErrDependencyLoop,
+				func() error {
 					buf := new(strings.Builder)
 					for i, id := range path {
 						if i > 0 {
@@ -179,11 +177,10 @@ func newForker(
 						}
 						buf.WriteString(typeIDToType(id).String())
 					}
-					return e5.Info("path: %s", buf.String())
+					return fmt.Errorf("path: %s", buf.String())
 				}(),
-			)(
-				ErrDependencyLoop,
 			)
+
 		case 2: // Black: Already processed
 			return needsReset[id], nil
 		}
@@ -209,10 +206,8 @@ func newForker(
 				}
 				depValues, ok := valuesTemplate.Load(depID)
 				if !ok {
-					return false, we.With(
-						e5.Info("dependency not found in definition %v", value.typeInfo.DefType),
-						e5.Info("no definition for %v", typeIDToType(depID)),
-					)(
+					return false, errors.Join(
+						fmt.Errorf("dependency not found in definition %v, no definition for %v", value.typeInfo.DefType, typeIDToType(depID)),
 						ErrDependencyNotFound,
 					)
 				}
@@ -234,7 +229,7 @@ func newForker(
 
 	for values := range valuesTemplate.AllValues() {
 		if _, err := traverse(values, nil); err != nil {
-			_ = throw(err)
+			panic(err)
 		}
 
 		// Collect definition type IDs (sorted insert)
@@ -249,9 +244,8 @@ func newForker(
 		// Check for multiple definitions
 		if len(values) > 1 {
 			t := typeIDToType(values[0].typeInfo.TypeID)
-			_ = throw(we.With(
-				e5.Info("%v has multiple definitions", t),
-			)(
+			panic(errors.Join(
+				fmt.Errorf("%v has multiple definitions", t),
 				ErrBadDefinition,
 			))
 		}
@@ -267,9 +261,7 @@ func newForker(
 	// h.Write (from sha256.New()) is not expected to return an error,
 	// but check is included for robustness.
 	if _, err := h.Write(buf); err != nil {
-		_ = throw(we.With(
-			e5.Info("unexpected error during signature hash calculation in newForker"),
-		)(err))
+		panic(fmt.Errorf("unexpected error during signature hash calculation in newForker: %w", err))
 	}
 	var signature _Hash
 	h.Sum(signature[:0])

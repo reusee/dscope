@@ -3,11 +3,11 @@ package dscope
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"reflect"
 	"slices"
 	"sync"
-
-	"github.com/reusee/e5"
 )
 
 type _Value struct {
@@ -94,9 +94,7 @@ func (scope Scope) Fork(
 	// but check is included for robustness against potential future changes
 	// or different hash.Hash implementations.
 	if _, err := h.Write(buf); err != nil {
-		_ = throw(we.With(
-			e5.Info("unexpected error during hash calculation in Scope.Fork"),
-		)(err))
+		panic(fmt.Errorf("unexpected error during hash calculation in Scope.Fork: %w", err))
 	}
 	var key _Hash
 	h.Sum(key[:0])
@@ -122,9 +120,8 @@ func (scope Scope) Assign(objects ...any) {
 	for _, o := range objects {
 		v := reflect.ValueOf(o)
 		if v.Kind() != reflect.Pointer {
-			_ = throw(we.With(
-				e5.Info("%T is not a pointer", o),
-			)(
+			panic(errors.Join(
+				fmt.Errorf("%T is not a pointer", o),
 				ErrBadArgument,
 			))
 		}
