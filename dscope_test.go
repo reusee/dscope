@@ -1351,3 +1351,28 @@ func TestGetDependencyNotFound(t *testing.T) {
 		Get[int](scope)
 	}()
 }
+
+func TestInjectStructNested(t *testing.T) {
+	type Inner struct {
+		I int `dscope:"."`
+	}
+	type Outer struct {
+		S     string `dscope:"."`
+		Inner        // Nested struct
+	}
+
+	scope := New(
+		Provide(42),    // Provides int
+		Provide("foo"), // Provides string
+	)
+
+	var outer Outer
+	injectStruct(scope, &outer)
+
+	if outer.S != "foo" {
+		t.Fatalf("Outer string field not injected: got %q, want %q", outer.S, "foo")
+	}
+	if outer.Inner.I != 42 {
+		t.Fatalf("Nested struct int field not injected: got %d, want %d", outer.Inner.I, 42)
+	}
+}

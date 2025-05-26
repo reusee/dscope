@@ -52,9 +52,10 @@ l:
 	}
 
 	type FieldInfo struct {
-		Field    reflect.StructField
-		IsInject bool
-		Type     reflect.Type
+		Field      reflect.StructField
+		IsInject   bool
+		IsEmbedded bool
+		Type       reflect.Type
 	}
 	var infos []FieldInfo
 	for i := range t.NumField() {
@@ -70,6 +71,12 @@ l:
 				Field:    field,
 				IsInject: true,
 				Type:     field.Type.Out(0),
+			})
+		} else if field.Anonymous {
+			infos = append(infos, FieldInfo{
+				Field:      field,
+				IsEmbedded: true,
+				Type:       field.Type,
 			})
 		}
 	}
@@ -99,6 +106,12 @@ l:
 						},
 					),
 				)
+
+			} else if info.IsEmbedded {
+				fieldValue := value.FieldByIndex(info.Field.Index)
+				if fieldValue.CanAddr() {
+					injectStruct(scope, fieldValue.Addr().Interface())
+				}
 
 			} else {
 				v, ok := scope.Get(info.Type)
