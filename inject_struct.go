@@ -82,6 +82,15 @@ l:
 	}
 
 	return func(scope Scope, value reflect.Value) {
+		// Check if the target pointer is nil before dereferencing
+		if value.Kind() == reflect.Pointer && value.IsNil() {
+			_ = throw(we.With(
+				e5.Info("cannot inject into a nil pointer target of type %v", value.Type()),
+			)(
+				ErrBadArgument,
+			))
+		}
+
 		for range numDeref {
 			value = value.Elem()
 		}
