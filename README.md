@@ -1,69 +1,52 @@
-# dscope - An Immutable Dependency Injection Library for Go
+# dscope - A Dependency Injection Library for Go
 
-`dscope` is a dependency injection library for Go focused on immutability, lazy initialization, and type safety. It provides a flexible way to manage dependencies within your application.
+`dscope` is a powerful and flexible dependency injection library for Go, designed to promote clean architecture, enhance testability, and manage dependencies with ease. It emphasizes immutability, lazy initialization, and type safety.
 
-## Why Use `dscope`?
+## Why use dscope?
 
-*   **Type-Safe Dependencies:** Leverages Go's type system. Generic functions like `Get[T]` and `Assign[T]` provide compile-time safety, while other operations perform runtime type checks.
-*   **Promotes Loose Coupling:** Dependencies are resolved based on their type (including interface types), allowing you to depend on abstractions rather than concrete implementations.
-*   **Enhanced Testability:** Easily swap implementations for testing by forking scopes and providing mock definitions.
-*   **Immutable and Predictable:** Scopes are immutable. Operations like `Fork` create new `Scope` values, preserving the state of the original. This makes reasoning about dependency states simpler and safer, especially in concurrent environments.
-*   **Lazy Initialization:** Values are computed only when they are first requested, thanks to `sync.Once`. This improves performance by avoiding unnecessary initialization work.
-*   **Concurrency Safe:** Designed for concurrent use. Reading values (`Get`, `Assign`, `Call`) and creating new scopes (`Fork`) from existing scopes can be done safely from multiple goroutines.
-*   **Performance Conscious:** While using reflection, `dscope` employs internal caching for fork operations, function argument lookups, and return type analysis to mitigate performance overhead in common scenarios.
+Managing dependencies in larger Go applications can become complex. `dscope` offers several advantages:
+
+*   **Type-Safe Dependencies**: Leverages Go's type system to ensure that dependencies are resolved correctly at compile time or with clear runtime panics if a type is missing. Generic functions like `Get[T](scope)` provide compile-time type checking for retrievals.
+*   **Define and Depend on Interfaces (or Concrete Types)**: While you can register and request concrete types directly, `dscope` fully supports defining providers that return interfaces and requesting dependencies via those interfaces, promoting loose coupling.
+*   **Cleaner Function Signatures**: The `scope.Call(yourFunction)` feature automatically resolves the arguments for `yourFunction` from the scope. This means `yourFunction` only needs to declare its essential operational arguments, not a long list of dependencies it needs to acquire manually.
+*   **Enhanced Testability**:
+    *   **Immutability**: Scopes are immutable. Operations like `Fork` create new scopes, leaving the original untouched. This predictability is great for testing.
+    *   **Easy Overriding**: You can easily `Fork` a scope and provide alternative (mock or stub) implementations for specific types, making unit and integration testing more straightforward.
+*   **Immutable and Predictable Scopes**: Each scope is an immutable container. Modifying a scope (e.g., adding new definitions or overriding existing ones) results in a new scope instance. This makes the state of dependencies predictable and easier to reason about.
+*   **Lazy Initialization**: Values within a scope are initialized lazily. A provider function is only called when the value it provides (or a dependant value) is actually requested for the first time. This can improve application startup time and resource usage.
 
 ## Core Concepts
 
-1.  **Scope:**
-    *   The central concept in `dscope`. A `Scope` is an immutable container that holds dependency definitions and resolved values.
-    *   The root scope is `dscope.Universe`. New scopes are typically created using `dscope.New(...)` (which is equivalent to `dscope.Universe.Fork(...)`).
+### Scope
+A `Scope` is an immutable container holding definitions for various types. It's the central piece from which you resolve dependencies. The `Universe` is the initial empty scope.
 
-2.  **Definitions:**
-    *   These tell the scope how to create or provide values. Definitions are passed as arguments to `New` or `Fork`.
-    *   **Functions:** The most common way. A function like `func(depA A, depB B) C { ... }` defines how to create a value of type `C`, declaring its dependencies (`A` and `B`) as arguments. Functions can also return multiple values (`func() (A, B)`), defining providers for both `A` and `B`.
-    *   **Pointers:** Providing a pointer like `*T` makes the pointed-to value available in the scope with type `T`. Example: `i := 42; scope := dscope.New(&i)` makes an `int` available.
+### Definitions
+Definitions are functions or pointers that tell a scope how to create or provide an instance of a type.
+*   **Provider Functions**: Functions that return one or more values. Their arguments are themselves resolved as dependencies from the scope.
+    ```go
+    func NewMyService(db Database) MyService { /* ... */ }
+    func NewConfigAndLogger() (Config, Logger) { /* ... */ }
+    ```
+*   **Pointer Values**: Pointers to existing instances can also be used as definitions. The pointed-at value will be provided.
+    ```go
+    cfg := &MyConfig{Value: "example"}
+    scope := dscope.New(cfg) // MyConfig is now available
+    ```
 
-3.  **Fork:**
-    *   The primary operation for creating new scopes from existing ones. `parentScope.Fork(newDefs...)` creates a new child scope.
-    *   Definitions in the child scope *layer on top* of the parent's definitions.
-    *   If a child defines a provider for a type already defined in the parent, the child's definition *overrides* the parent's for that child scope and its descendants. The parent scope remains unchanged.
-    *   Forking is efficient due to internal caching (`_Forker`).
+### Fork
+`Fork` is the primary mechanism for creating new scopes. When you `Fork` an existing scope, you create a new child scope that inherits all definitions from the parent. You can add new definitions or override existing ones in the child scope without affecting the parent.
 
-## Installation
-
-```bash
-go get github.com/reusee/dscope
+```go
+parentScope := dscope.New(func() int { return 42 })
+childScope := parentScope.Fork(func() string { return "hello" }) // inherits int, adds string
+overrideScope := parentScope.Fork(func() int { return 100 })   // overrides int
 ```
 
 ## Basic Usage Examples
 
-### Create a New Scope
+### 1. Creating a New Scope
 
-```go
-package main
-
-import "github.com/reusee/dscope"
-
-type Config struct {
-    ConnectionString string
-}
-
-func provideConfig() Config {
-    return Config{ConnectionString: "localhost:5432"}
-}
-
-func main() {
-    // Create a scope with a Config provider
-    scope := dscope.New(
-        provideConfig, // Function provider
-    )
-    // scope now knows how to provide Config
-}
-```
-
-### Get Values by Type
-
-Values are retrieved lazily when requested.
+You can create a new scope from scratch using `dscope.New()` (which is equivalent to `dscope.Universe.Fork()`).
 
 ```go
 package main
@@ -73,239 +56,206 @@ import (
 	"github.com/reusee/dscope"
 )
 
-type ServiceA struct {
-    Dep ServiceB
+// Define some types
+type Greeter string
+type Message string
+
+// Define provider functions
+func provideGreeter() Greeter {
+	return "Hello"
 }
 
-type ServiceB struct{}
-
-func provideServiceA(b ServiceB) ServiceA {
-    fmt.Println("Providing ServiceA")
-    return ServiceA{Dep: b}
-}
-
-func provideServiceB() ServiceB {
-    fmt.Println("Providing ServiceB")
-    return ServiceB{}
+func provideMessage(g Greeter) Message {
+	return Message(fmt.Sprintf("%s, dscope!", g))
 }
 
 func main() {
-    scope := dscope.New(
-        provideServiceA,
-        provideServiceB,
-    )
-
-    // Using generic Get (panics if not found)
-    fmt.Println("Getting ServiceA...")
-    serviceA := dscope.Get[ServiceA](scope)
-    fmt.Printf("Got ServiceA: %+v\n", serviceA)
-
-    // Using Assign (panics if not found or target is not pointer)
-    fmt.Println("\nAssigning ServiceB...")
-    var serviceB ServiceB
-    scope.Assign(&serviceB) // Resolves ServiceB
-    fmt.Printf("Assigned ServiceB: %+v\n", serviceB)
-
-    // Requesting ServiceA again - provider is NOT called again
-    fmt.Println("\nGetting ServiceA again...")
-    serviceA2 := dscope.Get[ServiceA](scope)
-    fmt.Printf("Got ServiceA again: %+v\n", serviceA2)
-}
-
-/* Output:
-Getting ServiceA...
-Providing ServiceA
-Providing ServiceB
-Got ServiceA: {Dep:{}}
-
-Assigning ServiceB...
-Assigned ServiceB: {}
-
-Getting ServiceA again...
-Got ServiceA again: {Dep:{}}
-*/
-```
-
-### Calling Functions in a Scope
-
-`scope.Call` executes a function, automatically resolving its arguments from the scope.
-
-```go
-package main
-
-import (
-	"fmt"
-	"github.com/reusee/dscope"
-)
-
-type UserID string
-type Session struct{ User UserID }
-
-func main() {
-    scope := dscope.New(
-        func() UserID { return "user-123" },
-        func(id UserID) Session { return Session{User: id} },
-    )
-
-    // Call a function requiring Session and UserID
-    scope.Call(func(s Session, id UserID) {
-        fmt.Printf("Called function with Session: %+v, UserID: %s\n", s, id)
-        // Output: Called function with Session: {User:user-123}, UserID: user-123
-    })
-
-    // Call a function that returns values
-    var result string
-    scope.Call(func(s Session) string {
-        return fmt.Sprintf("User from session: %s", s.User)
-    }).Assign(&result) // Assign the string return value to 'result'
-
-    fmt.Println(result) // Output: User from session: user-123
+	scope := dscope.New(
+		provideGreeter,
+		provideMessage,
+	)
+	// Scope is now configured
 }
 ```
 
-### Fork a Scope
+### 2. Getting Values by Type
 
-Forking creates a new scope, layering definitions.
+You can retrieve values from the scope using `scope.Get(reflect.Type)`, the generic `dscope.Get[T](scope)`, or `scope.Assign(pointers...)`.
 
-```go
-package main
+*   **`dscope.Get[T](scope)` (Recommended for type safety):**
+    ```go
+    msg := dscope.Get[Message](scope)
+    fmt.Println(msg) // Output: Hello, dscope!
+    ```
 
-import (
-	"fmt"
-	"github.com/reusee/dscope"
-)
+*   **`scope.Assign(pointers...)`:**
+    ```go
+    var m Message
+    var g Greeter
+    scope.Assign(&m, &g)
+    fmt.Println(g, m) // Output: Hello Hello, dscope!
+    ```
 
-type Database string
-
-func main() {
-    baseScope := dscope.New(
-        func() Database { return "ProductionDB" },
-        func() int { return 100 }, // Some other value
-    )
-
-    // Fork to create a testing scope with a different database
-    testScope := baseScope.Fork(
-        func() Database { return "TestDB" },
-    )
-
-    // Get Database from both scopes
-    prodDB := dscope.Get[Database](baseScope)
-    testDB := dscope.Get[Database](testScope)
-
-    fmt.Printf("Base Scope DB: %s\n", prodDB) // Output: Base Scope DB: ProductionDB
-    fmt.Printf("Test Scope DB: %s\n", testDB) // Output: Test Scope DB: TestDB
-
-    // Other values are inherited
-    baseInt := dscope.Get[int](baseScope)
-    testInt := dscope.Get[int](testScope)
-    fmt.Printf("Base Scope Int: %d\n", baseInt) // Output: Base Scope Int: 100
-    fmt.Printf("Test Scope Int: %d\n", testInt) // Output: Test Scope Int: 100
-}
-```
-
-### Modules
-
-Group related definitions using structs embedding `dscope.Module`.
-
-```go
-package main
-
-import (
-	"fmt"
-	"github.com/reusee/dscope"
-)
-
-// --- Module Definition ---
-type AuthModule struct {
-	dscope.Module // Embed Module
-	Secrets       SecretProvider `dscope:"."` // Include methods from SecretProvider field
-}
-
-func (m AuthModule) AuthService(sp SecretProvider) string {
-	return "AuthService using " + sp.GetSecret()
-}
-
-type SecretProvider struct{}
-
-func (sp SecretProvider) GetSecret() string {
-	return "secret-key"
-}
-// --- End Module Definition ---
-
-
-func main() {
-    // Register the module instance directly
-    scope := dscope.New(
-        new(AuthModule), // Pass module instance
-        // Alternatively: dscope.Methods(new(AuthModule))...
-    )
-
-    // Dependencies provided by the module are available
-    authSvc := dscope.Get[string](scope) // Assuming AuthService is the only string provider
-    fmt.Println(authSvc) // Output: AuthService using secret-key
-
-    secret := dscope.Get[SecretProvider](scope).GetSecret()
-    fmt.Println(secret) // Output: secret-key
-}
-```
-
-### Struct Field Injection
-
-Automatically inject dependencies into struct fields tagged with `dscope`.
-
-```go
-package main
-
-import (
-	"fmt"
-	"github.com/reusee/dscope"
-)
-
-type Logger struct{ Prefix string }
-type Handler struct {
-	Log Logger `dscope:"."` // Inject Logger here
-	DB  string `dscope:"inject"` // Alternative tag
-}
-
-func main() {
-    scope := dscope.New(
-        func() Logger { return Logger{Prefix: "[INFO]"} },
-        func() string { return "PostgresConnection" }, // Provides the DB string
-    )
-
-    // Option 1: Get InjectStruct function from scope
-    injector := dscope.Get[dscope.InjectStruct](scope)
-    var handler1 Handler
-    err := injector(&handler1)
-    if err != nil {
-        panic(err)
+*   **`scope.Get(reflect.Type)`:**
+    ```go
+    import "reflect"
+    // ...
+    msgVal, ok := scope.Get(reflect.TypeOf(Message("")))
+    if ok {
+        fmt.Println(msgVal.Interface().(Message))
     }
-    fmt.Printf("Handler 1: %+v\n", handler1)
-    // Output: Handler 1: {Log:{Prefix:[INFO]} DB:PostgresConnection}
+    ```
 
-    // Option 2: Use scope.InjectStruct directly (if available - depends on how scope was created)
-    // Note: InjectStruct is implicitly available.
-    var handler2 Handler
-    err = scope.InjectStruct(&handler2)
-     if err != nil {
-        panic(err)
-    }
-    fmt.Printf("Handler 2: %+v\n", handler2)
-    // Output: Handler 2: {Log:{Prefix:[INFO]} DB:PostgresConnection}
+### 3. Calling Functions in a Scope
+
+`scope.Call(fn)` executes `fn`, automatically resolving its arguments from the scope. Return values are wrapped in a `CallResult`.
+
+```go
+type Salutation string
+
+func provideSalutation() Salutation {
+	return "Greetings"
 }
+
+scope = scope.Fork(provideSalutation) // Add Salutation to the scope
+
+result := scope.Call(func(s Salutation, m Message) string {
+	return fmt.Sprintf("%s! %s", s, m)
+})
+
+var finalMsg string
+result.Assign(&finalMsg) // Assigns the string return value
+// or result.Extract(&finalMsg) if order matters and you know the return position
+
+fmt.Println(finalMsg) // Output: Greetings! Hello, dscope!```
+
+### 4. Forking a Scope
+
+Forking creates a new scope that inherits from the parent, allowing you to add or override definitions.
+
+```go
+baseScope := dscope.New(func() int { return 10 })
+
+// Fork 1: Add a new type
+childScope1 := baseScope.Fork(func(i int) string {
+	return fmt.Sprintf("Number: %d", i)
+})
+fmt.Println(dscope.Get[string](childScope1)) // Output: Number: 10
+
+// Fork 2: Override an existing type
+childScope2 := baseScope.Fork(func() int { return 20 })
+fmt.Println(dscope.Get[int](childScope2)) // Output: 20
+
+// Original scope is unaffected
+fmt.Println(dscope.Get[int](baseScope)) // Output: 10
 ```
 
-## Concurrency
+### 5. Modules
 
-`dscope` is designed to be safe for concurrent use:
-*   Reading from a `Scope` (`Get`, `Assign`, `Call`) is safe from multiple goroutines.
-*   Forking a `Scope` (`Fork`) is safe from multiple goroutines.
-*   Initialization of values is handled safely via `sync.Once`.
+Modules help organize definitions. You can embed `dscope.Module` in your structs and then use `dscope.Methods(moduleInstances...)` to add all exported methods of those instances (and their embedded modules) as providers to the scope.
 
-## Debugging
+```go
+type DatabaseModule struct {
+	dscope.Module
+}
 
-`dscope` provides tools to help understand the dependency graph:
+func (dbm *DatabaseModule) ProvideDBConnection() string { // Becomes a provider
+	return "db_connection_string"
+}
 
-*   **`scope.ToDOT(io.Writer)`:** Generates a graph description in the DOT language (usable with Graphviz) showing the effective providers and their dependencies.
-*   **`scope.GetDebugInfo()`:** Returns structured information about the types defined in the scope and their provider function types.
+type ServiceModule struct {
+	dscope.Module
+	DBDep DatabaseModule // Embedded module's methods will also be added
+}
 
+func (sm *ServiceModule) ProvideMyService(dbConn string) string { // Becomes a provider
+	return "service_using_" + dbConn
+}
+
+func main() {
+	// Using concrete instance
+	scope := dscope.New(
+		dscope.Methods(new(ServiceModule))...,
+	)
+	service := dscope.Get[string](scope) // Will try to get "service_using_db_connection_string"
+	fmt.Println(service)
+}
+```
+*Output:*
+```
+service_using_db_connection_string
+```
+
+You can also pass instances of structs that embed `dscope.Module` directly to `New` or `Fork`:
+```go
+type ModA struct {
+    dscope.Module
+}
+func (m ModA) GetA() string { return "A from ModA" }
+
+type ModB struct {
+    dscope.Module
+    MyModA ModA // ModA's methods will be included
+}
+func (m ModB) GetB() string { return "B from ModB" }
+
+
+func main() {
+    scope := dscope.New(
+        new(ModB), // Automatically uses Methods() for types embedding dscope.Module
+    )
+    fmt.Println(dscope.Get[string](scope, dscope.WithTypeQualifier("GetA"))) // Assuming a way to qualify if GetA and GetB return string
+    // For distinct return types, direct Get[T] works:
+    // e.g. if GetA returns type AVal and GetB returns type BVal
+    // aVal := dscope.Get[AVal](scope)
+    // bVal := dscope.Get[BVal](scope)
+}
+```
+Note: The example with `dscope.WithTypeQualifier` is illustrative if multiple providers return the same type. If return types are unique, `dscope.Get[ReturnType]` is sufficient. `dscope` primarily resolves by type.
+
+### 6. Struct Field Injection
+
+`dscope` can inject dependencies into the fields of a struct.
+
+*   **Using `dscope:"."` or `dscope:"inject"` tag:**
+    ```go
+    type MyStruct struct {
+        Dep1 Greeter `dscope:"."` // or dscope:"inject"
+        Dep2 Message `dscope:"."`
+    }
+
+    scope := dscope.New(provideGreeter, provideMessage)
+    var myInstance MyStruct
+    // scope.Call(func(inject dscope.InjectStruct) { inject(&myInstance) })
+    // OR directly:
+    scope.InjectStruct(&myInstance)
+
+
+    fmt.Printf("Injected: Greeter='%s', Message='%s'\n", myInstance.Dep1, myInstance.Dep2)
+    // Output: Injected: Greeter='Hello', Message='Hello, dscope!'
+    ```
+
+*   **Using `dscope.Inject[T]` for lazy field injection:**
+    Fields of type `dscope.Inject[T]` are populated with a function that, when called, resolves `T` from the scope. This is useful for optional dependencies or dependencies needed much later.
+
+    ```go
+    type AnotherStruct struct {
+        LazyGreeter dscope.Inject[Greeter]
+        RegularMsg  Message `dscope:"."`
+    }
+
+    scope := dscope.New(provideGreeter, provideMessage)
+    var anotherInstance AnotherStruct
+    scope.InjectStruct(&anotherInstance)
+
+    fmt.Printf("Regular Message: %s\n", anotherInstance.RegularMsg)
+    // LazyGreeter is not resolved yet.
+    // To get the greeter:
+    actualGreeter := anotherInstance.LazyGreeter()
+    fmt.Printf("Lazy Greeter: %s\n", actualGreeter)
+    // Output:
+    // Regular Message: Hello, dscope!
+    // Lazy Greeter: Hello
+    ```
+
+This covers the core features and usage patterns of `dscope`. Its design promotes modularity and testability in Go applications.
