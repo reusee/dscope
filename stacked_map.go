@@ -10,51 +10,8 @@ type _StackedMap struct {
 	Height int8         // Height of the stack from this node downwards.
 }
 
-// Load finds all values associated with a given TypeID.
-// It searches from the top layer downwards.
-// The returned slice MUST NOT be modified.
-func (s *_StackedMap) Load(id _TypeID) ([]_Value, bool) {
-	for s != nil {
-		values := s.Values
-		l := uint(len(values))
-		if l == 0 {
-			s = s.Next
-			continue
-		}
-
-		// Binary search to find the first matching value
-		left, right := uint(0), l
-		for left < right {
-			mid := (left + right) >> 1
-			midID := values[mid].typeInfo.TypeID
-			if midID >= id {
-				right = mid
-			} else {
-				left = mid + 1
-			}
-		}
-
-		// Check if we found a match and return the range
-		if left < l && values[left].typeInfo.TypeID == id {
-			start := int(left)
-			end := start + 1
-			for end < int(l) && values[end].typeInfo.TypeID == id {
-				end++
-			}
-			if end != start+1 { //TODO remove support for multiple values for the same type
-				panic(end - start)
-			}
-			return values[start:end], true
-		}
-
-		s = s.Next
-	}
-	return nil, false
-}
-
-// LoadOne finds the first occurrence of a value with the specified TypeID.
-// It's generally faster than Load when only one value is expected
-func (s *_StackedMap) LoadOne(id _TypeID) (ret _Value, ok bool) {
+// Load finds the value with the specified TypeID.
+func (s *_StackedMap) Load(id _TypeID) (ret _Value, ok bool) {
 	for s != nil {
 		values := s.Values
 		l := uint(len(values))
@@ -81,38 +38,22 @@ func (s *_StackedMap) LoadOne(id _TypeID) (ret _Value, ok bool) {
 	return // Not found
 }
 
-func (s *_StackedMap) AllValues() iter.Seq[[]_Value] {
-	return func(yield func([]_Value) bool) {
-		keys := make(map[_TypeID]struct{}) // Track visited TypeIDs
-		var start, end int
+func (s *_StackedMap) IterValues() iter.Seq[_Value] {
+	return func(yield func(_Value) bool) {
+		keys := make(map[_TypeID]struct{})
 		for s != nil {
-			for j, d := range s.Values {
-				// Skip if this TypeID was already processed from a higher layer
+			for _, d := range s.Values {
 				if _, ok := keys[d.typeInfo.TypeID]; ok {
 					continue
 				}
 				keys[d.typeInfo.TypeID] = struct{}{}
-
-				// Find the range of values for this TypeID in the current layer
-				start = j
-				end = start + 1
-				for _, follow := range s.Values[j+1:] {
-					if follow.typeInfo.TypeID == d.typeInfo.TypeID {
-						end++
-					} else {
-						break
-					}
-				}
-
-				if !yield(s.Values[start:end]) {
+				if !yield(d) {
 					return
 				}
-
 			}
 			s = s.Next
 		}
 	}
-
 }
 
 // Append creates a new _StackedMap layer on top of the current one.

@@ -13,25 +13,19 @@ func TestStackedMap(t *testing.T) {
 		{typeInfo: &_TypeInfo{TypeID: 3, Position: 6}},
 	})
 
-	vs, ok := m.Load(1)
+	v, ok := m.Load(1)
 	if !ok {
 		t.Fatal()
 	}
-	if len(vs) != 1 {
-		t.Fatal()
-	}
-	if vs[0].typeInfo.Position != 1 {
+	if v.typeInfo.Position != 1 {
 		t.Fatal()
 	}
 
-	vs, ok = m.Load(2)
+	v, ok = m.Load(2)
 	if !ok {
 		t.Fatal()
 	}
-	if len(vs) != 1 {
-		t.Fatalf("got %d", len(vs))
-	}
-	if vs[0].typeInfo.Position != 3 {
+	if v.typeInfo.Position != 3 {
 		t.Fatal()
 	}
 
@@ -41,13 +35,11 @@ func TestStackedMap(t *testing.T) {
 	}
 
 	n := 0
-	for ds := range m.AllValues() {
-		for _, d := range ds {
-			n++
-			if d.typeInfo.TypeID == 3 {
-				if d.typeInfo.Position != 6 {
-					t.Fatal()
-				}
+	for value := range m.IterValues() {
+		n++
+		if value.typeInfo.TypeID == 3 {
+			if value.typeInfo.Position != 6 {
+				t.Fatal()
 			}
 		}
 	}
@@ -55,27 +47,6 @@ func TestStackedMap(t *testing.T) {
 		t.Fatalf("got %d", n)
 	}
 
-}
-
-func BenchmarkStackedMapLoad(b *testing.B) {
-	var m *_StackedMap
-	var values []_Value
-	for i := range 1024 {
-		values = append(values, _Value{
-			typeInfo: &_TypeInfo{
-				TypeID:   _TypeID(i),
-				Position: i,
-			},
-		})
-	}
-	m = m.Append(values)
-	b.ResetTimer()
-	for b.Loop() {
-		_, ok := m.Load(3)
-		if !ok {
-			b.Fatal()
-		}
-	}
 }
 
 func BenchmarkStackedMapLoadOne(b *testing.B) {
@@ -92,7 +63,7 @@ func BenchmarkStackedMapLoadOne(b *testing.B) {
 	m = m.Append(values)
 	b.ResetTimer()
 	for b.Loop() {
-		_, ok := m.LoadOne(3)
+		_, ok := m.Load(3)
 		if !ok {
 			b.Fatal()
 		}

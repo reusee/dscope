@@ -26,17 +26,13 @@ func (scope Scope) ToDOT(w io.Writer) error {
 	nodeInfo := make(map[_TypeID]string)   // Extra info for node labels
 
 	// Iterate through all *effective* values in the scope
-	for effectiveValues := range scope.values.AllValues() {
-		if len(effectiveValues) == 0 { // Should not happen with AllValues, but check anyway
-			continue
-		}
+	for effectiveValue := range scope.values.IterValues() {
 		// Use the first value (top of stack) as the effective one
-		val := effectiveValues[0]
-		typeID := val.typeInfo.TypeID
+		typeID := effectiveValue.typeInfo.TypeID
 		typeName := typeIDToType(typeID).String()
 
 		// Skip built-in types unless they have dependencies (unlikely but possible)
-		if isAlwaysProvided(typeID) && len(val.typeInfo.Dependencies) == 0 {
+		if isAlwaysProvided(typeID) && len(effectiveValue.typeInfo.Dependencies) == 0 {
 			continue
 		}
 
@@ -44,15 +40,15 @@ func (scope Scope) ToDOT(w io.Writer) error {
 		nodeInfo[typeID] = fmt.Sprintf(
 			"Type: %s\\nDefined By: %s",
 			typeName,
-			val.typeInfo.DefType.String(), // Show the func/ptr type that defines it
+			effectiveValue.typeInfo.DefType.String(), // Show the func/ptr type that defines it
 		)
 
 		// Add edges for dependencies
-		for _, depID := range val.typeInfo.Dependencies {
+		for _, depID := range effectiveValue.typeInfo.Dependencies {
 			// Skip built-in types as sources unless explicitly defined
 			if isAlwaysProvided(depID) {
 				// Check if the built-in type *is* actually defined in the scope explicitly
-				if _, defined := scope.values.LoadOne(depID); !defined {
+				if _, defined := scope.values.Load(depID); !defined {
 					continue
 				}
 			}

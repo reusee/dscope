@@ -101,7 +101,7 @@ func newForker(
 				})
 				numValues++
 				newDefOutputIDs[id] = struct{}{}
-				if _, ok := scope.values.LoadOne(id); ok {
+				if _, ok := scope.values.Load(id); ok {
 					redefinedIDs[id] = struct{}{} // Mark override
 				}
 			}
@@ -133,7 +133,7 @@ func newForker(
 					DefType: defType,
 				},
 			})
-			if _, ok := scope.values.LoadOne(id); ok {
+			if _, ok := scope.values.Load(id); ok {
 				newDefOutputIDs[id] = struct{}{}
 				redefinedIDs[id] = struct{}{} // Mark override
 			}
@@ -176,9 +176,9 @@ func newForker(
 	colors := make(map[_TypeID]int)      // For cycle detection
 	needsReset := make(map[_TypeID]bool) // Memoization for reset status
 
-	var traverse func(values []_Value, path []_TypeID) (reset bool, err error)
-	traverse = func(values []_Value, path []_TypeID) (reset bool, err error) {
-		id := values[0].typeInfo.TypeID
+	var traverse func(value _Value, path []_TypeID) (reset bool, err error)
+	traverse = func(value _Value, path []_TypeID) (reset bool, err error) {
+		id := value.typeInfo.TypeID
 
 		// Cycle Detection & Memoization
 		color := colors[id]
@@ -186,7 +186,7 @@ func newForker(
 
 		case 1: // Gray: Loop detected
 			return false, errors.Join(
-				fmt.Errorf("found dependency loop in definition %v", values[0].typeInfo.DefType),
+				fmt.Errorf("found dependency loop in definition %v", value.typeInfo.DefType),
 				ErrDependencyLoop,
 				func() error {
 					buf := new(strings.Builder)
@@ -218,24 +218,22 @@ func newForker(
 		}
 
 		// Recursive Step: Check Dependencies
-		for _, value := range values {
-			for _, depID := range value.typeInfo.Dependencies {
-				if isAlwaysProvided(depID) {
-					continue
-				}
-				depValues, ok := valuesTemplate.Load(depID)
-				if !ok {
-					return false, errors.Join(
-						fmt.Errorf("dependency not found in definition %v, no definition for %v", value.typeInfo.DefType, typeIDToType(depID)),
-						ErrDependencyNotFound,
-					)
-				}
-				depResets, err := traverse(depValues, append(path, value.typeInfo.TypeID))
-				if err != nil {
-					return false, err
-				}
-				reset = reset || depResets // Propagate reset requirement
+		for _, depID := range value.typeInfo.Dependencies {
+			if isAlwaysProvided(depID) {
+				continue
 			}
+			depValue, ok := valuesTemplate.Load(depID)
+			if !ok {
+				return false, errors.Join(
+					fmt.Errorf("dependency not found in definition %v, no definition for %v", value.typeInfo.DefType, typeIDToType(depID)),
+					ErrDependencyNotFound,
+				)
+			}
+			depResets, err := traverse(depValue, append(path, value.typeInfo.TypeID))
+			if err != nil {
+				return false, err
+			}
+			reset = reset || depResets // Propagate reset requirement
 		}
 
 		return
@@ -246,18 +244,16 @@ func newForker(
 	//    - Collect `defTypeIDs` for signature.
 	defTypeIDs := make([]_TypeID, 0, valuesTemplate.Len()) // For signature
 
-	for values := range valuesTemplate.AllValues() {
-		if _, err := traverse(values, nil); err != nil {
+	for value := range valuesTemplate.IterValues() {
+		if _, err := traverse(value, nil); err != nil {
 			panic(err)
 		}
 
 		// Collect definition type IDs (sorted insert)
-		for _, value := range values {
-			defTypeID := getTypeID(value.typeInfo.DefType)
-			i, found := slices.BinarySearch(defTypeIDs, defTypeID)
-			if !found {
-				defTypeIDs = slices.Insert(defTypeIDs, i, defTypeID)
-			}
+		defTypeID := getTypeID(value.typeInfo.DefType)
+		i, found := slices.BinarySearch(defTypeIDs, defTypeID)
+		if !found {
+			defTypeIDs = slices.Insert(defTypeIDs, i, defTypeID)
 		}
 
 	}
@@ -282,7 +278,7 @@ func newForker(
 		if !reset {
 			continue
 		}
-		if _, ok := scope.values.LoadOne(id); ok { // Only reset inherited values
+		if _, ok := scope.values.Load(id); ok { // Only reset inherited values
 			resetIDs = append(resetIDs, id)
 		}
 	}
@@ -312,8 +308,8 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 	// 2. Handle Parent Scope Stack: Flatten if deep.
 	if s.values != nil && s.values.Height > 16 { // Threshold for flattening
 		var flatValues []_Value
-		for parentValues := range s.values.AllValues() {
-			flatValues = append(flatValues, parentValues...)
+		for parentValue := range s.values.IterValues() {
+			flatValues = append(flatValues, parentValue)
 		}
 
 		slices.SortFunc(flatValues, func(a, b _Value) int { // Sort flattened values
@@ -364,22 +360,20 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 		resetValues := make([]_Value, 0, len(f.ResetIDs))
 		resetInitializers := make(map[int64]*_Initializer) // Track reset initializers for sharing
 		for _, id := range f.ResetIDs {
-			currentDefs, ok := scope.values.Load(id) // Load definitions from current stack
+			currentDef, ok := scope.values.Load(id) // Load definitions from current stack
 			if !ok {
 				panic("impossible: reset ID not found in scope")
 			}
-			for _, value := range currentDefs {
-				initID := value.initializer.ID
-				resetInit, found := resetInitializers[initID]
-				if !found {
-					resetInit = value.initializer.reset() // Create fresh initializer
-					resetInitializers[initID] = resetInit
-				}
-				resetValues = append(resetValues, _Value{
-					typeInfo:    value.typeInfo,
-					initializer: resetInit,
-				})
+			initID := currentDef.initializer.ID
+			resetInit, found := resetInitializers[initID]
+			if !found {
+				resetInit = currentDef.initializer.reset() // Create fresh initializer
+				resetInitializers[initID] = resetInit
 			}
+			resetValues = append(resetValues, _Value{
+				typeInfo:    currentDef.typeInfo,
+				initializer: resetInit,
+			})
 		}
 		// resetValues are implicitly sorted by type ID.
 		scope.values = scope.values.Append(resetValues)

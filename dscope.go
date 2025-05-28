@@ -154,7 +154,7 @@ func (scope Scope) get(id _TypeID) (
 		return reflect.ValueOf(scope.InjectStruct), true
 	}
 
-	value, ok := scope.values.LoadOne(id)
+	value, ok := scope.values.Load(id)
 	if !ok {
 		return ret, false
 	}

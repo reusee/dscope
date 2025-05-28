@@ -7,8 +7,8 @@ import (
 
 func (s Scope) AllTypes() iter.Seq[reflect.Type] {
 	return func(yield func(reflect.Type) bool) {
-		for values := range s.values.AllValues() {
-			if !yield(typeIDToType(values[0].typeInfo.TypeID)) {
+		for value := range s.values.IterValues() {
+			if !yield(typeIDToType(value.typeInfo.TypeID)) {
 				return
 			}
 		}
