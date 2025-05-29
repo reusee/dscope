@@ -1352,3 +1352,23 @@ func TestGetDependencyNotFound(t *testing.T) {
 		Get[int](scope)
 	}()
 }
+
+func TestPointerProviderMutated(t *testing.T) {
+	i := 42
+	scope := New(&i)
+	scope.Call(func(
+		i int,
+	) {
+		if i != 42 {
+			t.Fatal()
+		}
+	})
+	i = 1
+	scope.Call(func(
+		i int,
+	) {
+		if i != 42 {
+			t.Fatalf("got %v", i)
+		}
+	})
+}
