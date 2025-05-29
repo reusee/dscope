@@ -2,6 +2,7 @@ package dscope
 
 import (
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 )
@@ -207,4 +208,21 @@ func TestInjectStructNilPointerTarget(t *testing.T) {
 			t.Fatalf("injection failed for non-nil interface holding pointer: got %d, want %d", ptr.I, 42)
 		}
 	})
+
+	t.Run("embedded interface", func(t *testing.T) {
+		type Foo struct {
+			io.Reader // ignore
+		}
+		var foo Foo
+		New().InjectStruct(&foo)
+	})
+
+	t.Run("embedded pointers", func(t *testing.T) {
+		type Foo struct {
+			*int
+		}
+		var foo Foo
+		New().InjectStruct(&foo)
+	})
+
 }

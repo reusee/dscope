@@ -72,6 +72,13 @@ l:
 				Type:     field.Type.Out(0),
 			})
 		} else if field.Anonymous {
+			fieldType := field.Type
+			for fieldType.Kind() == reflect.Pointer {
+				fieldType = fieldType.Elem()
+			}
+			if fieldType.Kind() != reflect.Struct {
+				continue
+			}
 			infos = append(infos, FieldInfo{
 				Field:      field,
 				IsEmbedded: true,
