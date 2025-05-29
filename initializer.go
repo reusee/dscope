@@ -10,6 +10,7 @@ type _Initializer struct {
 	Def          any
 	DefIsPointer bool
 	Values       []reflect.Value
+	_values      [1]reflect.Value
 	ID           int64
 	once         sync.Once // only for function definitions
 }
@@ -21,12 +22,11 @@ func newInitializer(def any, isPointer bool) *_Initializer {
 		DefIsPointer: isPointer,
 	}
 	if isPointer {
-		ret.Values = []reflect.Value{
-			reflect.ValueOf(
-				// make a copy
-				reflect.ValueOf(def).Elem().Interface(),
-			),
-		}
+		ret._values[0] = reflect.ValueOf(
+			// make a copy
+			reflect.ValueOf(def).Elem().Interface(),
+		)
+		ret.Values = ret._values[:1]
 	}
 	return ret
 }
