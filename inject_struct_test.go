@@ -225,4 +225,14 @@ func TestInjectStructNilPointerTarget(t *testing.T) {
 		New().InjectStruct(&foo)
 	})
 
+	t.Run("private field", func(t *testing.T) {
+		type Foo struct {
+			i int `dscope:"."`
+		}
+		var foo Foo
+		New(func() int {
+			return 42
+		}).InjectStruct(&foo)
+	})
+
 }

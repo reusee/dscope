@@ -59,18 +59,26 @@ l:
 	var infos []FieldInfo
 	for i := range t.NumField() {
 		field := t.Field(i)
+
+		if field.PkgPath != "" {
+			// un-exprted field
+			continue
+		}
+
 		directive := field.Tag.Get("dscope")
 		if directive == "." || directive == "inject" {
 			infos = append(infos, FieldInfo{
 				Field: field,
 				Type:  field.Type,
 			})
+
 		} else if field.Type.Implements(isInjectType) {
 			infos = append(infos, FieldInfo{
 				Field:    field,
 				IsInject: true,
 				Type:     field.Type.Out(0),
 			})
+
 		} else if field.Anonymous {
 			fieldType := field.Type
 			for fieldType.Kind() == reflect.Pointer {
@@ -85,6 +93,7 @@ l:
 				Type:       field.Type,
 			})
 		}
+
 	}
 
 	return func(scope Scope, value reflect.Value) {
