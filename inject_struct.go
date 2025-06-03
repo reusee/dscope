@@ -112,20 +112,15 @@ l:
 			info := info
 
 			if info.IsInject {
-				var ret []reflect.Value
-				var once sync.Once
 				value.FieldByIndex(info.Field.Index).Set(
 					reflect.MakeFunc(
 						info.Field.Type,
 						func(_ []reflect.Value) []reflect.Value {
-							once.Do(func() {
-								value, ok := scope.Get(info.Type)
-								if !ok {
-									throwErrDependencyNotFound(info.Type)
-								}
-								ret = []reflect.Value{value}
-							})
-							return ret
+							value, ok := scope.Get(info.Type)
+							if !ok {
+								throwErrDependencyNotFound(info.Type)
+							}
+							return []reflect.Value{value}
 						},
 					),
 				)
