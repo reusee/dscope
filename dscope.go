@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"slices"
 	"sync"
 )
 
@@ -56,26 +55,27 @@ func New(
 // _Hash -> *_Forker
 var forkers sync.Map
 
-// Fork creates a new child scope by layering the given definitions (`defs`)
-// on top of the current scope. It handles overriding existing definitions
-// and ensures values are lazily initialized.
 func (scope Scope) Fork(
 	defs ...any,
 ) Scope {
 
-	// handle modules
-	var moduleObjects []any
-	for i := 0; i < len(defs); {
-		if def, ok := defs[i].(isModule); ok {
-			defs = slices.Replace(defs, i, i+1)
-			moduleObjects = append(moduleObjects, def)
+	// Collect all definitions, expanding modules
+	var allDefs []any
+	// Pre-allocate with some buffer for module expansion.
+	// A heuristic of len(defs)*2 is used, assuming modules might double the number of definitions.
+	allDefs = make([]any, 0, len(defs)*2)
+
+	for _, def := range defs {
+		if module, ok := def.(isModule); ok {
+			// Expand module methods and append them
+			allDefs = append(allDefs, Methods(module)...)
 		} else {
-			i++
+			// Append non-module definitions directly
+			allDefs = append(allDefs, def)
 		}
 	}
-	if len(moduleObjects) > 0 {
-		defs = append(defs, Methods(moduleObjects...)...)
-	}
+	// Use the new, expanded slice of definitions for further processing
+	defs = allDefs
 
 	// sorting defs may reduce memory consumption if there're calls with same defs but different order
 	// but sorting will increase heap allocations, causing performance drop
