@@ -1372,3 +1372,46 @@ func TestPointerProviderMutated(t *testing.T) {
 		}
 	})
 }
+
+func TestSharedInstanceProvider(t *testing.T) {
+	type Service struct {
+		ID int
+	}
+	// The singleton instance.
+	service := &Service{ID: 1}
+
+	// To provide a shared instance (i.e., a singleton pointer),
+	// it must be returned from a provider function.
+	scope := New(func() *Service {
+		return service
+	})
+
+	// Two different functions get the service injected.
+	var s1, s2 *Service
+	scope.Call(func(s *Service) {
+		s1 = s
+	})
+	scope.Call(func(s *Service) {
+		s2 = s
+	})
+
+	// Both should have received the *exact same instance*.
+	if s1 != service {
+		t.Fatal("injected service is not the original instance")
+	}
+	if s2 != service {
+		t.Fatal("injected service is not the original instance")
+	}
+	if s1 != s2 {
+		t.Fatal("different instances were injected")
+	}
+
+	// Mutating the shared instance should be reflected everywhere.
+	s1.ID = 99
+	if s2.ID != 99 {
+		t.Errorf("mutation on shared instance was not reflected. got %d, want 99", s2.ID)
+	}
+	if service.ID != 99 {
+		t.Errorf("mutation on shared instance was not reflected on original. got %d, want 99", service.ID)
+	}
+}
