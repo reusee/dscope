@@ -61,7 +61,7 @@ l:
 		field := t.Field(i)
 
 		if field.PkgPath != "" {
-			// un-exprted field
+			// un-exported field
 			continue
 		}
 
@@ -81,10 +81,11 @@ l:
 
 		} else if field.Anonymous {
 			fieldType := field.Type
-			for fieldType.Kind() == reflect.Pointer {
-				fieldType = fieldType.Elem()
-			}
-			if fieldType.Kind() != reflect.Struct {
+			if fieldType.Kind() == reflect.Pointer {
+				if fieldType.Elem().Kind() != reflect.Struct {
+					continue
+				}
+			} else if fieldType.Kind() != reflect.Struct {
 				continue
 			}
 			infos = append(infos, FieldInfo{
@@ -127,8 +128,19 @@ l:
 
 			} else if info.IsEmbedded {
 				fieldValue := value.FieldByIndex(info.Field.Index)
-				if fieldValue.CanAddr() {
-					injectStruct(scope, fieldValue.Addr().Interface())
+				if fieldValue.Type().Kind() == reflect.Pointer {
+					if fieldValue.IsNil() {
+						if fieldValue.CanSet() {
+							fieldValue.Set(reflect.New(fieldValue.Type().Elem()))
+						} else {
+							continue
+						}
+					}
+					injectStruct(scope, fieldValue.Interface())
+				} else { // Embedded by value
+					if fieldValue.CanAddr() {
+						injectStruct(scope, fieldValue.Addr().Interface())
+					}
 				}
 
 			} else {

@@ -236,3 +236,26 @@ func TestInjectStructNilPointerTarget(t *testing.T) {
 	})
 
 }
+
+func TestInjectStructEmbeddedNilPointer(t *testing.T) {
+	type Inner struct {
+		I int `dscope:"."`
+	}
+	type Outer struct {
+		*Inner // Embedded nil pointer to struct
+	}
+
+	scope := New(Provide(42))
+	var outer Outer
+	// outer.Inner is nil here
+
+	// This should not panic. It should allocate and inject into Inner.
+	scope.InjectStruct(&outer)
+
+	if outer.Inner == nil {
+		t.Fatal("Embedded pointer field was not initialized")
+	}
+	if outer.Inner.I != 42 {
+		t.Fatalf("Nested struct int field not injected: got %d, want %d", outer.Inner.I, 42)
+	}
+}
