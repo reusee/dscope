@@ -272,3 +272,16 @@ func TestInjectStructWithInjectTag(t *testing.T) {
 		t.Fatal()
 	}
 }
+
+func TestInjectStructWithTaggedInjectField(t *testing.T) {
+	scope := New(
+		Provide(int(42)),
+	)
+	var s struct {
+		I Inject[int] `dscope:"."`
+	}
+	scope.InjectStruct(&s)
+	if s.I() != 42 {
+		t.Fatal()
+	}
+}

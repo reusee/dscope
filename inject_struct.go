@@ -66,17 +66,17 @@ l:
 		}
 
 		directive := field.Tag.Get("dscope")
-		if directive == "." || directive == "inject" {
-			infos = append(infos, FieldInfo{
-				Field: field,
-				Type:  field.Type,
-			})
-
-		} else if field.Type.Implements(isInjectType) {
+		if field.Type.Implements(isInjectType) {
 			infos = append(infos, FieldInfo{
 				Field:    field,
 				IsInject: true,
 				Type:     field.Type.Out(0),
+			})
+
+		} else if directive == "." || directive == "inject" {
+			infos = append(infos, FieldInfo{
+				Field: field,
+				Type:  field.Type,
 			})
 
 		} else if field.Anonymous {
