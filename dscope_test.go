@@ -1438,3 +1438,27 @@ func TestForkDoesNotModifyDefs(t *testing.T) {
 		t.Fatal()
 	}
 }
+
+func TestAssignNilPointer(t *testing.T) {
+	scope := New(Provide(42))
+	var ptr *int = nil
+	func() {
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			err, ok := p.(error)
+			if !ok {
+				t.Fatalf("panic value not an error: %v", p)
+			}
+			if !errors.Is(err, ErrBadArgument) {
+				t.Errorf("expected ErrBadArgument, got %T: %v", err, err)
+			}
+			if !strings.Contains(err.Error(), "cannot assign to a nil pointer target of type *int") {
+				t.Errorf("unexpected error message: %s", err.Error())
+			}
+		}()
+		scope.Assign(ptr)
+	}()
+}

@@ -135,14 +135,18 @@ func (scope Scope) Assign(objects ...any) {
 				ErrBadArgument,
 			))
 		}
+		if v.IsNil() {
+			panic(errors.Join(
+				fmt.Errorf("cannot assign to a nil pointer target of type %v", v.Type()),
+				ErrBadArgument,
+			))
+		}
 		t := v.Type().Elem()
 		value, ok := scope.Get(t)
 		if !ok {
 			throwErrDependencyNotFound(t)
 		}
-		if !v.IsNil() {
-			v.Elem().Set(value)
-		}
+		v.Elem().Set(value)
 	}
 }
 
