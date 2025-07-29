@@ -285,3 +285,25 @@ func TestInjectStructWithTaggedInjectField(t *testing.T) {
 		t.Fatal()
 	}
 }
+
+func TestInjectStructTaggedEmbedded(t *testing.T) {
+	type Inner struct {
+		I int `dscope:"."`
+	}
+	type Outer struct {
+		Inner `dscope:"."` // Tagged and embedded
+	}
+
+	scope := New(
+		Provide(42), // Provides int, but not Inner
+	)
+
+	var outer Outer
+	// Before the fix, this panics because it tries to find a provider for `Inner`.
+	// After the fix, this should recursively inject into the embedded struct.
+	scope.InjectStruct(&outer)
+
+	if outer.I != 42 {
+		t.Fatalf("Embedded tagged struct field not injected: got %d, want %d", outer.I, 42)
+	}
+}

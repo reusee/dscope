@@ -73,12 +73,6 @@ l:
 				Type:     field.Type.Out(0),
 			})
 
-		} else if directive == "." || directive == "inject" {
-			infos = append(infos, FieldInfo{
-				Field: field,
-				Type:  field.Type,
-			})
-
 		} else if field.Anonymous {
 			fieldType := field.Type
 			if fieldType.Kind() == reflect.Pointer {
@@ -93,6 +87,13 @@ l:
 				IsEmbedded: true,
 				Type:       field.Type,
 			})
+
+		} else if directive == "." || directive == "inject" {
+			infos = append(infos, FieldInfo{
+				Field: field,
+				Type:  field.Type,
+			})
+
 		}
 
 	}
