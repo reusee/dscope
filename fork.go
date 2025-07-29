@@ -133,8 +133,8 @@ func newForker(
 					DefType: defType,
 				},
 			})
+			newDefOutputIDs[id] = struct{}{}
 			if _, ok := scope.values.Load(id); ok {
-				newDefOutputIDs[id] = struct{}{}
 				redefinedIDs[id] = struct{}{} // Mark override
 			}
 			defNumValues = append(defNumValues, 1)

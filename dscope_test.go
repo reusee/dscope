@@ -220,6 +220,32 @@ func TestPanic(t *testing.T) {
 		)
 	}()
 
+	func() {
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			err, ok := p.(error)
+			if !ok {
+				t.Fatal()
+			}
+			if !errors.Is(err, ErrBadDefinition) {
+				t.Fatalf("expected ErrBadDefinition, got %T: %v", p, p)
+			}
+			if !strings.Contains(err.Error(), "has multiple definitions") {
+				t.Fatalf("unexpected error message: %v", err)
+			}
+		}()
+		i := 42
+		New(
+			&i,
+			func() int {
+				return 2
+			},
+		)
+	}()
+
 }
 
 func TestForkScope(t *testing.T) {
