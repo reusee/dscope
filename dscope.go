@@ -58,6 +58,11 @@ var forkers sync.Map
 // Fork creates a new child scope by layering the given definitions (`defs`)
 // on top of the current scope. It handles overriding existing definitions
 // and ensures values are lazily initialized.
+//
+// Definitions can be provider functions or pointers to values. When a pointer is
+// provided, the value it points to is copied; subsequent changes to the original
+// variable will not affect the value in the scope. To provide a shared singleton,
+// use a provider function that returns a pointer.
 func (scope Scope) Fork(
 	defs ...any,
 ) Scope {
