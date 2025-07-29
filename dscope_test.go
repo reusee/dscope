@@ -1415,3 +1415,26 @@ func TestSharedInstanceProvider(t *testing.T) {
 		t.Errorf("mutation on shared instance was not reflected on original. got %d, want 99", service.ID)
 	}
 }
+
+func TestForkDoesNotModifyDefs(t *testing.T) {
+	type MyModule struct {
+		Module
+	}
+
+	defs := []any{
+		func() int { return 1 },
+		new(MyModule),
+		func() string { return "a" },
+	}
+
+	// Make a copy for comparison after the call
+	defsBefore := make([]any, len(defs))
+	copy(defsBefore, defs)
+
+	// Call Fork
+	New().Fork(defs...)
+
+	if len(defs) != len(defsBefore) {
+		t.Fatal()
+	}
+}

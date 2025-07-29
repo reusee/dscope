@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"slices"
 	"sync"
 )
 
@@ -65,16 +64,22 @@ func (scope Scope) Fork(
 
 	// handle modules
 	var moduleObjects []any
-	for i := 0; i < len(defs); {
-		if def, ok := defs[i].(isModule); ok {
-			defs = slices.Replace(defs, i, i+1)
-			moduleObjects = append(moduleObjects, def)
-		} else {
-			i++
+	for _, def := range defs {
+		if module, ok := def.(isModule); ok {
+			moduleObjects = append(moduleObjects, module)
 		}
 	}
+
 	if len(moduleObjects) > 0 {
-		defs = append(defs, Methods(moduleObjects...)...)
+		// If we have modules, we need to construct a new defs slice
+		// to avoid modifying the caller's slice.
+		newDefs := make([]any, 0, len(defs))
+		for _, def := range defs {
+			if _, ok := def.(isModule); !ok {
+				newDefs = append(newDefs, def)
+			}
+		}
+		defs = append(newDefs, Methods(moduleObjects...)...)
 	}
 
 	// sorting defs may reduce memory consumption if there're calls with same defs but different order
