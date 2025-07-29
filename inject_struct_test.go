@@ -259,3 +259,16 @@ func TestInjectStructEmbeddedNilPointer(t *testing.T) {
 		t.Fatalf("Nested struct int field not injected: got %d, want %d", outer.Inner.I, 42)
 	}
 }
+
+func TestInjectStructWithInjectTag(t *testing.T) {
+	scope := New(
+		Provide(int(42)),
+	)
+	var s struct {
+		I int `dscope:"inject"`
+	}
+	scope.InjectStruct(&s)
+	if s.I != 42 {
+		t.Fatal()
+	}
+}
