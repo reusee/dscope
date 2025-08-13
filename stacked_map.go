@@ -7,7 +7,7 @@ import "iter"
 type _StackedMap struct {
 	Next   *_StackedMap // Previous layer in the stack.
 	Values []_Value     // Values in this layer, sorted by TypeID.
-	Height int8         // Height of the stack from this node downwards.
+	Height int          // Height of the stack from this node downwards.
 }
 
 // Load finds the value with the specified TypeID.
@@ -59,7 +59,7 @@ func (s *_StackedMap) IterValues() iter.Seq[_Value] {
 // Append creates a new _StackedMap layer on top of the current one.
 // The provided values must be pre-sorted by TypeID.
 func (s *_StackedMap) Append(values []_Value) *_StackedMap {
-	var height int8 = 1
+	var height int = 1
 	if s != nil {
 		height = s.Height + 1
 	}
