@@ -5,3 +5,7 @@ package dscope
 func Provide[T any](v T) *T {
 	return &v
 }
+
+func ptrTo[T any](v T) *T {
+	return &v
+}

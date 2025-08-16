@@ -1,6 +1,7 @@
 package dscope
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -70,7 +71,7 @@ func TestInjectStructBadType(t *testing.T) {
 					t.Fatalf("got %v", msg)
 				}
 			}()
-			inject(42)
+			inject(ptrTo(ptrTo(ptrTo(42))))
 		}()
 	})
 }
@@ -306,4 +307,29 @@ func TestInjectStructTaggedEmbedded(t *testing.T) {
 	if outer.I != 42 {
 		t.Fatalf("Embedded tagged struct field not injected: got %d, want %d", outer.I, 42)
 	}
+}
+
+func TestInjectStructNonPointerTarget(t *testing.T) {
+	scope := New(Provide(42))
+	// Pass a non‑pointer struct value; should panic with ErrBadArgument.
+	var s struct {
+		I int `dspace:"."`
+	}
+	defer func() {
+		if p := recover(); p == nil {
+			t.Fatal("should panic")
+		} else {
+			err, ok := p.(error)
+			if !ok {
+				t.Fatalf("panic value not an error: %v", p)
+			}
+			if !errors.Is(err, ErrBadArgument) {
+				t.Fatalf("expected ErrBadArgument, got %T: %v", err, err)
+			}
+			if !strings.Contains(err.Error(), "target must be a pointer") {
+				t.Fatalf("unexpected error message: %s", err.Error())
+			}
+		}
+	}()
+	injectStruct(scope, s) // non‑pointer target
 }
