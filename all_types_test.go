@@ -2,6 +2,7 @@ package dscope
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 )
 
@@ -19,7 +20,8 @@ func TestAllTypes(t *testing.T) {
 	for t := range scope.AllTypes() {
 		names = append(names, fmt.Sprintf("%v", t))
 	}
-	if str := fmt.Sprintf("%v", names); str != "[int32 int64 string float64]" {
+	slices.Sort(names)
+	if str := fmt.Sprintf("%v", names); str != "[float64 int32 int64 string]" {
 		t.Fatalf("got %v", str)
 	}
 
@@ -35,7 +37,8 @@ func TestAllTypes(t *testing.T) {
 	for t := range scope.AllTypes() {
 		names = append(names, fmt.Sprintf("%v", t))
 	}
-	if str := fmt.Sprintf("%v", names); str != "[int32 int8 int64 string float64]" {
+	slices.Sort(names)
+	if str := fmt.Sprintf("%v", names); str != "[float64 int32 int64 int8 string]" {
 		t.Fatalf("got %v", str)
 	}
 
