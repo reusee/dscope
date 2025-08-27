@@ -130,3 +130,57 @@ func TestCallResultAssign(t *testing.T) {
 		res.Assign(&i1, &i2, &i3)
 	})
 }
+
+func TestCallResultExtractNilPointer(t *testing.T) {
+	scope := New(func() int {
+		return 42
+	})
+	res := scope.Call(func(i int) int {
+		return i
+	})
+	var ptr *int = nil
+	defer func() {
+		pv := recover()
+		if pv == nil {
+			t.Fatal("should panic")
+		}
+		err, ok := pv.(error)
+		if !ok {
+			t.Fatalf("panic value not an error: %v", pv)
+		}
+		if !errors.Is(err, ErrBadArgument) {
+			t.Errorf("expected ErrBadArgument, got %T: %v", err, err)
+		}
+		if !strings.Contains(err.Error(), "cannot assign to a nil pointer target of type *int") {
+			t.Errorf("unexpected error message: %s", err.Error())
+		}
+	}()
+	res.Extract(ptr)
+}
+
+func TestCallResultAssignNilPointer(t *testing.T) {
+	scope := New(func() int {
+		return 42
+	})
+	res := scope.Call(func() (int, string, int) {
+		return 1, "foo", 2
+	})
+	var ptr *int = nil
+	defer func() {
+		pv := recover()
+		if pv == nil {
+			t.Fatal("should panic")
+		}
+		err, ok := pv.(error)
+		if !ok {
+			t.Fatalf("panic value not an error: %v", pv)
+		}
+		if !errors.Is(err, ErrBadArgument) {
+			t.Errorf("expected ErrBadArgument, got %T: %v", err, err)
+		}
+		if !strings.Contains(err.Error(), "cannot assign to a nil pointer target of type *int") {
+			t.Errorf("unexpected error message: %s", err.Error())
+		}
+	}()
+	res.Assign(ptr)
+}
