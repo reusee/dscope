@@ -42,6 +42,12 @@ func makeInjectStructFunc(t reflect.Type) _InjectStructFunc {
 	numDeref := 0
 l:
 	for {
+		if numDeref > 100 {
+			panic(errors.Join(
+				fmt.Errorf("too many dereferences or recursive pointer type %v", t),
+				ErrBadArgument,
+			))
+		}
 		switch t.Kind() {
 		case reflect.Pointer:
 			numDeref++

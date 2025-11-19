@@ -400,3 +400,27 @@ func TestInjectStructNilIntermediatePointer(t *testing.T) {
 		}
 	})
 }
+
+func TestInjectStructRecursivePointer(t *testing.T) {
+	type T *T
+	var ptr T
+	func() {
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			err, ok := p.(error)
+			if !ok {
+				t.Fatalf("panic value not an error: %v", p)
+			}
+			if !errors.Is(err, ErrBadArgument) {
+				t.Fatalf("expected ErrBadArgument, got %T: %v", err, err)
+			}
+			if !strings.Contains(err.Error(), "recursive pointer type") {
+				t.Fatalf("unexpected error message: %s", err.Error())
+			}
+		}()
+		injectStruct(New(), &ptr)
+	}()
+}
