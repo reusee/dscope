@@ -48,6 +48,13 @@ func newForker(
 	defNumValues := make([]int, 0, len(defs))
 	defKinds := make([]reflect.Kind, 0, len(defs))
 	for _, def := range defs {
+		if def == nil {
+			panic(errors.Join(
+				fmt.Errorf("nil definition"),
+				ErrBadArgument,
+			))
+		}
+
 		defType := reflect.TypeOf(def)
 		defValue := reflect.ValueOf(def)
 		defKinds = append(defKinds, defType.Kind())

@@ -1517,3 +1517,25 @@ func TestForkRedefinitionOptimization(t *testing.T) {
 		t.Errorf("expected 2 values (optimized), got %d. The redefined value is likely being duplicated in reset layer.", n)
 	}
 }
+
+func TestNewNilDefinition(t *testing.T) {
+	func() {
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			err, ok := p.(error)
+			if !ok {
+				t.Fatalf("expected error, got %T: %v", p, p)
+			}
+			if !errors.Is(err, ErrBadArgument) {
+				t.Fatalf("expected ErrBadArgument, got %v", err)
+			}
+			if !strings.Contains(err.Error(), "nil definition") {
+				t.Fatalf("unexpected error message: %v", err)
+			}
+		}()
+		New(nil)
+	}()
+}
