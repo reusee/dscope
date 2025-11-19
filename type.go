@@ -24,13 +24,19 @@ func getTypeID(t reflect.Type) _TypeID {
 
 func getTypeIDSlow(t reflect.Type) _TypeID {
 	id := _TypeID(nextTypeID.Add(1))
+	// Optimistically store the reverse mapping first.
+	// This ensures that if another goroutine successfully loads 'id' from typeToID,
+	// the corresponding 't' is guaranteed to be present in idToType.
+	idToType.Store(id, t)
+
 	v, loaded := typeToID.LoadOrStore(t, id)
 	if loaded {
-		// not inserted
+		// We lost the race; the type was already inserted by another goroutine.
+		// Clean up our unused optimistic entry.
+		idToType.Delete(id)
 		return v.(_TypeID)
 	} else {
-		// inserted
-		idToType.Store(id, t)
+		// We won the race; the mapping is now canonical.
 		return id
 	}
 }
