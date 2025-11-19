@@ -61,8 +61,16 @@ func Methods(objects ...any) (ret []any) {
 		if t.Kind() == reflect.Struct {
 			for i := range t.NumField() {
 				field := t.Field(i)
+				if field.PkgPath != "" {
+					continue
+				}
 				if field.Type.Implements(isModuleType) {
-					extend(v.Field(i))
+					fv := v.Field(i)
+					if fv.Kind() == reflect.Struct && fv.CanAddr() {
+						extend(fv.Addr())
+					} else {
+						extend(fv)
+					}
 				}
 			}
 		}

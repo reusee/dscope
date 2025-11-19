@@ -75,3 +75,32 @@ func TestMethodsNil(t *testing.T) {
 		}()
 	})
 }
+
+type testMethodsValueMod struct {
+	Module
+}
+
+func (testMethodsValueMod) Value() int64    { return 1 }
+func (*testMethodsValueMod) Pointer() int32 { return 2 }
+
+type testMethodsContainer struct {
+	Module
+	V testMethodsValueMod
+}
+
+func TestMethodsEmbeddedValue(t *testing.T) {
+	// This test ensures that we can discover methods on the pointer receiver
+	// of a module embedded by value.
+	scope := New(Methods(&testMethodsContainer{})...)
+
+	// Should find Value() (int64)
+	if v := Get[int64](scope); v != 1 {
+		t.Fatalf("expected 1, got %d", v)
+	}
+
+	// Should find Pointer() (int32)
+	// Before fix, this fails because we only visit testMethodsValueMod as a value
+	if v := Get[int32](scope); v != 2 {
+		t.Fatalf("expected 2, got %d", v)
+	}
+}
