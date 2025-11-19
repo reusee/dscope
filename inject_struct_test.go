@@ -292,7 +292,7 @@ func TestInjectStructTaggedEmbedded(t *testing.T) {
 		I int `dscope:"."`
 	}
 	type Outer struct {
-		Inner `dscope:"."` // Tagged and embedded
+		Inner // Embedded, no tag -> should recurse
 	}
 
 	scope := New(
@@ -332,4 +332,38 @@ func TestInjectStructNonPointerTarget(t *testing.T) {
 		}
 	}()
 	injectStruct(scope, s) // non‑pointer target
+}
+
+func TestInjectStructEmbeddedValue(t *testing.T) {
+	type Inner struct {
+		I int `dscope:"."`
+	}
+	type Outer struct {
+		Inner `dscope:"."` // Tagged embedded field -> should inject value from scope
+	}
+
+	// Case 1: Inner is provided in scope. Should be injected.
+	scope := New(
+		Provide(42),
+		func() Inner {
+			return Inner{I: 99}
+		},
+	)
+	var outer Outer
+	scope.InjectStruct(&outer)
+	if outer.Inner.I != 99 {
+		t.Fatalf("Tagged embedded struct should receive value from scope, got %d want 99", outer.Inner.I)
+	}
+
+	// Case 2: Inner is NOT provided. Should panic (not recurse).
+	scope2 := New(Provide(42))
+	var outer2 Outer
+	func() {
+		defer func() {
+			if p := recover(); p == nil {
+				t.Fatal("should panic when tagged embedded struct is missing in scope")
+			}
+		}()
+		scope2.InjectStruct(&outer2)
+	}()
 }

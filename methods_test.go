@@ -104,3 +104,19 @@ func TestMethodsEmbeddedValue(t *testing.T) {
 		t.Fatalf("expected 2, got %d", v)
 	}
 }
+
+func TestMethodsDoublePointer(t *testing.T) {
+	// This test verifies that we can extract methods from a pointer to a pointer
+	// e.g. passing **T should find methods defined on *T
+	m := &testMethodsValueMod{}
+	scope := New(Methods(&m)...)
+
+	// Should find Value() (int64) from T
+	if v := Get[int64](scope); v != 1 {
+		t.Fatalf("expected 1, got %d", v)
+	}
+	// Should find Pointer() (int32) from *T
+	if v := Get[int32](scope); v != 2 {
+		t.Fatalf("expected 2, got %d", v)
+	}
+}

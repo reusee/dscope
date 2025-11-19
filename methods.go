@@ -57,6 +57,13 @@ func Methods(objects ...any) (ret []any) {
 			// deref
 			t = t.Elem()
 			v = v.Elem()
+
+			if t.Kind() == reflect.Pointer {
+				// Collect methods from intermediate pointers (e.g. *T when we started with **T)
+				for i := range v.NumMethod() {
+					ret = append(ret, v.Method(i).Interface())
+				}
+			}
 		}
 		if t.Kind() == reflect.Struct {
 			for i := range t.NumField() {
