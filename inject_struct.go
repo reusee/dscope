@@ -117,6 +117,16 @@ l:
 		}
 
 		for range numDeref {
+			if value.IsNil() {
+				if value.CanSet() {
+					value.Set(reflect.New(value.Type().Elem()))
+				} else {
+					panic(errors.Join(
+						fmt.Errorf("cannot inject into a nil pointer target of type %v", value.Type()),
+						ErrBadArgument,
+					))
+				}
+			}
 			value = value.Elem()
 		}
 		for _, info := range infos {

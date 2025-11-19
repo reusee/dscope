@@ -367,3 +367,36 @@ func TestInjectStructEmbeddedValue(t *testing.T) {
 		scope2.InjectStruct(&outer2)
 	}()
 }
+
+func TestInjectStructNilIntermediatePointer(t *testing.T) {
+	type S struct {
+		I int `dscope:"."`
+	}
+	scope := New(Provide(42))
+
+	t.Run("pointer to nil pointer", func(t *testing.T) {
+		var s *S // nil
+		// InjectStruct takes &s which is **S.
+		scope.InjectStruct(&s)
+		if s == nil {
+			t.Fatal("s is still nil")
+		}
+		if s.I != 42 {
+			t.Fatalf("s.I = %d, want 42", s.I)
+		}
+	})
+
+	t.Run("pointer to pointer to nil pointer", func(t *testing.T) {
+		var s **S // nil
+		scope.InjectStruct(&s)
+		if s == nil {
+			t.Fatal("s is nil")
+		}
+		if *s == nil {
+			t.Fatal("*s is nil")
+		}
+		if (*s).I != 42 {
+			t.Fatal("not injected")
+		}
+	})
+}
