@@ -278,6 +278,9 @@ func newForker(
 		if !reset {
 			continue
 		}
+		if _, ok := redefinedIDs[id]; ok {
+			continue
+		}
 		if _, ok := scope.values.Load(id); ok { // Only reset inherited values
 			resetIDs = append(resetIDs, id)
 		}

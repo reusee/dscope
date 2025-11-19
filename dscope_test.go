@@ -1488,3 +1488,32 @@ func TestAssignNilPointer(t *testing.T) {
 		scope.Assign(ptr)
 	}()
 }
+
+func TestForkRedefinitionOptimization(t *testing.T) {
+	scope := New(func() int {
+		return 1
+	})
+	// Initial state: 1 value (int)
+	if n := scope.values.Len(); n != 1 {
+		t.Fatalf("expected 1 value, got %d", n)
+	}
+
+	// Fork with override
+	scope2 := scope.Fork(func() int {
+		return 2
+	})
+
+	// Expected state:
+	// Parent has 1 value.
+	// Child appends 1 new value (override).
+	// Child SHOULD NOT append a reset value for int, because it's overridden.
+	// So total should be 1 (parent) + 1 (new) = 2.
+	//
+	// With bug:
+	// It appends reset value for int.
+	// Total = 1 + 1 + 1 = 3.
+
+	if n := scope2.values.Len(); n != 2 {
+		t.Errorf("expected 2 values (optimized), got %d. The redefined value is likely being duplicated in reset layer.", n)
+	}
+}
