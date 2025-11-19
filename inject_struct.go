@@ -45,6 +45,9 @@ l:
 		switch t.Kind() {
 		case reflect.Pointer:
 			numDeref++
+			// This may causes stack overflow for recursive pointer types.
+			// Fixing this will introduce extra cost for common cases.
+			// So we choose not to handle recursive pointer types, just let it crash.
 			t = t.Elem()
 		case reflect.Struct:
 			break l
