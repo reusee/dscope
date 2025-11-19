@@ -1539,3 +1539,61 @@ func TestNewNilDefinition(t *testing.T) {
 		New(nil)
 	}()
 }
+
+func TestStaleInjectStruct(t *testing.T) {
+	type Config struct {
+		Val int
+	}
+	type Service struct {
+		Cfg Config `dscope:"."`
+	}
+
+	// Parent Scope
+	scope := New(
+		Provide(Config{Val: 1}),
+		func(inject InjectStruct) *Service {
+			var s Service
+			inject(&s)
+			return &s
+		},
+	)
+
+	s := Get[*Service](scope)
+	if s.Cfg.Val != 1 {
+		t.Fatalf("expected 1, got %d", s.Cfg.Val)
+	}
+
+	// Child Scope with override
+	scope2 := scope.Fork(
+		Provide(Config{Val: 2}),
+	)
+
+	s2 := Get[*Service](scope2)
+	if s2.Cfg.Val != 2 {
+		t.Fatalf("expected 2, got %d", s2.Cfg.Val)
+	}
+}
+
+func TestStaleInjectField(t *testing.T) {
+	type Service struct {
+		Val Inject[int] `dscope:"."`
+	}
+	scope := New(
+		Provide(int(1)),
+		func(inject InjectStruct) *Service {
+			var s Service
+			inject(&s)
+			return &s
+		},
+	)
+	s := Get[*Service](scope)
+	if s.Val() != 1 {
+		t.Fatal()
+	}
+
+	scope2 := scope.Fork(Provide(int(2)))
+	s2 := Get[*Service](scope2)
+	if s2.Val() != 2 {
+		t.Fatalf("expected 2, got %d", s2.Val())
+	}
+}
