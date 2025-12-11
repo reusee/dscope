@@ -73,8 +73,16 @@ func Methods(objects ...any) (ret []any) {
 				}
 				if field.Type.Implements(isModuleType) {
 					fv := v.Field(i)
-					if fv.Kind() == reflect.Struct && fv.CanAddr() {
-						extend(fv.Addr())
+					if fv.Kind() == reflect.Struct {
+						if fv.CanAddr() {
+							extend(fv.Addr())
+						} else {
+							// For non-addressable struct fields (e.g. when the parent is passed by value),
+							// we create an addressable copy to ensure methods with pointer receivers are found.
+							ptr := reflect.New(fv.Type())
+							ptr.Elem().Set(fv)
+							extend(ptr)
+						}
 					} else {
 						extend(fv)
 					}

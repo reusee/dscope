@@ -120,3 +120,24 @@ func TestMethodsDoublePointer(t *testing.T) {
 		t.Fatalf("expected 2, got %d", v)
 	}
 }
+
+func TestMethodsEmbeddedValuePassedByValue(t *testing.T) {
+	// This test verifies that we can capture methods on pointer receivers
+	// of embedded modules even when the parent struct is passed by value (non-addressable).
+	m := testMethodsContainer{
+		V: testMethodsValueMod{},
+	}
+	// Pass by value
+	scope := New(Methods(m)...)
+
+	// Should find Pointer() (int32) from *testMethodsValueMod
+	// This would fail if we didn't create an addressable copy of the embedded field
+	if v := Get[int32](scope); v != 2 {
+		t.Fatalf("expected 2, got %d", v)
+	}
+
+	// Should find Value() (int64) from testMethodsValueMod
+	if v := Get[int64](scope); v != 1 {
+		t.Fatalf("expected 1, got %d", v)
+	}
+}
