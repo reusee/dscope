@@ -424,3 +424,26 @@ func TestInjectStructRecursivePointer(t *testing.T) {
 		injectStruct(New(), &ptr)
 	}()
 }
+
+func TestInjectStructNil(t *testing.T) {
+	scope := New()
+	defer func() {
+		p := recover()
+		if p == nil {
+			t.Fatal("InjectStruct(nil) should panic")
+		}
+		err, ok := p.(error)
+		if !ok {
+			t.Fatalf("panic value not an error: %v", p)
+		}
+		// We expect a structured ErrBadArgument, not a raw reflect panic.
+		if !errors.Is(err, ErrBadArgument) {
+			t.Errorf("expected ErrBadArgument, got %T: %v", err, err)
+		}
+		if !strings.Contains(err.Error(), "target must be a pointer") {
+			t.Errorf("unexpected error message: %s", err.Error())
+		}
+	}()
+	// This currently causes a reflect panic because Type() is called on invalid value
+	scope.InjectStruct(nil)
+}

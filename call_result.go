@@ -63,7 +63,10 @@ func (c CallResult) Assign(targets ...any) {
 		typ := targetValue.Type().Elem()
 		poses, ok := c.positionsByType[typ]
 		if !ok {
-			continue
+			panic(errors.Join(
+				fmt.Errorf("no return values of type %v", typ),
+				ErrBadArgument,
+			))
 		}
 		if targetValue.IsNil() { // prevent reflect panics on nil pointers
 			panic(errors.Join(

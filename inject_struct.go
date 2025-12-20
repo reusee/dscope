@@ -22,6 +22,12 @@ var injectStructFuncs sync.Map
 
 func injectStruct(scope Scope, target any) {
 	v := reflect.ValueOf(target)
+	if !v.IsValid() {
+		panic(errors.Join(
+			fmt.Errorf("target must be a pointer to a struct, got nil"),
+			ErrBadArgument,
+		))
+	}
 	if v.Kind() != reflect.Pointer {
 		panic(errors.Join(
 			fmt.Errorf("target must be a pointer to a struct, got %v", v.Type()),

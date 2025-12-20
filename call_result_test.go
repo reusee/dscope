@@ -54,7 +54,25 @@ func TestCallResult(t *testing.T) {
 			return i * 2
 		})
 		var s string
-		res.Assign(&s)
+		func() {
+			defer func() {
+				p := recover()
+				if p == nil {
+					t.Fatal("should panic")
+				}
+				err, ok := p.(error)
+				if !ok {
+					t.Fatalf("panic value not an error: %v", p)
+				}
+				if !errors.Is(err, ErrBadArgument) {
+					t.Errorf("expected ErrBadArgument, got %T", err)
+				}
+				if !strings.Contains(err.Error(), "no return values of type string") {
+					t.Errorf("unexpected error message: %v", err)
+				}
+			}()
+			res.Assign(&s)
+		}()
 	})
 
 	t.Run("Extract too many", func(t *testing.T) {
@@ -183,4 +201,32 @@ func TestCallResultAssignNilPointer(t *testing.T) {
 		}
 	}()
 	res.Assign(ptr)
+}
+
+func TestAssignTypeMismatch(t *testing.T) {
+	scope := New()
+	res := scope.Call(func() int {
+		return 42
+	})
+
+	var s string
+	// This should panic because the function returns int, not string.
+	// Currently, it fails silently (bug).
+	defer func() {
+		p := recover()
+		if p == nil {
+			t.Fatal("Assign should panic when target type is missing")
+		}
+		err, ok := p.(error)
+		if !ok {
+			t.Fatalf("panic value not an error: %v", p)
+		}
+		if !errors.Is(err, ErrBadArgument) {
+			t.Errorf("expected ErrBadArgument, got %T: %v", err, err)
+		}
+		if !strings.Contains(err.Error(), "no return values of type string") {
+			t.Errorf("unexpected error message: %s", err.Error())
+		}
+	}()
+	res.Assign(&s)
 }
