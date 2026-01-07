@@ -95,7 +95,15 @@ func Methods(objects ...any) (ret []any) {
 	}
 
 	for _, object := range objects {
-		extend(reflect.ValueOf(object))
+		v := reflect.ValueOf(object)
+		if v.IsValid() && v.Kind() == reflect.Struct {
+			// For root structs passed by value, create an addressable copy
+			// to ensure pointer receiver methods are discovered.
+			ptr := reflect.New(v.Type())
+			ptr.Elem().Set(v)
+			v = ptr
+		}
+		extend(v)
 	}
 
 	return

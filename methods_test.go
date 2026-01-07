@@ -150,3 +150,27 @@ func TestMethodsEmbeddedValuePassedByValue(t *testing.T) {
 		t.Fatalf("expected 1, got %d", v)
 	}
 }
+
+type testMethodsRootValue struct {
+	Module
+}
+
+func (testMethodsRootValue) Value() int64    { return 1 }
+func (*testMethodsRootValue) Pointer() int32 { return 2 }
+
+func TestMethodsRootValueAddressability(t *testing.T) {
+	m := testMethodsRootValue{}
+	// Passing by value
+	scope := New(Methods(m)...)
+
+	// Should find Value() -> int64
+	if v := Get[int64](scope); v != 1 {
+		t.Fatalf("expected 1, got %d", v)
+	}
+
+	// Should find Pointer() -> int32
+	// Without fix, this fails to find the provider for int32
+	if v := Get[int32](scope); v != 2 {
+		t.Fatalf("expected 2, got %d", v)
+	}
+}
