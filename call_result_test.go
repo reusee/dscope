@@ -141,7 +141,7 @@ func TestCallResultAssign(t *testing.T) {
 			if !errors.Is(err, ErrBadArgument) {
 				t.Errorf("expected ErrBadArgument, got %T: %v", err, err)
 			}
-			if !strings.Contains(err.Error(), "not enough return values of type int to assign to target (wanted at least 3, have 2)") {
+			if !strings.Contains(err.Error(), "no return values of type int") {
 				t.Errorf("unexpected error message: %s", err.Error())
 			}
 		}()
@@ -201,6 +201,18 @@ func TestCallResultAssignNilPointer(t *testing.T) {
 		}
 	}()
 	res.Assign(ptr)
+}
+
+func TestCallResultAssignInterface(t *testing.T) {
+	scope := New()
+	res := scope.Call(func() error {
+		return fmt.Errorf("foo")
+	})
+	var err error
+	res.Assign(&err)
+	if err == nil || err.Error() != "foo" {
+		t.Fatal("failed to assign to interface")
+	}
 }
 
 func TestAssignTypeMismatch(t *testing.T) {

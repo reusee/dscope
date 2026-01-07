@@ -45,3 +45,17 @@ func TestScopeToDOT(t *testing.T) {
 	}
 
 }
+
+func TestToDOTInjectStruct(t *testing.T) {
+	scope := New(func(inject InjectStruct) int {
+		return 42
+	})
+	buf := new(strings.Builder)
+	if err := scope.ToDOT(buf); err != nil {
+		t.Fatal(err)
+	}
+	dot := buf.String()
+	if !strings.Contains(dot, "InjectStruct") {
+		t.Fatal("InjectStruct missing from DOT graph")
+	}
+}

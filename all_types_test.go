@@ -2,6 +2,7 @@ package dscope
 
 import (
 	"fmt"
+	"reflect"
 	"slices"
 	"testing"
 )
@@ -21,7 +22,7 @@ func TestAllTypes(t *testing.T) {
 		names = append(names, fmt.Sprintf("%v", t))
 	}
 	slices.Sort(names)
-	if str := fmt.Sprintf("%v", names); str != "[float64 int32 int64 string]" {
+	if str := fmt.Sprintf("%v", names); str != "[dscope.InjectStruct float64 int32 int64 string]" {
 		t.Fatalf("got %v", str)
 	}
 
@@ -38,7 +39,7 @@ func TestAllTypes(t *testing.T) {
 		names = append(names, fmt.Sprintf("%v", t))
 	}
 	slices.Sort(names)
-	if str := fmt.Sprintf("%v", names); str != "[float64 int32 int64 int8 string]" {
+	if str := fmt.Sprintf("%v", names); str != "[dscope.InjectStruct float64 int32 int64 int8 string]" {
 		t.Fatalf("got %v", str)
 	}
 
@@ -48,3 +49,18 @@ func TestAllTypes(t *testing.T) {
 	}
 
 }
+
+func TestAllTypesInjectStruct(t *testing.T) {
+	scope := New()
+	found := false
+	for typ := range scope.AllTypes() {
+		if typ == reflect.TypeFor[InjectStruct]() {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("InjectStruct not found in AllTypes")
+	}
+}
+

@@ -46,9 +46,8 @@ func (c CallResult) Extract(targets ...any) {
 	}
 }
 
-// Assign assigns targets by types
 func (c CallResult) Assign(targets ...any) {
-	offsets := make(map[reflect.Type]int)
+	assigned := make([]bool, len(c.Values))
 	for _, target := range targets {
 		if target == nil {
 			continue
@@ -60,28 +59,27 @@ func (c CallResult) Assign(targets ...any) {
 				ErrBadArgument,
 			))
 		}
-		typ := targetValue.Type().Elem()
-		poses, ok := c.positionsByType[typ]
-		if !ok {
-			panic(errors.Join(
-				fmt.Errorf("no return values of type %v", typ),
-				ErrBadArgument,
-			))
-		}
-		if targetValue.IsNil() { // prevent reflect panics on nil pointers
+		if targetValue.IsNil() {
 			panic(errors.Join(
 				fmt.Errorf("cannot assign to a nil pointer target of type %v", targetValue.Type()),
 				ErrBadArgument,
 			))
 		}
-		offset := offsets[typ]
-		offsets[typ]++
-		if offset >= len(poses) {
+		targetType := targetValue.Type().Elem()
+		found := false
+		for i, v := range c.Values {
+			if !assigned[i] && v.Type().AssignableTo(targetType) {
+				targetValue.Elem().Set(v)
+				assigned[i] = true
+				found = true
+				break
+			}
+		}
+		if !found {
 			panic(errors.Join(
-				fmt.Errorf("not enough return values of type %v to assign to target (wanted at least %d, have %d)", typ, offset+1, len(poses)),
+				fmt.Errorf("no return values of type %v", targetType),
 				ErrBadArgument,
 			))
 		}
-		targetValue.Elem().Set(c.Values[poses[offset]])
 	}
 }
