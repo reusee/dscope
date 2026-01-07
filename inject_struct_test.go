@@ -24,7 +24,7 @@ func TestInjectStruct(t *testing.T) {
 	var s struct {
 		I int `dscope:"."`
 	}
-	injectStruct(scope, &s)
+	injectStruct(scope, &s, 0)
 	if s.I != 42 {
 		t.Fatal()
 	}
@@ -52,7 +52,7 @@ func BenchmarkInjectStruct(b *testing.B) {
 		I int `dscope:"."`
 	}
 	for b.Loop() {
-		injectStruct(scope, &s)
+		injectStruct(scope, &s, 0)
 	}
 }
 
@@ -140,7 +140,7 @@ func TestInjectStructNested(t *testing.T) {
 	)
 
 	var outer Outer
-	injectStruct(scope, &outer)
+	injectStruct(scope, &outer, 0)
 
 	if outer.S != "foo" {
 		t.Fatalf("Outer string field not injected: got %q, want %q", outer.S, "foo")
@@ -171,13 +171,13 @@ func TestInjectStructNilPointerTarget(t *testing.T) {
 					t.Fatalf("got %v", msg)
 				}
 			}()
-			injectStruct(scope, ptr) // Call with nil pointer
+			injectStruct(scope, ptr, 0) // Call with nil pointer
 		}()
 	})
 
 	t.Run("non-nil pointer to struct", func(t *testing.T) {
 		ptr := &MyStruct{} // Non-nil pointer target
-		injectStruct(scope, ptr)
+		injectStruct(scope, ptr, 0)
 		if ptr.I != 42 {
 			t.Fatalf("injection failed for non-nil pointer: got %d, want %d", ptr.I, 42)
 		}
@@ -197,13 +197,13 @@ func TestInjectStructNilPointerTarget(t *testing.T) {
 					t.Fatalf("got %v", msg)
 				}
 			}()
-			injectStruct(scope, target)
+			injectStruct(scope, target, 0)
 		}()
 	})
 
 	t.Run("non-nil interface holding non-nil pointer to struct", func(t *testing.T) {
 		var target any = &MyStruct{} // non-nil interface holding non-nil pointer
-		injectStruct(scope, target)
+		injectStruct(scope, target, 0)
 		ptr := target.(*MyStruct)
 		if ptr.I != 42 {
 			t.Fatalf("injection failed for non-nil interface holding pointer: got %d, want %d", ptr.I, 42)
@@ -331,7 +331,7 @@ func TestInjectStructNonPointerTarget(t *testing.T) {
 			}
 		}
 	}()
-	injectStruct(scope, s) // non‑pointer target
+	injectStruct(scope, s, 0) // non‑pointer target
 }
 
 func TestInjectStructEmbeddedValue(t *testing.T) {
@@ -421,7 +421,7 @@ func TestInjectStructRecursivePointer(t *testing.T) {
 				t.Fatalf("unexpected error message: %s", err.Error())
 			}
 		}()
-		injectStruct(New(), &ptr)
+		injectStruct(New(), &ptr, 0)
 	}()
 }
 
@@ -447,3 +447,29 @@ func TestInjectStructNil(t *testing.T) {
 	// This currently causes a reflect panic because Type() is called on invalid value
 	scope.InjectStruct(nil)
 }
+
+func TestInjectStructCircularEmbedding(t *testing.T) {
+	// This test verifies that InjectStruct detects circular embedding and panics
+	// instead of causing a stack overflow.
+	type Rec struct {
+		*Rec
+	}
+	defer func() {
+		p := recover()
+		if p == nil {
+			t.Fatal("should panic")
+		}
+		err, ok := p.(error)
+		if !ok {
+			t.Fatalf("panic value not an error: %v", p)
+		}
+		if !errors.Is(err, ErrBadArgument) {
+			t.Fatalf("expected ErrBadArgument, got %T: %v", err, err)
+		}
+		if !strings.Contains(err.Error(), "recursive struct injection depth limit exceeded") {
+			t.Fatalf("unexpected error message: %s", err.Error())
+		}
+	}()
+	New().InjectStruct(&Rec{})
+}
+

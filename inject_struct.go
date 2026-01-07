@@ -12,15 +12,15 @@ type InjectStruct func(target any)
 var injectStructTypeID = getTypeID(reflect.TypeFor[InjectStruct]())
 
 func (scope Scope) InjectStruct(target any) {
-	injectStruct(scope, target)
+	injectStruct(scope, target, 0)
 }
 
-type _InjectStructFunc = func(scope Scope, value reflect.Value)
+type _InjectStructFunc = func(scope Scope, value reflect.Value, depth int)
 
 // reflect.Type -> _InjectStructFunc
 var injectStructFuncs sync.Map
 
-func injectStruct(scope Scope, target any) {
+func injectStruct(scope Scope, target any, depth int) {
 	v := reflect.ValueOf(target)
 	if !v.IsValid() {
 		panic(errors.Join(
@@ -36,12 +36,12 @@ func injectStruct(scope Scope, target any) {
 	}
 	targetType := v.Type()
 	if fn, ok := injectStructFuncs.Load(targetType); ok {
-		fn.(_InjectStructFunc)(scope, v)
+		fn.(_InjectStructFunc)(scope, v, depth)
 		return
 	}
 	injectFunc := makeInjectStructFunc(targetType)
 	fn, _ := injectStructFuncs.LoadOrStore(targetType, injectFunc)
-	fn.(_InjectStructFunc)(scope, v)
+	fn.(_InjectStructFunc)(scope, v, depth)
 }
 
 func makeInjectStructFunc(t reflect.Type) _InjectStructFunc {
@@ -119,7 +119,14 @@ l:
 
 	}
 
-	return func(scope Scope, value reflect.Value) {
+	return func(scope Scope, value reflect.Value, depth int) {
+		if depth > 64 {
+			panic(errors.Join(
+				fmt.Errorf("recursive struct injection depth limit exceeded"),
+				ErrBadArgument,
+			))
+		}
+
 		// Check if the target pointer is nil before dereferencing
 		if value.Kind() == reflect.Pointer && value.IsNil() {
 			panic(errors.Join(
@@ -168,10 +175,10 @@ l:
 							continue
 						}
 					}
-					injectStruct(scope, fieldValue.Interface())
+					injectStruct(scope, fieldValue.Interface(), depth+1)
 				} else { // Embedded by value
 					if fieldValue.CanAddr() {
-						injectStruct(scope, fieldValue.Addr().Interface())
+						injectStruct(scope, fieldValue.Addr().Interface(), depth+1)
 					}
 				}
 

@@ -121,6 +121,15 @@ func TestMethodsDoublePointer(t *testing.T) {
 	}
 }
 
+func TestMethodsMultiPointerNil(t *testing.T) {
+	// This test verifies that Methods handles multi-level nil pointers without panicking.
+	// e.g., passing **T(nil) should work.
+	defs := Methods((**TestMethodsFoo)(nil))
+	if len(defs) == 0 {
+		t.Fatal("no methods found for multi-level nil pointer")
+	}
+}
+
 func TestMethodsEmbeddedValuePassedByValue(t *testing.T) {
 	// This test verifies that we can capture methods on pointer receivers
 	// of embedded modules even when the parent struct is passed by value (non-addressable).

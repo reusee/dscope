@@ -6,9 +6,6 @@ import (
 	"reflect"
 )
 
-// Methods extracts all exported methods from the provided objects and any
-// It recursively traverses struct fields marked for extension to collect their methods as well.
-// This prevents infinite loops by keeping track of visited types.
 func Methods(objects ...any) (ret []any) {
 	visitedTypes := make(map[reflect.Type]bool)
 	var extend func(reflect.Value)
@@ -56,7 +53,12 @@ func Methods(objects ...any) (ret []any) {
 		for t.Kind() == reflect.Pointer {
 			// deref
 			t = t.Elem()
-			v = v.Elem()
+			if v.IsNil() {
+				// Allocate new instance for nil pointers to avoid panic on Elem()
+				v = reflect.New(t).Elem()
+			} else {
+				v = v.Elem()
+			}
 
 			if t.Kind() == reflect.Pointer {
 				// Collect methods from intermediate pointers (e.g. *T when we started with **T)
