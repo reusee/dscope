@@ -425,6 +425,18 @@ func TestInjectStructRecursivePointer(t *testing.T) {
 	}()
 }
 
+func TestInjectStructPointerToInject(t *testing.T) {
+	// This test reproduces a panic where InjectStruct tries to process *Inject[T]
+	// because it implements the isInject interface, but it's not a function.
+	type S struct {
+		I *Inject[int]
+	}
+	scope := New(Provide(42))
+	var s S
+	// Should not panic. It should simply ignore the field or handle it gracefully.
+	scope.InjectStruct(&s)
+}
+
 func TestInjectStructNil(t *testing.T) {
 	scope := New()
 	defer func() {
@@ -472,4 +484,3 @@ func TestInjectStructCircularEmbedding(t *testing.T) {
 	}()
 	New().InjectStruct(&Rec{})
 }
-

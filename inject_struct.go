@@ -87,7 +87,10 @@ l:
 		}
 
 		directive := field.Tag.Get("dscope")
-		if field.Type.Implements(isInjectType) {
+		if field.Type.Kind() == reflect.Func && field.Type.Implements(isInjectType) {
+			// Only treat as Inject[T] if it is a function.
+			// Pointers to Inject[T] also implement the interface but cannot be
+			// processed by reflect.MakeFunc or Out(0).
 			infos = append(infos, FieldInfo{
 				Field:    field,
 				IsInject: true,
