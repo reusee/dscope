@@ -174,3 +174,41 @@ func TestMethodsRootValueAddressability(t *testing.T) {
 		t.Fatalf("expected 2, got %d", v)
 	}
 }
+
+func TestMethodsMultiLevelNilInterface(t *testing.T) {
+	t.Run("nil double pointer to interface", func(t *testing.T) {
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			err, ok := p.(error)
+			if !ok {
+				t.Fatalf("panic value not an error: %v", p)
+			}
+			msg := err.Error()
+			if !strings.Contains(msg, "nil pointer to interface **io.Reader") {
+				t.Fatalf("got %s", msg)
+			}
+		}()
+		Methods((**io.Reader)(nil))
+	})
+
+	t.Run("nil triple pointer to interface", func(t *testing.T) {
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			err, ok := p.(error)
+			if !ok {
+				t.Fatalf("panic value not an error: %v", p)
+			}
+			msg := err.Error()
+			if !strings.Contains(msg, "nil pointer to interface ***io.Reader") {
+				t.Fatalf("got %s", msg)
+			}
+		}()
+		Methods((***io.Reader)(nil))
+	})
+}

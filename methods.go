@@ -32,9 +32,12 @@ func Methods(objects ...any) (ret []any) {
 		visitedTypes[t] = true
 
 		if t.Kind() == reflect.Pointer && v.IsNil() {
-			// If it's a pointer to an interface that's nil, we can't construct.
-			// e.g. var ptr *io.Reader; Methods(ptr)
-			if t.Elem().Kind() == reflect.Interface {
+			// If it's a pointer chain eventually to an interface that's nil, we can't construct.
+			base := t
+			for base.Kind() == reflect.Pointer {
+				base = base.Elem()
+			}
+			if base.Kind() == reflect.Interface {
 				panic(errors.Join(
 					fmt.Errorf("invalid value: nil pointer to interface %v", t),
 					ErrBadArgument,
