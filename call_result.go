@@ -48,38 +48,45 @@ func (c CallResult) Extract(targets ...any) {
 
 func (c CallResult) Assign(targets ...any) {
 	assigned := make([]bool, len(c.Values))
-	for _, target := range targets {
+	satisfied := make([]bool, len(targets))
+	targetValues := make([]reflect.Value, len(targets))
+	for i, target := range targets {
 		if target == nil {
+			satisfied[i] = true
 			continue
 		}
-		targetValue := reflect.ValueOf(target)
-		if targetValue.Kind() != reflect.Pointer {
-			panic(errors.Join(
-				fmt.Errorf("%v is not a pointer", target),
-				ErrBadArgument,
-			))
+		v := reflect.ValueOf(target)
+		if v.Kind() != reflect.Pointer {
+			panic(errors.Join(fmt.Errorf("%v is not a pointer", target), ErrBadArgument))
 		}
-		if targetValue.IsNil() {
-			panic(errors.Join(
-				fmt.Errorf("cannot assign to a nil pointer target of type %v", targetValue.Type()),
-				ErrBadArgument,
-			))
+		if v.IsNil() {
+			panic(errors.Join(fmt.Errorf("cannot assign to a nil pointer target of type %v", v.Type()), ErrBadArgument))
 		}
-		targetType := targetValue.Type().Elem()
-		found := false
-		for i, v := range c.Values {
-			if !assigned[i] && v.Type().AssignableTo(targetType) {
-				targetValue.Elem().Set(v)
-				assigned[i] = true
-				found = true
-				break
+		targetValues[i] = v
+	}
+	// Two-pass matching to prevent interface targets from "stealing" concrete return values
+	for pass := 0; pass < 2; pass++ { // pass 0: exact matches, pass 1: assignable matches
+		for i, v := range targetValues {
+			if satisfied[i] {
+				continue
+			}
+			typ := v.Type().Elem()
+			for j, val := range c.Values {
+				if assigned[j] {
+					continue
+				}
+				if (pass == 0 && val.Type() == typ) || (pass == 1 && val.Type().AssignableTo(typ)) {
+					v.Elem().Set(val)
+					assigned[j] = true
+					satisfied[i] = true
+					break
+				}
 			}
 		}
-		if !found {
-			panic(errors.Join(
-				fmt.Errorf("no return values of type %v", targetType),
-				ErrBadArgument,
-			))
+	}
+	for i, ok := range satisfied {
+		if !ok {
+			panic(errors.Join(fmt.Errorf("no return values of type %v", targetValues[i].Type().Elem()), ErrBadArgument))
 		}
 	}
 }

@@ -242,3 +242,21 @@ func TestAssignTypeMismatch(t *testing.T) {
 	}()
 	res.Assign(&s)
 }
+
+func TestCallResultAssignInterfaceGreedy(t *testing.T) {
+	scope := New()
+	// Function returns a concrete type and an interface it implements.
+	res := scope.Call(func() (*strings.Builder, fmt.Stringer) {
+		b := new(strings.Builder)
+		b.WriteString("foo")
+		return b, b
+	})
+	var s fmt.Stringer
+	var b *strings.Builder
+	// Before the fix, the generic target &s would steal the concrete *strings.Builder
+	// (Values[0]), leaving fmt.Stringer (Values[1]) for &b, which causes a panic.
+	res.Assign(&s, &b)
+	if s == nil || b == nil || s.String() != "foo" || b.String() != "foo" {
+		t.Fatal("assignment failed")
+	}
+}
