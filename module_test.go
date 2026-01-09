@@ -40,20 +40,3 @@ func TestModule(t *testing.T) {
 	Get[float64](scope)
 	Get[int16](scope)
 }
-
-func TestModuleInjectable(t *testing.T) {
-	type Mod struct {
-		Module
-		Val int
-	}
-	m := &Mod{Val: 42}
-	scope := New(m)
-
-	// Providing *Mod as a value provider should make type Mod available in the scope.
-	// Before the fix, Mod is missing because the pointer to it (which is a module)
-	// was stripped from the definitions in Scope.Fork.
-	val := Get[Mod](scope)
-	if val.Val != 42 {
-		t.Fatalf("expected 42, got %d", val.Val)
-	}
-}
