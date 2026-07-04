@@ -64,3 +64,21 @@ func TestAllTypesInjectStruct(t *testing.T) {
 	}
 }
 
+func TestAllTypesNoDuplicateInjectStruct(t *testing.T) {
+	// Providing an always-provided type (InjectStruct) as a definition must not
+	// cause AllTypes to yield it twice. The built-in version is emitted first;
+	// the user-provided definition (which Scope.get ignores) must be skipped in
+	// the values iteration.
+	scope := New(func() InjectStruct {
+		return func(target any) {}
+	})
+	var count int
+	for typ := range scope.AllTypes() {
+		if typ == reflect.TypeFor[InjectStruct]() {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("InjectStruct should appear exactly once in AllTypes, got %d", count)
+	}
+}
