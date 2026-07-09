@@ -165,7 +165,10 @@ func (scope Scope) get(id _TypeID) (
 	// special types
 	switch id {
 	case injectStructTypeID:
-		return reflect.ValueOf(scope.InjectStruct), true
+		// Convert to the named InjectStruct type so that type assertions and
+		// generic Get[InjectStruct] succeed. reflect.ValueOf of the method value
+		// yields the unnamed func(any) type, which is not identical to InjectStruct.
+		return reflect.ValueOf(scope.InjectStruct).Convert(reflect.TypeFor[InjectStruct]()), true
 	}
 
 	value, ok := scope.values.Load(id)
