@@ -189,6 +189,42 @@ func (scope Scope) Get(t reflect.Type) (
 	return scope.get(getTypeID(t))
 }
 
+const TheoryOfScopeInvocation = `
+dscope invocation theory:
+- Exported call entry points must reject malformed call targets with dscope
+  errors instead of leaking raw reflect panics.
+- Nil, invalid, or non-function call targets are bad arguments because the
+  container cannot establish dependency semantics for them.
+- Once a target is verified as callable, dependency resolution and provider
+  execution follow the normal scope semantics.
+`
+
+func validateCallableValue(fnValue reflect.Value) reflect.Type {
+	if !fnValue.IsValid() {
+		panic(errors.Join(
+			fmt.Errorf("nil function provided"),
+			ErrBadArgument,
+		))
+	}
+
+	fnType := fnValue.Type()
+	if fnType.Kind() != reflect.Func {
+		panic(errors.Join(
+			fmt.Errorf("%v is not a function", fnType),
+			ErrBadArgument,
+		))
+	}
+
+	if fnValue.IsNil() {
+		panic(errors.Join(
+			fmt.Errorf("%v nil function provided", fnType),
+			ErrBadArgument,
+		))
+	}
+
+	return fnType
+}
+
 // Get is a type-safe generic function to retrieve a single value of type T.
 // It panics if the type is not found or if an error occurs during resolution.
 func Get[T any](scope Scope) (o T) {
@@ -254,10 +290,11 @@ var reflectValuesPool = sync.Pool{
 	},
 }
 
-// CallValue executes the given function `fnValue` after resolving its arguments from the scope.
+// CallValue executes the given function value after resolving its arguments from the scope.
 // It returns a CallResult containing the function's return values.
+// It panics with ErrBadArgument if fnValue is invalid, nil, or not a function.
 func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
-	fnType := fnValue.Type()
+	fnType := validateCallableValue(fnValue)
 	var args []reflect.Value
 	// Use pool for small number of arguments
 	if nArgs := fnType.NumIn(); nArgs <= reflectValuesPoolMaxLen {

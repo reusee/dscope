@@ -296,6 +296,44 @@ func TestCall(t *testing.T) {
 	}
 }
 
+func TestCallRejectsInvalidTargets(t *testing.T) {
+	scope := New()
+
+	assertBadArgument := func(name string, wantMessage string, fn func()) {
+		t.Run(name, func(t *testing.T) {
+			defer func() {
+				p := recover()
+				if p == nil {
+					t.Fatal("should panic")
+				}
+				err, ok := p.(error)
+				if !ok {
+					t.Fatalf("panic value not an error: %v", p)
+				}
+				if !errors.Is(err, ErrBadArgument) {
+					t.Fatalf("expected ErrBadArgument, got %T: %v", err, err)
+				}
+				if !strings.Contains(err.Error(), wantMessage) {
+					t.Fatalf("unexpected error message: %v", err)
+				}
+			}()
+			fn()
+		})
+	}
+
+	assertBadArgument("non-function", "int is not a function", func() {
+		scope.Call(42)
+	})
+
+	assertBadArgument("nil function", "nil function provided", func() {
+		scope.Call((func())(nil))
+	})
+
+	assertBadArgument("invalid reflect.Value", "nil function provided", func() {
+		scope.CallValue(reflect.Value{})
+	})
+}
+
 func TestForkScope2(t *testing.T) {
 	scope := New()
 	scope1 := scope.Fork(func() int {
