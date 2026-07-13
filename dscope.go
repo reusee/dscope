@@ -27,6 +27,13 @@ type _TypeID int
 // _Hash is used for scope signatures and cache keys.
 type _Hash [sha256.Size]byte
 
+const TheoryOfScopeDefinitions = `
+dscope definition theory:
+- Public scope construction validates definitions before deriving type identity.
+- Invalid definitions produce structured dscope errors rather than leaking
+  reflection, hashing, or storage implementation panics.
+`
+
 // Scope represents an immutable dependency injection container.
 // Operations like Fork create new Scope values.
 type Scope struct {
@@ -66,6 +73,17 @@ var forkers sync.Map
 func (scope Scope) Fork(
 	defs ...any,
 ) Scope {
+
+	// Validate before reflection and cache-key generation so malformed public
+	// input cannot leak implementation-specific panics.
+	for _, def := range defs {
+		if def == nil {
+			panic(errors.Join(
+				fmt.Errorf("nil definition"),
+				ErrBadArgument,
+			))
+		}
+	}
 
 	// handle modules
 	var moduleObjects []any
