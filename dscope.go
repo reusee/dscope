@@ -213,7 +213,7 @@ func (scope Scope) get(id _TypeID) (
 }
 
 // Get retrieves a single value of the specified type `t` from the scope.
-// It panics if the type is not found or if an error occurs during resolution.
+// It returns false if the type is not found.
 // Use Assign or the generic Get[T] for safer retrieval.
 func (scope Scope) Get(t reflect.Type) (
 	ret reflect.Value,
