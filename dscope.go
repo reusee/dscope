@@ -32,6 +32,7 @@ dscope definition theory:
 - Public scope construction validates definitions before deriving type identity.
 - Invalid definitions produce structured dscope errors rather than leaking
   reflection, hashing, or storage implementation panics.
+- Resolved values preserve their declared types, including nil interface values.
 `
 
 // Scope represents an immutable dependency injection container.
@@ -264,6 +265,9 @@ func Get[T any](scope Scope) (o T) {
 	value, ok := scope.Get(typ)
 	if !ok {
 		throwErrDependencyNotFound(typ)
+	}
+	if typ.Kind() == reflect.Interface && value.IsNil() {
+		return o
 	}
 	return value.Interface().(T)
 }

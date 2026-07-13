@@ -1387,6 +1387,39 @@ func TestGetInterface(t *testing.T) {
 	}
 }
 
+func TestNilInterfacePointerDefinition(t *testing.T) {
+	var provided any
+	scope := New(&provided)
+	provided = "changed after scope creation"
+
+	value, ok := scope.Get(reflect.TypeFor[any]())
+	if !ok {
+		t.Fatal("nil interface definition not found")
+	}
+	if !value.IsValid() {
+		t.Fatal("nil interface resolved to an invalid reflect.Value")
+	}
+	if !value.IsNil() {
+		t.Fatalf("resolved value is not nil: %v", value.Interface())
+	}
+
+	if resolved := Get[any](scope); resolved != nil {
+		t.Fatalf("generic Get returned %v, want nil", resolved)
+	}
+
+	var assigned any = 42
+	scope.Assign(&assigned)
+	if assigned != nil {
+		t.Fatalf("Assign returned %v, want nil", assigned)
+	}
+
+	scope.Call(func(injected any) {
+		if injected != nil {
+			t.Fatalf("Call injected %v, want nil", injected)
+		}
+	})
+}
+
 func TestCallResultAssignDuplicateReturns(t *testing.T) {
 	scope := New()
 

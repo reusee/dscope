@@ -16,6 +16,8 @@ import (
 const TheoryOfLazyInitialization = `
 dscope lazy initialization theory:
 - Providers evaluate at most once per initializer instance; results are cached.
+- Pointer definitions are copied while preserving their declared reflected type,
+  including zero and nil interface values.
 - A provider panic must NOT be cached as a permanent failure state.
   Subsequent accesses re-invoke the provider to reproduce the original error.
 - Reset initializers (created on Fork when dependencies change) inherit
@@ -39,10 +41,10 @@ func newInitializer(def any, isPointer bool) *_Initializer {
 		DefIsPointer: isPointer,
 	}
 	if isPointer {
-		ret._values[0] = reflect.ValueOf(
-			// make a copy
-			reflect.ValueOf(def).Elem().Interface(),
-		)
+		definitionValue := reflect.ValueOf(def).Elem()
+		copiedValue := reflect.New(definitionValue.Type()).Elem()
+		copiedValue.Set(definitionValue)
+		ret._values[0] = copiedValue
 		ret.Values = ret._values[:1]
 	}
 	return ret
