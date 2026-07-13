@@ -212,3 +212,24 @@ func TestMethodsMultiLevelNilInterface(t *testing.T) {
 		Methods((***io.Reader)(nil))
 	})
 }
+
+func TestMethodsRecursivePointer(t *testing.T) {
+	type RecursivePointer *RecursivePointer
+	var pointer RecursivePointer
+
+	defer func() {
+		panicValue := recover()
+		if panicValue == nil {
+			t.Fatal("should panic")
+		}
+		err, ok := panicValue.(error)
+		if !ok {
+			t.Fatalf("panic value not an error: %v", panicValue)
+		}
+		if !strings.Contains(err.Error(), "recursive pointer type") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+	}()
+
+	Methods(pointer)
+}

@@ -6,6 +6,29 @@ import (
 	"reflect"
 )
 
+const TheoryOfModuleMethodDiscovery = `
+dscope module method discovery theory:
+- Method discovery accepts finite pointer chains and addressable copies.
+- Recursive pointer types are invalid inputs because they have no concrete
+  terminal value from which module fields can be discovered.
+- Invalid discovery inputs produce structured dscope errors and must never
+  cause unbounded traversal.
+`
+
+func validateFiniteMethodsPointerChain(typ reflect.Type) {
+	visitedTypes := make(map[reflect.Type]struct{})
+	for typ.Kind() == reflect.Pointer {
+		if _, exists := visitedTypes[typ]; exists {
+			panic(errors.Join(
+				fmt.Errorf("recursive pointer type %v", typ),
+				ErrBadArgument,
+			))
+		}
+		visitedTypes[typ] = struct{}{}
+		typ = typ.Elem()
+	}
+}
+
 func Methods(objects ...any) (ret []any) {
 	visitedTypes := make(map[reflect.Type]bool)
 	var extend func(reflect.Value)
@@ -26,6 +49,7 @@ func Methods(objects ...any) (ret []any) {
 		}
 
 		t := v.Type()
+		validateFiniteMethodsPointerChain(t)
 		if visitedTypes[t] {
 			return
 		}
@@ -94,7 +118,6 @@ func Methods(objects ...any) (ret []any) {
 				}
 			}
 		}
-
 	}
 
 	for _, object := range objects {
