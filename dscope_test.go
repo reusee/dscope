@@ -1527,6 +1527,30 @@ func TestAssignNilPointer(t *testing.T) {
 	}()
 }
 
+func TestGenericAssignNilPointer(t *testing.T) {
+	scope := New(Provide(42))
+	var pointer *int
+
+	defer func() {
+		panicValue := recover()
+		if panicValue == nil {
+			t.Fatal("should panic")
+		}
+		err, ok := panicValue.(error)
+		if !ok {
+			t.Fatalf("panic value not an error: %v", panicValue)
+		}
+		if !errors.Is(err, ErrBadArgument) {
+			t.Fatalf("expected ErrBadArgument, got %T: %v", err, err)
+		}
+		if !strings.Contains(err.Error(), "cannot assign to a nil pointer target of type *int") {
+			t.Fatalf("unexpected error message: %s", err.Error())
+		}
+	}()
+
+	Assign(scope, pointer)
+}
+
 func TestForkRedefinitionOptimization(t *testing.T) {
 	scope := New(func() int {
 		return 1

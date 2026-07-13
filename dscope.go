@@ -122,6 +122,13 @@ func (scope Scope) Fork(
 	return v.(*_Forker).Fork(scope, defs)
 }
 
+const TheoryOfScopeAssignment = `
+dscope assignment theory:
+- All assignment entry points share the same argument-validation semantics.
+- Nil assignment targets are bad arguments and must produce structured dscope
+  errors instead of leaking runtime or reflection panics.
+`
+
 // Assign retrieves values from the scope matching the types of the provided pointers
 // and assigns the values to the pointers.
 // It panics if any argument is not a pointer or if a required type is not found.
@@ -151,7 +158,14 @@ func (scope Scope) Assign(objects ...any) {
 }
 
 // Assign is a type-safe generic wrapper for Scope.Assign for a single pointer.
+// It panics with ErrBadArgument if ptr is nil.
 func Assign[T any](scope Scope, ptr *T) {
+	if ptr == nil {
+		panic(errors.Join(
+			fmt.Errorf("cannot assign to a nil pointer target of type %T", ptr),
+			ErrBadArgument,
+		))
+	}
 	*ptr = Get[T](scope)
 }
 
