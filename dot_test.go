@@ -59,3 +59,30 @@ func TestToDOTInjectStruct(t *testing.T) {
 		t.Fatal("InjectStruct missing from DOT graph")
 	}
 }
+
+func TestToDOTIgnoresInjectStructDefinition(t *testing.T) {
+	scope := New(
+		func() int {
+			return 42
+		},
+		func(int) InjectStruct {
+			return func(any) {}
+		},
+	)
+
+	buffer := new(strings.Builder)
+	if err := scope.ToDOT(buffer); err != nil {
+		t.Fatal(err)
+	}
+
+	dot := buffer.String()
+	if !strings.Contains(dot, "Type: dscope.InjectStruct\\nBuilt-in") {
+		t.Fatalf("InjectStruct is not represented as a built-in:\n%s", dot)
+	}
+	if strings.Contains(dot, "Defined By: func(int) dscope.InjectStruct") {
+		t.Fatalf("ignored InjectStruct definition appears in graph:\n%s", dot)
+	}
+	if strings.Contains(dot, "->") {
+		t.Fatalf("ignored InjectStruct definition contributed an edge:\n%s", dot)
+	}
+}

@@ -6,6 +6,14 @@ import (
 	"strings"
 )
 
+const TheoryOfScopeVisualization = `
+dscope visualization theory:
+- Graphs represent effective dependency resolution semantics.
+- Built-in dependencies are shown as built-ins, even when a user supplies an
+  ignored definition for the same type.
+- Ignored definitions must not contribute labels or dependency edges.
+`
+
 func (scope Scope) ToDOT(w io.Writer) error {
 	if _, err := io.WriteString(w, "digraph dscope {\n"); err != nil {
 		return err
@@ -31,6 +39,9 @@ func (scope Scope) ToDOT(w io.Writer) error {
 
 	for effectiveValue := range scope.values.IterValues() {
 		typeID := effectiveValue.typeInfo.TypeID
+		if isAlwaysProvided(typeID) {
+			continue
+		}
 		typeName := typeIDToType(typeID).String()
 
 		nodes[typeID] = struct{}{}
@@ -40,10 +51,10 @@ func (scope Scope) ToDOT(w io.Writer) error {
 			effectiveValue.typeInfo.DefType.String(),
 		)
 
-		for _, depID := range effectiveValue.typeInfo.Dependencies {
-			if _, ok := scope.values.Load(depID); ok || isAlwaysProvided(depID) {
-				nodes[depID] = struct{}{}
-				edges[[2]_TypeID{depID, typeID}] = struct{}{}
+		for _, dependencyID := range effectiveValue.typeInfo.Dependencies {
+			if _, ok := scope.values.Load(dependencyID); ok || isAlwaysProvided(dependencyID) {
+				nodes[dependencyID] = struct{}{}
+				edges[[2]_TypeID{dependencyID, typeID}] = struct{}{}
 			}
 		}
 	}
