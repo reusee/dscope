@@ -141,6 +141,41 @@ func (scope Scope) Fork(
 	return v.(*_Forker).Fork(scope, defs)
 }
 
+const TheoryOfScopeReset = `
+dscope reset theory:
+- Reset returns a new scope in which every cached provider result is invalidated.
+- Reset is O(1): it installs a lazy reset layer over the existing value stack.
+  Fresh initializers are created on demand, only for types that are actually
+  accessed; untouched types incur zero overhead.
+- The reset layer caches fresh initializers so each provider still evaluates at
+  most once within the reset scope.
+- Appending to (Forking from) a reset scope materialises the layer into a flat
+  stack, preserving correct dependency-analysis invariants.
+`
+
+// Reset returns a new Scope in which every value will be recomputed the next
+// time it is requested. The original scope is unaffected.
+//
+// Reset is O(1): it wraps the value stack in a lazy reset layer rather than
+// eagerly iterating all definitions. Fresh initializers are created on demand
+// only for types that are actually accessed, so untouched types incur zero
+// overhead. Once a provider is re-evaluated in the reset scope the result is
+// cached, preserving the at-most-once evaluation guarantee.
+func (scope Scope) Reset() Scope {
+	if scope.values == nil {
+		return scope
+	}
+	return Scope{
+		values: &_StackedMap{
+			ResetBase:  scope.values,
+			ResetCache: new(sync.Map),
+			Height:     1,
+		},
+		signature:   scope.signature,
+		forkFuncKey: scope.forkFuncKey,
+	}
+}
+
 const TheoryOfScopeAssignment = `
 dscope assignment theory:
 - All assignment entry points share the same argument-validation semantics.
