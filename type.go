@@ -55,6 +55,8 @@ func isAlwaysProvided(id _TypeID) bool {
 		return true
 	case forkTypeID:
 		return true
+	case resetTypeID:
+		return true
 	}
 	return false
 }

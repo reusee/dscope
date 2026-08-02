@@ -42,7 +42,30 @@ childScope := parentScope.Fork(func() string { return "hello" }) // inherits int
 overrideScope := parentScope.Fork(func() int { return 100 })   // overrides int
 ```
 
-## Basic Usage Examples
+### Reset
+
+`Reset` creates a new scope in which every provider result is recomputed lazily on the next access. The original scope is unaffected.
+
+```go
+calls := 0
+scope := dscope.New(func() int {
+	calls++
+	return calls
+})
+fmt.Println(dscope.Get[int](scope))      // Output: 1
+fmt.Println(dscope.Get[int](scope))      // Output: 1 (result is cached)
+
+resetScope := scope.Reset()
+fmt.Println(dscope.Get[int](resetScope)) // Output: 2 (recomputed)
+```
+
+`dscope.Reset` (type `Reset func() Scope`) is also provided as a built-in dependency bound to the current scope's `Reset` method, so it can be injected into providers, similar to `dscope.Fork`:
+
+```go
+scope.Call(func(reset dscope.Reset) {
+	// reset() returns a reset scope of the current scope
+})
+```## Basic Usage Examples
 
 ### 1. Creating a New Scope
 

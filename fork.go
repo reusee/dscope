@@ -227,13 +227,14 @@ func newForker(
 		// Recursive Step: Check Dependencies
 		for _, depID := range value.typeInfo.Dependencies {
 			if isAlwaysProvided(depID) {
-				// InjectStruct and Fork are opaque dependencies: a provider
-				// receiving one of them can dynamically pull any type from the
-				// scope (InjectStruct injects struct fields, Fork creates child
-				// scopes). When new definitions are added we must pessimistically
-				// assume the opaque dependency depends on them and force a reset
-				// so the provider is re-evaluated against the new scope.
-				if (depID == injectStructTypeID || depID == forkTypeID) && len(newValuesTemplate) > 0 {
+				// InjectStruct, Fork, and Reset are opaque dependencies: a
+				// provider receiving one of them can dynamically pull any type
+				// from the scope (InjectStruct injects struct fields, Fork
+				// creates child scopes, Reset creates reset scopes). When new
+				// definitions are added we must pessimistically assume the
+				// opaque dependency depends on them and force a reset so the
+				// provider is re-evaluated against the new scope.
+				if (depID == injectStructTypeID || depID == forkTypeID || depID == resetTypeID) && len(newValuesTemplate) > 0 {
 					reset = true
 				}
 				continue

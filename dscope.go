@@ -240,6 +240,11 @@ func (scope Scope) get(id _TypeID) (
 		// generic Get[Fork] succeed. The method value yields an unnamed
 		// func(...any) type, which is not identical to Fork.
 		return reflect.ValueOf(scope.Fork).Convert(reflect.TypeFor[Fork]()), true
+	case resetTypeID:
+		// Convert to the named Reset type so that type assertions and
+		// generic Get[Reset] succeed. The method value yields an unnamed
+		// func() Scope type, which is not identical to Reset.
+		return reflect.ValueOf(scope.Reset).Convert(reflect.TypeFor[Reset]()), true
 	}
 
 	value, ok := scope.values.Load(id)
