@@ -10,8 +10,11 @@ func (s Scope) AllTypes() iter.Seq[reflect.Type] {
 		if !yield(reflect.TypeFor[InjectStruct]()) {
 			return
 		}
+		if !yield(reflect.TypeFor[Fork]()) {
+			return
+		}
 		for value := range s.values.IterValues() {
-			// Always-provided types (e.g. InjectStruct) are emitted above as
+			// Always-provided types (e.g. InjectStruct, Fork) are emitted above as
 			// built-ins. They may also appear in s.values if a user provides a
 			// definition for them, but Scope.get ignores such definitions and
 			// always returns the built-in. Skip them here to avoid yielding the

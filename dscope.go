@@ -223,8 +223,6 @@ func Assign[T any](scope Scope, ptr *T) {
 	*ptr = Get[T](scope)
 }
 
-// get retrieves a value of a specific type ID and type from the scope.
-// Internal function called by Get and Assign.
 func (scope Scope) get(id _TypeID) (
 	ret reflect.Value,
 	ok bool,
@@ -237,6 +235,11 @@ func (scope Scope) get(id _TypeID) (
 		// generic Get[InjectStruct] succeed. reflect.ValueOf of the method value
 		// yields the unnamed func(any) type, which is not identical to InjectStruct.
 		return reflect.ValueOf(scope.InjectStruct).Convert(reflect.TypeFor[InjectStruct]()), true
+	case forkTypeID:
+		// Convert to the named Fork type so that type assertions and
+		// generic Get[Fork] succeed. The method value yields an unnamed
+		// func(...any) type, which is not identical to Fork.
+		return reflect.ValueOf(scope.Fork).Convert(reflect.TypeFor[Fork]()), true
 	}
 
 	value, ok := scope.values.Load(id)

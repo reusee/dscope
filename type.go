@@ -53,6 +53,8 @@ func isAlwaysProvided(id _TypeID) bool {
 	switch id {
 	case injectStructTypeID:
 		return true
+	case forkTypeID:
+		return true
 	}
 	return false
 }
