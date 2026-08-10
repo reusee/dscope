@@ -11,6 +11,17 @@ import (
 	"strings"
 )
 
+const TheoryOfScopeForkFlatten = `
+dscope fork flatten theory:
+- Each Fork appends new sorted layers onto the scope's value stack. Unbounded
+  layering would degrade lookups, because Load binary-searches each layer.
+- When the parent stack height exceeds an internal threshold, Fork
+  automatically collects all effective values into a single sorted layer
+  before appending the new layer, bounding stack height.
+- Flattening is transparent: effective values and override semantics are
+  preserved. Users never need to compact scopes manually.
+`
+
 // _Forker pre-calculates the information required to efficiently create a new child scope.
 // Instances are cached based on the parent scope's signature and the types of the new definitions.
 type _Forker struct {
