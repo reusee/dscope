@@ -22,6 +22,18 @@ dscope fork flatten theory:
   preserved. Users never need to compact scopes manually.
 `
 
+const TheoryOfTypeGranularity = `
+dscope type granularity theory:
+- A Fork override recomputes the overridden type and its transitive dependents;
+  untouched providers keep their cached values. Type granularity therefore
+  bounds recomputation precision: the finer the type definitions, the narrower
+  the recomputation scope when a value is updated.
+- Prefer single-value types over composite types with multiple mutable fields.
+  Splitting a composite into per-field types lets an update recompute only the
+  providers that depend on the changed field, leaving consumers of the other
+  fields cached.
+`
+
 // _Forker pre-calculates the information required to efficiently create a new child scope.
 // Instances are cached based on the parent scope's signature and the types of the new definitions.
 type _Forker struct {

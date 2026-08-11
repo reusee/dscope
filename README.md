@@ -14,6 +14,7 @@ Managing dependencies in larger Go applications can become complex. `dscope` off
     *   **Easy Overriding**: You can easily `Fork` a scope and provide alternative (mock or stub) implementations for specific types, making unit and integration testing more straightforward.
 *   **Immutable and Predictable Scopes**: Each scope is an immutable container. Modifying a scope (e.g., adding new definitions or overriding existing ones) results in a new scope instance. This makes the state of dependencies predictable and easier to reason about.
 *   **Lazy Initialization**: Values within a scope are initialized lazily. A provider function is only called when the value it provides (or a dependant value) is actually requested for the first time. This can improve application startup time and resource usage.
+*   **Fine-Grained Recomputation**: `Fork` recomputes only the overridden type and its transitive dependents. Prefer single-value types over composites with multiple mutable fields: overriding one value then recomputes only the providers that depend on it, not every consumer of the composite.
 
 ## Core Concepts
 
