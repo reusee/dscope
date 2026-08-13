@@ -37,6 +37,9 @@ dscope fork theory:
 
 const TheoryOfScopeForkFlatten = `
 dscope fork flatten theory:
+- Fork can be called any number of times. Repeated forking never grows the
+  value stack without bound and never leaks memory: users do not need to
+  worry about memory consumption or lookups slowing down over time.
 - Each Fork appends new sorted layers onto the scope's value stack. Unbounded
   layering would degrade lookups, because Load binary-searches each layer.
 - When the base scope's stack height exceeds an internal threshold, Fork
