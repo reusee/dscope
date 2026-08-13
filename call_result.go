@@ -6,6 +6,19 @@ import (
 	"reflect"
 )
 
+// TheoryOfCallResult documents how call return values reach their targets.
+const TheoryOfCallResult = `
+dscope call result theory:
+- CallResult carries the return values of a scope.Call invocation.
+- Extract assigns values to targets by position and verifies type
+  compatibility; use it when the caller knows the return shape.
+- Assign matches values to targets by type, preferring exact matches over
+  assignable (interface) matches: an interface target never captures a
+  concrete return value that a later exact target needs.
+- Both methods validate targets up front: nil and non-pointer targets are bad
+  arguments and yield structured dscope errors.
+`
+
 type CallResult struct {
 	positionsByType map[reflect.Type][]int
 	Values          []reflect.Value

@@ -16,6 +16,11 @@ import (
 const TheoryOfLazyInitialization = `
 dscope lazy initialization theory:
 - Providers evaluate at most once per initializer instance; results are cached.
+- Construction is cheap: Fork validates and analyzes the dependency graph but
+  never executes a provider; values come into existence on first access, so
+  startup and tests pay only for the values actually touched.
+- Scopes are safe for concurrent access: when several goroutines resolve the
+  same value simultaneously, the provider still runs only once.
 - Pointer definitions are copied while preserving their declared reflected type,
   including zero and nil interface values.
 - A provider panic must NOT be cached as a permanent failure state.

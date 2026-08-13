@@ -11,11 +11,35 @@ import (
 	"strings"
 )
 
+// TheoryOfScopeFork documents the semantics and typical uses of Fork.
+const TheoryOfScopeFork = `
+dscope fork theory:
+- Fork creates a new branch of the definition lineage: a scope that contains
+  every definition of the scope it was forked from, with the new definitions
+  layered on top. There is no child-parent relationship between scopes: the
+  original and the fork are independent branches, and forking or overriding
+  in one never changes the definitions of the other.
+- Each type has exactly one effective definition per scope: the innermost one.
+  Forking a definition for an inherited type overrides it in the new scope;
+  Forking a type the original lacks adds it.
+- Override triggers fine-grained recomputation: the overridden type and its
+  transitive dependents re-evaluate lazily in the new scope, while untouched
+  providers keep the cached values they had in the original.
+- Fine-grained recomputation is sound only when providers are pure functions
+  of their declared dependencies. Providers that reach into the scope
+  dynamically through InjectStruct, Fork, or Reset are re-evaluated
+  pessimistically whenever a Fork adds definitions; providers that read
+  external state must be re-run with Reset instead.
+- Typical uses: add definitions as an application boots, override a dependency
+  with a mock or stub in tests, and layer environment-specific variants on a
+  common base.
+`
+
 const TheoryOfScopeForkFlatten = `
 dscope fork flatten theory:
 - Each Fork appends new sorted layers onto the scope's value stack. Unbounded
   layering would degrade lookups, because Load binary-searches each layer.
-- When the parent stack height exceeds an internal threshold, Fork
+- When the base scope's stack height exceeds an internal threshold, Fork
   automatically collects all effective values into a single sorted layer
   before appending the new layer, bounding stack height.
 - Flattening is transparent: effective values and override semantics are
@@ -34,8 +58,9 @@ dscope type granularity theory:
   fields cached.
 `
 
-// _Forker pre-calculates the information required to efficiently create a new child scope.
-// Instances are cached based on the parent scope's signature and the types of the new definitions.
+// _Forker pre-calculates the information required to efficiently create a new
+// scope from a base scope and new definitions. Instances are cached based on
+// the base scope's signature and the types of the new definitions.
 type _Forker struct {
 	// NewValuesTemplate contains template _Value objects (without initializers) for the new definitions.
 	NewValuesTemplate []_Value
@@ -45,18 +70,18 @@ type _Forker struct {
 	DefNumValues []int
 	// PosesAtSorted maps the original index of a value in NewValuesTemplate to its index in the sorted slice.
 	PosesAtSorted []posAtSorted
-	// ResetIDs lists TypeIDs (sorted) of values from the parent scope that need invalidation due to overrides or dependency changes.
+	// ResetIDs lists TypeIDs (sorted) of values inherited from the base scope that need invalidation due to overrides or dependency changes.
 	ResetIDs []_TypeID // sorted
 	// Signature is a hash representing the structural identity of the scope *after* this fork.
 	Signature _Hash
-	// Key is the cache key for this _Forker, derived from parent signature and new definition types.
+	// Key is the cache key for this _Forker, derived from the base signature and new definition types.
 	Key _Hash
 }
 
 // posAtSorted represents the index of a value within the sorted slice of new values.
 type posAtSorted int
 
-// newForker analyzes the parent scope and new definitions to create a _Forker.
+// newForker analyzes the base scope and new definitions to create a _Forker.
 // It performs dependency analysis, detects loops, determines resets, and calculates signatures.
 func newForker(
 	scope Scope,
@@ -199,7 +224,7 @@ func newForker(
 	})
 
 	// 3. Build Conceptual Next Scope & Analyze Dependencies via DFS:
-	//    - `valuesTemplate`: Temporary _StackedMap representing the potential child scope.
+	//    - `valuesTemplate`: Temporary _StackedMap representing the potential new scope.
 	//    - Detect loops (`colors`: 0=White, 1=Gray, 2=Black).
 	//    - Determine which types need reset (`needsReset`).
 	valuesTemplate := scope.values.Append(sortedNewValuesTemplate)
@@ -253,7 +278,7 @@ func newForker(
 				// InjectStruct, Fork, and Reset are opaque dependencies: a
 				// provider receiving one of them can dynamically pull any type
 				// from the scope (InjectStruct injects struct fields, Fork
-				// creates child scopes, Reset creates reset scopes). When new
+				// creates new scopes, Reset creates reset scopes). When new
 				// definitions are added we must pessimistically assume the
 				// opaque dependency depends on them and force a reset so the
 				// provider is re-evaluated against the new scope.
@@ -298,7 +323,7 @@ func newForker(
 
 	}
 
-	// 5. Calculate Child Scope Signature: Hash sorted definition type IDs.
+	// 5. Calculate the New Scope Signature: Hash sorted definition type IDs.
 	h := sha256.New()
 	buf := make([]byte, 0, len(defTypeIDs)*8)
 	for _, id := range defTypeIDs {
@@ -312,7 +337,7 @@ func newForker(
 	var signature _Hash
 	h.Sum(signature[:0])
 
-	// 6. Identify Values Requiring Reset: Collect TypeIDs that need reset AND existed in parent.
+	// 6. Identify Values Requiring Reset: Collect TypeIDs that need reset AND existed in the base scope.
 	resetIDs := make([]_TypeID, 0, len(needsReset))
 	for id, reset := range needsReset {
 		if !reset {
@@ -339,16 +364,16 @@ func newForker(
 	}
 }
 
-// Fork applies the pre-calculated changes from the _Forker to the parent scope, creating a child scope.
+// Fork applies the pre-calculated changes from the _Forker to a base scope, creating a new scope.
 func (f *_Forker) Fork(s Scope, defs []any) Scope {
 
-	// 1. Initialize Child Scope Shell.
+	// 1. Initialize the new scope shell.
 	scope := Scope{
 		signature:   f.Signature,
 		forkFuncKey: f.Key,
 	}
 
-	// 2. Handle Parent Scope Stack: Flatten if deep.
+	// 2. Flatten the base scope's stack if it is deep.
 	if s.values != nil && s.values.Height > 16 { // Threshold for flattening
 		var flatValues []_Value
 		for parentValue := range s.values.IterValues() {
@@ -363,7 +388,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 			Height: 1,
 		}
 	} else {
-		scope.values = s.values // Inherit parent stack top
+		scope.values = s.values // Reuse the base scope's stack
 	}
 
 	// 3. Create and Add New Values Layer: Instantiate initializers and values.
@@ -398,7 +423,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 	}
 	scope.values = scope.values.Append(newValues)
 
-	// 4. Create and Add Reset Values Layer: Contains reset initializers for overridden/affected parent values.
+	// 4. Create and Add Reset Values Layer: Contains reset initializers for inherited values affected by overrides.
 	if len(f.ResetIDs) > 0 {
 		resetValues := make([]_Value, 0, len(f.ResetIDs))
 		resetInitializers := make(map[int64]*_Initializer) // Track reset initializers for sharing

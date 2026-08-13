@@ -27,12 +27,52 @@ type _TypeID int
 // _Hash is used for scope signatures and cache keys.
 type _Hash [sha256.Size]byte
 
+// TheoryOfScopeCore documents the fundamental model of dscope: an immutable,
+// type-keyed container of lazily evaluated definitions.
+const TheoryOfScopeCore = `
+dscope core theory:
+- A Scope is an immutable, type-keyed container. Every provided value is
+  identified by its declared Go type — concrete or interface — and a type has
+  at most one effective definition per scope.
+- A definition is a provider function (parameters are dependencies, results
+  are the provided values) or a pointer (the pointed-at value is copied into
+  the scope at construction time).
+- Fork layers new definitions onto a scope and returns a new scope: a branch
+  of the same definition lineage. Scopes have no child-parent relationship:
+  the original scope is never mutated, and the innermost definition of a
+  type is the effective one in each branch.
+- Resolution is by exact declared type: a provider returning an interface
+  satisfies requests for that interface, not requests for the concrete value
+  it holds; no implicit conversions are performed.
+- Providers are lazy: a provider evaluates at most once per cached value, on
+  first access, and the cached result is shared by all consumers. Overriding
+  a type or resetting a scope installs fresh caches for the affected types.
+- Three built-in dependencies — InjectStruct, Fork, Reset — are always
+  available, bound to the current scope, and cannot be overridden: they are
+  the escape hatches through which providers interact with the scope
+  dynamically.
+- Every public operation — Get, Assign, Call, InjectStruct, AllTypes, ToDOT —
+  reflects the effective definitions of the scope it is invoked on.
+`
+
+// TheoryOfScopeDefinitions documents the accepted definition forms and the
+// validation applied to them during scope construction.
 const TheoryOfScopeDefinitions = `
 dscope definition theory:
-- Public scope construction validates definitions before deriving type identity.
+- A definition is a provider function (its parameters are dependencies resolved
+  from the scope, its results are the provided values) or a pointer to a value
+  (the pointed-at value is copied into the scope at construction time).
+- A provider may return multiple values; each result type becomes a provided
+  type of the scope, and a single evaluation feeds all of them.
+- Modules are not definitions themselves: a module passed to New or Fork is
+  expanded into its exported methods, which then act as provider functions.
+- Public scope construction validates every definition before deriving type
+  identity: nil definitions, nil function or pointer definitions, functions
+  that return nothing, and non-function non-pointer values are rejected.
+- Two definitions in the same Fork call must not produce the same type;
+  redefining an inherited type is the override mechanism of a later Fork layer.
 - Invalid definitions produce structured dscope errors rather than leaking
   reflection, hashing, or storage implementation panics.
-- Resolved values preserve their declared types, including nil interface values.
 `
 
 // Scope represents an immutable dependency injection container.
@@ -59,13 +99,15 @@ func New(
 }
 
 // forkers caches _Forker instances to speed up repeated Fork calls.
-// The key is a _Hash derived from the parent scope signature and new def types.
+// The key is a _Hash derived from the base scope signature and new def types.
 // _Hash -> *_Forker
 var forkers sync.Map
 
-// Fork creates a new child scope by layering the given definitions (`defs`)
-// on top of the current scope. It handles overriding existing definitions
-// and ensures values are lazily initialized.
+// Fork creates a new scope by layering the given definitions (`defs`) on top
+// of the current scope's definitions. The result is a new branch of the same
+// definition lineage: scopes have no child-parent relationship, and the
+// original scope is never mutated. Fork handles overriding existing
+// definitions and ensures values are lazily initialized.
 //
 // Definitions can be provider functions or pointers to values. When a pointer is
 // provided, the value it points to is copied; subsequent changes to the original
@@ -110,7 +152,7 @@ func (scope Scope) Fork(
 	// but sorting will increase heap allocations, causing performance drop
 
 	// Calculate cache key for this Fork operation.
-	// Key is based on parent signature and the types of new definitions.
+	// Key is based on the base scope signature and the types of new definitions.
 	// Hashing types is sufficient as only one definition instance per type is effectively used.
 	h := sha256.New() // use cryptographic hash to avoid collision
 	h.Write(scope.signature[:])
@@ -141,9 +183,11 @@ func (scope Scope) Fork(
 	return v.(*_Forker).Fork(scope, defs)
 }
 
+// TheoryOfScopeReset documents the semantics and typical use of Reset.
 const TheoryOfScopeReset = `
 dscope reset theory:
-- Reset returns a new scope in which every cached provider result is invalidated.
+- Reset returns a new scope in which every cached provider result is
+  invalidated; the original scope is unaffected.
 - Reset is O(1): it installs a lazy reset layer over the existing value stack.
   Fresh initializers are created on demand, only for types that are actually
   accessed; untouched types incur zero overhead.
@@ -151,6 +195,9 @@ dscope reset theory:
   most once within the reset scope.
 - Appending to (Forking from) a reset scope materialises the layer into a flat
   stack, preserving correct dependency-analysis invariants.
+- Typical use: keep the definitions but drop every cached result, either to
+  observe fresh provider evaluation in tests, or to re-run the graph after
+  external state (files, clocks, globals) has changed.
 `
 
 // Reset returns a new Scope in which every value will be recomputed the next
@@ -176,11 +223,21 @@ func (scope Scope) Reset() Scope {
 	}
 }
 
+// TheoryOfScopeAssignment documents the retrieval semantics shared by the
+// assignment entry points.
 const TheoryOfScopeAssignment = `
 dscope assignment theory:
-- All assignment entry points share the same argument-validation semantics.
-- Nil assignment targets are bad arguments and must produce structured dscope
-  errors instead of leaking runtime or reflection panics.
+- Values are retrieved from a scope through typed pointers: Scope.Assign
+  resolves each pointer's element type from the scope and writes the value;
+  the generic Assign[T] is the single-value form; Get[T] returns the value
+  directly.
+- A missing type panics with a structured dependency-not-found error.
+- CallResult.Assign matches return values to targets by type, preferring exact
+  matches over assignable (interface) matches; CallResult.Extract assigns by
+  position.
+- All assignment entry points share the same argument-validation semantics:
+  nil and non-pointer targets are bad arguments and must produce structured
+  dscope errors instead of leaking runtime or reflection panics.
 `
 
 // Assign retrieves values from the scope matching the types of the provided pointers
@@ -265,12 +322,18 @@ func (scope Scope) Get(t reflect.Type) (
 	return scope.get(getTypeID(t))
 }
 
+// TheoryOfScopeInvocation documents the semantics of scope.Call and the
+// validation applied to call targets.
 const TheoryOfScopeInvocation = `
 dscope invocation theory:
+- scope.Call executes a function whose parameters are resolved from the scope
+  as dependencies; the parameter list doubles as the dependency declaration,
+  so a consumer declares exactly what it needs and nothing more, and the
+  return values are delivered through CallResult.
 - Exported call entry points must reject malformed call targets with dscope
-  errors instead of leaking raw reflect panics.
-- Nil, invalid, or non-function call targets are bad arguments because the
-  container cannot establish dependency semantics for them.
+  errors instead of leaking raw reflect panics: nil, invalid, or non-function
+  call targets are bad arguments because the container cannot establish
+  dependency semantics for them.
 - Once a target is verified as callable, dependency resolution and provider
   execution follow the normal scope semantics.
 `

@@ -35,12 +35,12 @@ Definitions are functions or pointers that tell a scope how to create or provide
     ```
 
 ### Fork
-`Fork` is the primary mechanism for creating new scopes. When you `Fork` an existing scope, you create a new child scope that inherits all definitions from the parent. You can add new definitions or override existing ones in the child scope without affecting the parent.
+`Fork` is the primary mechanism for creating new scopes. When you `Fork` an existing scope, you create a new scope that contains every definition of the original, with the new definitions layered on top. The two scopes are independent branches: you can add new definitions or override existing ones in the new scope without affecting the original.
 
 ```go
-parentScope := dscope.New(func() int { return 42 })
-childScope := parentScope.Fork(func() string { return "hello" }) // inherits int, adds string
-overrideScope := parentScope.Fork(func() int { return 100 })   // overrides int
+baseScope := dscope.New(func() int { return 42 })
+branch1 := baseScope.Fork(func() string { return "hello" }) // same int as base, adds string
+branch2 := baseScope.Fork(func() int { return 100 })   // overrides int
 ```
 
 ### Reset
@@ -155,20 +155,20 @@ fmt.Println(finalMsg) // Output: Greetings! Hello, dscope!```
 
 ### 4. Forking a Scope
 
-Forking creates a new scope that inherits from the parent, allowing you to add or override definitions.
+Forking creates a new scope that contains the original's definitions, allowing you to add or override definitions.
 
 ```go
 baseScope := dscope.New(func() int { return 10 })
 
 // Fork 1: Add a new type
-childScope1 := baseScope.Fork(func(i int) string {
+branch1 := baseScope.Fork(func(i int) string {
 	return fmt.Sprintf("Number: %d", i)
 })
-fmt.Println(dscope.Get[string](childScope1)) // Output: Number: 10
+fmt.Println(dscope.Get[string](branch1)) // Output: Number: 10
 
 // Fork 2: Override an existing type
-childScope2 := baseScope.Fork(func() int { return 20 })
-fmt.Println(dscope.Get[int](childScope2)) // Output: 20
+branch2 := baseScope.Fork(func() int { return 20 })
+fmt.Println(dscope.Get[int](branch2)) // Output: 20
 
 // Original scope is unaffected
 fmt.Println(dscope.Get[int](baseScope)) // Output: 10

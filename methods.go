@@ -6,11 +6,19 @@ import (
 	"reflect"
 )
 
+// TheoryOfModuleMethodDiscovery documents how Methods expands a module object
+// into provider functions and which inputs are rejected.
 const TheoryOfModuleMethodDiscovery = `
 dscope module method discovery theory:
-- Method discovery accepts finite pointer chains and addressable copies.
-- Recursive pointer types are invalid inputs because they have no concrete
-  terminal value from which module fields can be discovered.
+- Method discovery expands a module object into provider functions: the
+  exported methods of the object, of its pointer-chain targets, and of its
+  module-typed fields are collected recursively.
+- A struct passed by value is made addressable first so methods with pointer
+  receivers are discovered; a typed nil pointer on a chain is materialised
+  unless the chain ends in an interface.
+- Discovery accepts finite pointer chains; recursive pointer types are invalid
+  inputs because they have no concrete terminal value from which module fields
+  can be discovered.
 - Invalid discovery inputs produce structured dscope errors and must never
   cause unbounded traversal.
 `

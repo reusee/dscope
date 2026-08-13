@@ -7,6 +7,28 @@ import (
 	"sync"
 )
 
+// TheoryOfScopeInjectStruct documents struct field injection: how fields are
+// selected and how the built-in binding behaves.
+const TheoryOfScopeInjectStruct = `
+dscope inject theory:
+- InjectStruct fills the exported fields of a struct from the scope; it wires
+  objects that need many dependencies without forcing every dependency to be
+  a constructor parameter.
+- A field is injected when it carries the tag dscope:"." or dscope:"inject";
+  a field of type Inject[T] receives a lazy function that resolves T on
+  demand; an untagged embedded struct is recursed into, allocating nil pointer
+  fields along the way.
+- Tagged fields are resolved by exact type like any other lookup; a missing
+  type panics with the standard dependency-not-found error. Unexported fields
+  are never touched.
+- The target may be a pointer chain ending in a struct; nil pointers along the
+  chain are allocated when settable.
+- InjectStruct is always provided, bound to the current scope, and belongs to
+  the opaque built-in family: providers receiving it may pull any type from
+  the scope, so they are re-evaluated pessimistically whenever a Fork adds
+  definitions.
+`
+
 type InjectStruct func(target any)
 
 var injectStructTypeID = getTypeID(reflect.TypeFor[InjectStruct]())
