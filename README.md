@@ -112,6 +112,12 @@ You can retrieve values from the scope using `scope.Get(reflect.Type)`, the gene
     fmt.Println(msg) // Output: Hello, dscope!
     ```
 
+*   **`scope.TryGet[T]()` (Non-panicking lookup):** returns the value and whether the type is defined in the scope, instead of panicking on a missing type.
+    ```go
+    if msg, ok := scope.TryGet[Message](); ok {
+        fmt.Println(msg) // Output: Hello, dscope!
+    }
+    ```
 *   **`scope.Assign(pointers...)`:**
     ```go
     var m Message

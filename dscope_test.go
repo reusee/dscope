@@ -1452,6 +1452,56 @@ func TestGetDependencyNotFound(t *testing.T) {
 	}()
 }
 
+func TestTryGet(t *testing.T) {
+	scope := New(
+		Provide(42),
+		func(i int) string { return strconv.Itoa(i) },
+	)
+
+	t.Run("found", func(t *testing.T) {
+		v, ok := scope.TryGet[int]()
+		if !ok || v != 42 {
+			t.Fatalf("got (%v, %v), want (42, true)", v, ok)
+		}
+	})
+
+	t.Run("found derived", func(t *testing.T) {
+		v, ok := scope.TryGet[string]()
+		if !ok || v != "42" {
+			t.Fatalf("got (%q, %v), want (\"42\", true)", v, ok)
+		}
+	})
+
+	t.Run("missing", func(t *testing.T) {
+		v, ok := scope.TryGet[float64]()
+		if ok || v != 0 {
+			t.Fatalf("got (%v, %v), want (0, false)", v, ok)
+		}
+	})
+
+	t.Run("nil interface", func(t *testing.T) {
+		var provided any
+		s := New(&provided)
+		v, ok := s.TryGet[any]()
+		if !ok || v != nil {
+			t.Fatalf("got (%v, %v), want (nil, true)", v, ok)
+		}
+	})
+
+	t.Run("builtins", func(t *testing.T) {
+		empty := New()
+		if _, ok := empty.TryGet[InjectStruct](); !ok {
+			t.Fatal("InjectStruct should always be provided")
+		}
+		if _, ok := empty.TryGet[Fork](); !ok {
+			t.Fatal("Fork should always be provided")
+		}
+		if _, ok := empty.TryGet[Reset](); !ok {
+			t.Fatal("Reset should always be provided")
+		}
+	})
+}
+
 func TestPointerProviderMutated(t *testing.T) {
 	i := 42
 	scope := New(&i)
@@ -1470,6 +1520,21 @@ func TestPointerProviderMutated(t *testing.T) {
 			t.Fatalf("got %v", i)
 		}
 	})
+}
+
+func TestTryGetProviderPanicPropagates(t *testing.T) {
+	type Foo int
+	scope := New(func() Foo { panic("provider panic") })
+	defer func() {
+		p := recover()
+		if p == nil {
+			t.Fatal("provider panic should propagate through TryGet")
+		}
+		if str := fmt.Sprintf("%v", p); str != "provider panic" {
+			t.Fatalf("got %v", str)
+		}
+	}()
+	scope.TryGet[Foo]()
 }
 
 func TestSharedInstanceProvider(t *testing.T) {

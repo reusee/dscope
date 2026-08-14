@@ -51,8 +51,8 @@ dscope core theory:
   available, bound to the current scope, and cannot be overridden: they are
   the escape hatches through which providers interact with the scope
   dynamically.
-- Every public operation — Get, Assign, Call, InjectStruct, AllTypes, ToDOT —
-  reflects the effective definitions of the scope it is invoked on.
+- Every public operation — Get, TryGet, Assign, Call, InjectStruct, AllTypes,
+  ToDOT — reflects the effective definitions of the scope it is invoked on.
 `
 
 // TheoryOfScopeDefinitions documents the accepted definition forms and the
@@ -230,7 +230,9 @@ dscope assignment theory:
 - Values are retrieved from a scope through typed pointers: Scope.Assign[T]
   resolves T from the scope and writes the value; Scope.Get[T] returns the
   value directly.
-- A missing type panics with a structured dependency-not-found error.
+- A missing type panics with a structured dependency-not-found error;
+  Scope.TryGet[T] is the non-panicking variant: it returns (zero, false) for
+  a missing type, while provider panics still propagate.
 - CallResult.Assign matches return values to targets by type, preferring exact
   matches over assignable (interface) matches; CallResult.Extract assigns by
   position.
@@ -329,16 +331,28 @@ func validateCallableValue(fnValue reflect.Value) reflect.Type {
 
 // Get is a type-safe generic method to retrieve a single value of type T.
 // It panics if the type is not found or if an error occurs during resolution.
-func (scope Scope) Get[T any]() (o T) {
-	typ := reflect.TypeFor[T]()
-	value, ok := scope.get(getTypeID(typ))
+func (scope Scope) Get[T any]() T {
+	value, ok := scope.TryGet[T]()
 	if !ok {
-		throwErrDependencyNotFound(typ)
+		throwErrDependencyNotFound(reflect.TypeFor[T]())
+	}
+	return value
+}
+
+// TryGet is a type-safe generic method to retrieve a single value of type T.
+// Unlike Get, it does not panic when the type is missing from the scope:
+// it returns (zero, false) instead. Panics raised by provider evaluation
+// still propagate.
+func (scope Scope) TryGet[T any]() (o T, ok bool) {
+	typ := reflect.TypeFor[T]()
+	value, found := scope.get(getTypeID(typ))
+	if !found {
+		return o, false
 	}
 	if typ.Kind() == reflect.Interface && value.IsNil() {
-		return o
+		return o, true
 	}
-	return value.Interface().(T)
+	return value.Interface().(T), true
 }
 
 // Call executes the given function `fn`, resolving its arguments from the scope.
