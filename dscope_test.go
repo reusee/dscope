@@ -1502,6 +1502,137 @@ func TestTryGet(t *testing.T) {
 	})
 }
 
+func TestGetType(t *testing.T) {
+	scope := New(
+		Provide(42),
+		func(i int) string { return strconv.Itoa(i) },
+	)
+
+	t.Run("found", func(t *testing.T) {
+		value := scope.GetType(reflect.TypeFor[int]())
+		if value.Kind() != reflect.Int || value.Int() != 42 {
+			t.Fatalf("got %v, want 42", value)
+		}
+	})
+
+	t.Run("found derived", func(t *testing.T) {
+		value := scope.GetType(reflect.TypeFor[string]())
+		if value.String() != "42" {
+			t.Fatalf("got %q, want %q", value.String(), "42")
+		}
+	})
+
+	t.Run("builtins", func(t *testing.T) {
+		value := scope.GetType(reflect.TypeFor[Fork]())
+		if value.Type() != reflect.TypeFor[Fork]() {
+			t.Fatalf("got type %v", value.Type())
+		}
+	})
+
+	t.Run("missing", func(t *testing.T) {
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			err, ok := p.(error)
+			if !ok {
+				t.Fatalf("panic value not an error: %v", p)
+			}
+			if !errors.Is(err, ErrDependencyNotFound) {
+				t.Fatalf("expected ErrDependencyNotFound, got %T: %v", err, err)
+			}
+			if !strings.Contains(err.Error(), "no definition for float64") {
+				t.Fatalf("unexpected error message: %s", err.Error())
+			}
+		}()
+		scope.GetType(reflect.TypeFor[float64]())
+	})
+
+	t.Run("nil type", func(t *testing.T) {
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			err, ok := p.(error)
+			if !ok {
+				t.Fatalf("panic value not an error: %v", p)
+			}
+			if !errors.Is(err, ErrBadArgument) {
+				t.Fatalf("expected ErrBadArgument, got %T: %v", err, err)
+			}
+			if !strings.Contains(err.Error(), "nil reflect.Type provided") {
+				t.Fatalf("unexpected error message: %s", err.Error())
+			}
+		}()
+		scope.GetType(nil)
+	})
+}
+
+func TestTryGetType(t *testing.T) {
+	scope := New(
+		Provide(42),
+		func(i int) string { return strconv.Itoa(i) },
+	)
+
+	t.Run("found", func(t *testing.T) {
+		value, ok := scope.TryGetType(reflect.TypeFor[int]())
+		if !ok {
+			t.Fatal("int not found")
+		}
+		if value.Int() != 42 {
+			t.Fatalf("got %d, want 42", value.Int())
+		}
+	})
+
+	t.Run("found derived", func(t *testing.T) {
+		value, ok := scope.TryGetType(reflect.TypeFor[string]())
+		if !ok {
+			t.Fatal("string not found")
+		}
+		if value.String() != "42" {
+			t.Fatalf("got %q, want %q", value.String(), "42")
+		}
+	})
+
+	t.Run("missing", func(t *testing.T) {
+		value, ok := scope.TryGetType(reflect.TypeFor[float64]())
+		if ok || value.IsValid() {
+			t.Fatalf("got (%v, %v), want (zero Value, false)", value, ok)
+		}
+	})
+
+	t.Run("nil interface", func(t *testing.T) {
+		var provided any
+		s := New(&provided)
+		value, ok := s.TryGetType(reflect.TypeFor[any]())
+		if !ok {
+			t.Fatal("any not found")
+		}
+		if !value.IsValid() || !value.IsNil() {
+			t.Fatalf("got %v, want a nil interface value", value)
+		}
+	})
+
+	t.Run("nil type", func(t *testing.T) {
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			err, ok := p.(error)
+			if !ok {
+				t.Fatalf("panic value not an error: %v", p)
+			}
+			if !errors.Is(err, ErrBadArgument) {
+				t.Fatalf("expected ErrBadArgument, got %T: %v", err, err)
+			}
+		}()
+		scope.TryGetType(nil)
+	})
+}
+
 func TestPointerProviderMutated(t *testing.T) {
 	i := 42
 	scope := New(&i)

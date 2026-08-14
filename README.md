@@ -104,7 +104,7 @@ func main() {
 
 ### 2. Getting Values by Type
 
-You can retrieve values from the scope using `scope.Get(reflect.Type)`, the generic `dscope.Get[T](scope)`, or `scope.Assign(pointers...)`.
+You can retrieve values from the scope using `scope.GetType(reflect.Type)`, the generic `dscope.Get[T](scope)`, or `scope.Assign(pointers...)`.
 
 *   **`dscope.Get[T](scope)` (Recommended for type safety):**
     ```go
@@ -126,11 +126,11 @@ You can retrieve values from the scope using `scope.Get(reflect.Type)`, the gene
     fmt.Println(g, m) // Output: Hello Hello, dscope!
     ```
 
-*   **`scope.Get(reflect.Type)`:**
+*   **`scope.GetType(reflect.Type)` / `scope.TryGetType(reflect.Type)` (reflection-based lookup; GetType panics on a missing type):**
     ```go
     import "reflect"
     // ...
-    msgVal, ok := scope.Get(reflect.TypeOf(Message("")))
+    msgVal, ok := scope.TryGetType(reflect.TypeOf(Message("")))
     if ok {
         fmt.Println(msgVal.Interface().(Message))
     }

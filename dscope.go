@@ -233,6 +233,10 @@ dscope assignment theory:
 - A missing type panics with a structured dependency-not-found error;
   Scope.TryGet[T] is the non-panicking variant: it returns (zero, false) for
   a missing type, while provider panics still propagate.
+- Reflection-based retrieval mirrors the generic forms: Scope.GetType and
+  Scope.TryGetType take a reflect.Type and return a reflect.Value; GetType
+  panics on a missing type, TryGetType returns (zero Value, false), and a
+  nil type is a bad argument.
 - CallResult.Assign matches return values to targets by type, preferring exact
   matches over assignable (interface) matches; CallResult.Extract assigns by
   position.
@@ -353,6 +357,38 @@ func (scope Scope) TryGet[T any]() (o T, ok bool) {
 		return o, true
 	}
 	return value.Interface().(T), true
+}
+
+// GetType retrieves the value of the given type from the scope and returns
+// it as a reflect.Value. It panics with a structured dependency-not-found
+// error if the type is not defined in the scope, mirroring the generic
+// Get[T].
+func (scope Scope) GetType(typ reflect.Type) reflect.Value {
+	value, ok := scope.TryGetType(typ)
+	if !ok {
+		throwErrDependencyNotFound(typ)
+	}
+	return value
+}
+
+// TryGetType retrieves the value of the given type from the scope as a
+// reflect.Value. Unlike GetType, it does not panic when the type is missing
+// from the scope: it returns the zero reflect.Value and false instead.
+// Panics raised by provider evaluation still propagate.
+func (scope Scope) TryGetType(typ reflect.Type) (reflect.Value, bool) {
+	if typ == nil {
+		// Reject nil types up front: getTypeID(nil) would otherwise register a
+		// bogus nil -> id mapping in the global type tables.
+		panic(errors.Join(
+			fmt.Errorf("nil reflect.Type provided"),
+			ErrBadArgument,
+		))
+	}
+	value, found := scope.get(getTypeID(typ))
+	if !found {
+		return reflect.Value{}, false
+	}
+	return value, true
 }
 
 // Call executes the given function `fn`, resolving its arguments from the scope.
