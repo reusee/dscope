@@ -1,7 +1,6 @@
 package dscope
 
 import (
-	"reflect"
 	"testing"
 )
 
@@ -24,10 +23,10 @@ func TestInject(t *testing.T) {
 func TestGetInjectStruct(t *testing.T) {
 	// Regression test: Get[InjectStruct] must return a value of the named
 	// InjectStruct type, not the unnamed func(any) type produced by the
-	// method value. Otherwise the type assertion in Get[T] panics.
+	// method value. Otherwise the type assertion in Scope.Get[T] panics.
 	scope := New(Provide(int(42)))
 
-	inject := Get[InjectStruct](scope)
+	inject := scope.Get[InjectStruct]()
 	if inject == nil {
 		t.Fatal("got nil InjectStruct")
 	}
@@ -43,14 +42,6 @@ func TestGetInjectStruct(t *testing.T) {
 	scope.Assign(&inject2)
 	if inject2 == nil {
 		t.Fatal("Assign got nil InjectStruct")
-	}
-
-	v, ok := scope.Get(reflect.TypeFor[InjectStruct]())
-	if !ok {
-		t.Fatal("Get(reflect.Type) returned ok=false")
-	}
-	if v.Interface().(InjectStruct) == nil {
-		t.Fatal("type assertion to InjectStruct failed or nil")
 	}
 }
 

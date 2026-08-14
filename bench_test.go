@@ -373,31 +373,32 @@ func BenchmarkGetAndCall(b *testing.B) {
 				t18,
 				t19,
 				t20,
+
 				t21,
 				t22
 		}(
-			Get[T1](scope),
-			Get[T2](scope),
-			Get[T3](scope),
-			Get[T4](scope),
-			Get[T5](scope),
-			Get[T6](scope),
-			Get[T7](scope),
-			Get[T8](scope),
-			Get[T9](scope),
-			Get[T10](scope),
-			Get[T11](scope),
-			Get[T12](scope),
-			Get[T13](scope),
-			Get[T14](scope),
-			Get[T15](scope),
-			Get[T16](scope),
-			Get[T17](scope),
-			Get[T18](scope),
-			Get[T19](scope),
-			Get[T20](scope),
-			Get[T21](scope),
-			Get[T22](scope),
+			scope.Get[T1](),
+			scope.Get[T2](),
+			scope.Get[T3](),
+			scope.Get[T4](),
+			scope.Get[T5](),
+			scope.Get[T6](),
+			scope.Get[T7](),
+			scope.Get[T8](),
+			scope.Get[T9](),
+			scope.Get[T10](),
+			scope.Get[T11](),
+			scope.Get[T12](),
+			scope.Get[T13](),
+			scope.Get[T14](),
+			scope.Get[T15](),
+			scope.Get[T16](),
+			scope.Get[T17](),
+			scope.Get[T18](),
+			scope.Get[T19](),
+			scope.Get[T20](),
+			scope.Get[T21](),
+			scope.Get[T22](),
 		)
 
 	}
@@ -632,7 +633,7 @@ func BenchmarkGenericAssign(b *testing.B) {
 
 	var t30 T30
 	for b.Loop() {
-		Assign(scope, &t30)
+		scope.Assign(&t30)
 	}
 }
 
@@ -672,7 +673,7 @@ func BenchmarkGenericGet(b *testing.B) {
 	})
 
 	for b.Loop() {
-		_ = Get[int](s)
+		_ = s.Get[int]()
 	}
 }
 

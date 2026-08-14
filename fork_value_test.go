@@ -10,16 +10,16 @@ func TestGetForkValue(t *testing.T) {
 		return 42
 	})
 
-	f := Get[Fork](scope)
+	f := scope.Get[Fork]()
 	if f == nil {
 		t.Fatal("got nil Fork")
 	}
 
 	child := f(func() string { return "hello" })
-	if Get[int](child) != 42 {
+	if child.Get[int]() != 42 {
 		t.Fatal("child scope did not inherit parent definitions")
 	}
-	if Get[string](child) != "hello" {
+	if child.Get[string]() != "hello" {
 		t.Fatal("child scope did not add new definitions")
 	}
 }
@@ -34,10 +34,10 @@ func TestCallWithForkDependency(t *testing.T) {
 			t.Fatal("Fork dependency was nil")
 		}
 		child := f(func() string { return "from child" })
-		if Get[int](child) != 42 {
+		if child.Get[int]() != 42 {
 			t.Fatal("child did not inherit int")
 		}
-		if Get[string](child) != "from child" {
+		if child.Get[string]() != "from child" {
 			t.Fatal("child did not add string")
 		}
 	})
@@ -51,7 +51,7 @@ func TestAssignFork(t *testing.T) {
 		t.Fatal("Assign got nil Fork")
 	}
 	child := f(func() string { return "assigned" })
-	if Get[string](child) != "assigned" {
+	if child.Get[string]() != "assigned" {
 		t.Fatal("assigned Fork did not create child correctly")
 	}
 }
@@ -96,29 +96,11 @@ func TestForkValueIgnoredDefinition(t *testing.T) {
 			return func(defs ...any) Scope { return New() }
 		},
 	)
-	f := Get[Fork](scope)
+	f := scope.Get[Fork]()
 	child := f(func() string { return "hello" })
 	// If the user definition were used, child would not have int=42.
-	if Get[int](child) != 42 {
+	if child.Get[int]() != 42 {
 		t.Fatal("user-provided Fork definition was used instead of built-in")
-	}
-}
-
-func TestForkValueReflectGet(t *testing.T) {
-	scope := New(func() int {
-		return 42
-	})
-	v, ok := scope.Get(reflect.TypeFor[Fork]())
-	if !ok {
-		t.Fatal("Get(reflect.Type) returned ok=false")
-	}
-	f := v.Interface().(Fork)
-	if f == nil {
-		t.Fatal("got nil Fork from reflect.Value")
-	}
-	child := f(func() string { return "reflect" })
-	if Get[int](child) != 42 {
-		t.Fatal("reflect-obtained Fork did not inherit parent")
 	}
 }
 
@@ -131,11 +113,11 @@ func TestForkDependencyResetForNewDefs(t *testing.T) {
 		func(f Fork) Service {
 			counter++
 			child := f()
-			return Service(Get[Config](child))
+			return Service(child.Get[Config]())
 		},
 	)
 
-	if s := Get[Service](scope); s != 1 {
+	if s := scope.Get[Service](); s != 1 {
 		t.Fatalf("expected 1, got %d", s)
 	}
 	if counter != 1 {
@@ -144,7 +126,7 @@ func TestForkDependencyResetForNewDefs(t *testing.T) {
 
 	// A fork without new definitions must not re-evaluate the provider.
 	noNewDefs := scope.Fork()
-	if s := Get[Service](noNewDefs); s != 1 {
+	if s := noNewDefs.Get[Service](); s != 1 {
 		t.Fatalf("expected 1, got %d", s)
 	}
 	if counter != 1 {
@@ -154,7 +136,7 @@ func TestForkDependencyResetForNewDefs(t *testing.T) {
 	// A fork adding definitions must pessimistically re-evaluate the opaque
 	// Fork dependency binding against the new scope.
 	child := scope.Fork(func() Config { return 3 })
-	if s := Get[Service](child); s != 3 {
+	if s := child.Get[Service](); s != 3 {
 		t.Fatalf("expected 3, got %d", s)
 	}
 	if counter != 2 {

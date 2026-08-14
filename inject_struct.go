@@ -181,7 +181,7 @@ l:
 					reflect.MakeFunc(
 						info.Field.Type,
 						func(_ []reflect.Value) []reflect.Value {
-							value, ok := scope.Get(info.Type)
+							value, ok := scope.get(getTypeID(info.Type))
 							if !ok {
 								throwErrDependencyNotFound(info.Type)
 							}
@@ -208,7 +208,7 @@ l:
 				}
 
 			} else {
-				v, ok := scope.Get(info.Type)
+				v, ok := scope.get(getTypeID(info.Type))
 				if !ok {
 					throwErrDependencyNotFound(info.Type)
 				}

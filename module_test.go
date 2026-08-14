@@ -34,9 +34,9 @@ func TestModule(t *testing.T) {
 		new(mod1),
 		Provide(float64(42)),
 	)
-	Get[float32](scope)
-	Get[int](scope)
-	Get[int8](scope)
-	Get[float64](scope)
-	Get[int16](scope)
+	scope.Get[float32]()
+	scope.Get[int]()
+	scope.Get[int8]()
+	scope.Get[float64]()
+	scope.Get[int16]()
 }

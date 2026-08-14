@@ -64,7 +64,11 @@ func FuzzFork(f *testing.F) {
 
 		for _, typ := range types {
 			ptr := reflect.New(typ.Type)
-			scope.Assign(ptr.Interface())
+			value, ok := scope.get(getTypeID(typ.Type))
+			if !ok {
+				t.Fatal("value not found")
+			}
+			ptr.Elem().Set(value)
 			if !reflect.DeepEqual(
 				ptr.Elem().Interface(),
 				typ.Value(r),

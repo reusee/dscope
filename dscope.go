@@ -227,57 +227,30 @@ func (scope Scope) Reset() Scope {
 // assignment entry points.
 const TheoryOfScopeAssignment = `
 dscope assignment theory:
-- Values are retrieved from a scope through typed pointers: Scope.Assign
-  resolves each pointer's element type from the scope and writes the value;
-  the generic Assign[T] is the single-value form; Get[T] returns the value
-  directly.
+- Values are retrieved from a scope through typed pointers: Scope.Assign[T]
+  resolves T from the scope and writes the value; Scope.Get[T] returns the
+  value directly.
 - A missing type panics with a structured dependency-not-found error.
 - CallResult.Assign matches return values to targets by type, preferring exact
   matches over assignable (interface) matches; CallResult.Extract assigns by
   position.
-- All assignment entry points share the same argument-validation semantics:
-  nil and non-pointer targets are bad arguments and must produce structured
-  dscope errors instead of leaking runtime or reflection panics.
+- Assign[T] accepts a single typed pointer; a nil pointer is a bad argument
+  and must produce a structured dscope error instead of leaking a runtime or
+  reflection panic. CallResult.Assign and CallResult.Extract validate nil and
+  non-pointer targets for the same reason.
 `
 
-// Assign retrieves values from the scope matching the types of the provided pointers
-// and assigns the values to the pointers.
-// It panics if any argument is not a pointer or if a required type is not found.
+// Assign retrieves the value of type T from the scope and writes it to the
+// provided pointer. It panics if ptr is nil or if the type is not found.
 // It's safe to call Assign concurrently.
-func (scope Scope) Assign(objects ...any) {
-	for _, o := range objects {
-		v := reflect.ValueOf(o)
-		if v.Kind() != reflect.Pointer {
-			panic(errors.Join(
-				fmt.Errorf("%T is not a pointer", o),
-				ErrBadArgument,
-			))
-		}
-		if v.IsNil() {
-			panic(errors.Join(
-				fmt.Errorf("cannot assign to a nil pointer target of type %v", v.Type()),
-				ErrBadArgument,
-			))
-		}
-		t := v.Type().Elem()
-		value, ok := scope.Get(t)
-		if !ok {
-			throwErrDependencyNotFound(t)
-		}
-		v.Elem().Set(value)
-	}
-}
-
-// Assign is a type-safe generic wrapper for Scope.Assign for a single pointer.
-// It panics with ErrBadArgument if ptr is nil.
-func Assign[T any](scope Scope, ptr *T) {
+func (scope Scope) Assign[T any](ptr *T) {
 	if ptr == nil {
 		panic(errors.Join(
 			fmt.Errorf("cannot assign to a nil pointer target of type %T", ptr),
 			ErrBadArgument,
 		))
 	}
-	*ptr = Get[T](scope)
+	*ptr = scope.Get[T]()
 }
 
 func (scope Scope) get(id _TypeID) (
@@ -310,16 +283,6 @@ func (scope Scope) get(id _TypeID) (
 	}
 
 	return value.initializer.get(scope, value.typeInfo.Position), true
-}
-
-// Get retrieves a single value of the specified type `t` from the scope.
-// It returns false if the type is not found.
-// Use Assign or the generic Get[T] for safer retrieval.
-func (scope Scope) Get(t reflect.Type) (
-	ret reflect.Value,
-	ok bool,
-) {
-	return scope.get(getTypeID(t))
 }
 
 // TheoryOfScopeInvocation documents the semantics of scope.Call and the
@@ -364,11 +327,11 @@ func validateCallableValue(fnValue reflect.Value) reflect.Type {
 	return fnType
 }
 
-// Get is a type-safe generic function to retrieve a single value of type T.
+// Get is a type-safe generic method to retrieve a single value of type T.
 // It panics if the type is not found or if an error occurs during resolution.
-func Get[T any](scope Scope) (o T) {
+func (scope Scope) Get[T any]() (o T) {
 	typ := reflect.TypeFor[T]()
-	value, ok := scope.Get(typ)
+	value, ok := scope.get(getTypeID(typ))
 	if !ok {
 		throwErrDependencyNotFound(typ)
 	}

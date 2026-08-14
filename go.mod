@@ -1,3 +1,3 @@
 module github.com/reusee/dscope
 
-go 1.24
+go 1.27

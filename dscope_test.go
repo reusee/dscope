@@ -104,11 +104,12 @@ func TestPanic(t *testing.T) {
 			if !errors.Is(err, ErrBadArgument) {
 				t.Fatal()
 			}
-			if !strings.Contains(err.Error(), "not a pointer") {
+			if !strings.Contains(err.Error(), "nil pointer target") {
 				t.Fatal()
 			}
 		}()
-		scope.Assign(42)
+		var p *int
+		scope.Assign(p)
 	}()
 
 	func() {
@@ -524,7 +525,8 @@ func TestMultiProvide(t *testing.T) {
 	)
 	var i int
 	var s string
-	scope.Assign(&i, &s)
+	scope.Assign(&i)
+	scope.Assign(&s)
 }
 
 func TestForkLazyMulti(t *testing.T) {
@@ -951,7 +953,7 @@ func TestRacing(t *testing.T) {
 }
 
 func TestOverwrite(t *testing.T) {
-	scope := New(
+	scope := New().Fork(
 		func() (int, string) {
 			return 42, "42"
 		},
@@ -965,7 +967,8 @@ func TestOverwrite(t *testing.T) {
 	)
 	var i int
 	var s string
-	s2.Assign(&i, &s)
+	s2.Assign(&i)
+	s2.Assign(&s)
 	if n != 1 {
 		t.Fatal()
 	}
@@ -1033,19 +1036,18 @@ func TestOverwriteNew(t *testing.T) {
 		},
 	)
 
-	if Get[int](scope) != 42 {
+	if scope.Get[int]() != 42 {
 		t.Fatal()
 	}
-	if Get[string](scope) != "42" {
+	if scope.Get[string]() != "42" {
 		t.Fatal()
 	}
-	if Get[int](scope2) != 24 {
+	if scope2.Get[int]() != 24 {
 		t.Fatal()
 	}
-	if Get[string](scope2) != "foo" {
+	if scope2.Get[string]() != "foo" {
 		t.Fatal()
 	}
-
 }
 
 func TestPointerProvider(t *testing.T) {
@@ -1333,12 +1335,12 @@ func TestGenericFuncs(t *testing.T) {
 	s := New(func() int {
 		return 42
 	})
-	i := Get[int](s)
+	i := s.Get[int]()
 	if i != 42 {
 		t.Fatal()
 	}
 	var i2 int
-	Assign(s, &i2)
+	s.Assign(&i2)
 	if i2 != 42 {
 		t.Fatal()
 	}
@@ -1381,7 +1383,7 @@ func TestGetInterface(t *testing.T) {
 	scope := New(func() I {
 		return 42
 	})
-	v := Get[I](scope)
+	v := scope.Get[I]()
 	if v != 42 {
 		t.Fatal()
 	}
@@ -1392,7 +1394,7 @@ func TestNilInterfacePointerDefinition(t *testing.T) {
 	scope := New(&provided)
 	provided = "changed after scope creation"
 
-	value, ok := scope.Get(reflect.TypeFor[any]())
+	value, ok := scope.get(getTypeID(reflect.TypeFor[any]()))
 	if !ok {
 		t.Fatal("nil interface definition not found")
 	}
@@ -1403,7 +1405,7 @@ func TestNilInterfacePointerDefinition(t *testing.T) {
 		t.Fatalf("resolved value is not nil: %v", value.Interface())
 	}
 
-	if resolved := Get[any](scope); resolved != nil {
+	if resolved := scope.Get[any](); resolved != nil {
 		t.Fatalf("generic Get returned %v, want nil", resolved)
 	}
 
@@ -1446,7 +1448,7 @@ func TestGetDependencyNotFound(t *testing.T) {
 				t.Fatalf("got %v", msg)
 			}
 		}()
-		Get[int](scope)
+		scope.Get[int]()
 	}()
 }
 
@@ -1581,7 +1583,7 @@ func TestGenericAssignNilPointer(t *testing.T) {
 		}
 	}()
 
-	Assign(scope, pointer)
+	scope.Assign(pointer)
 }
 
 func TestForkRedefinitionOptimization(t *testing.T) {
@@ -1653,7 +1655,7 @@ func TestStaleInjectStruct(t *testing.T) {
 		},
 	)
 
-	s := Get[*Service](scope)
+	s := scope.Get[*Service]()
 	if s.Cfg.Val != 1 {
 		t.Fatalf("expected 1, got %d", s.Cfg.Val)
 	}
@@ -1663,7 +1665,7 @@ func TestStaleInjectStruct(t *testing.T) {
 		Provide(Config{Val: 2}),
 	)
 
-	s2 := Get[*Service](scope2)
+	s2 := scope2.Get[*Service]()
 	if s2.Cfg.Val != 2 {
 		t.Fatalf("expected 2, got %d", s2.Cfg.Val)
 	}
@@ -1681,13 +1683,13 @@ func TestStaleInjectField(t *testing.T) {
 			return &s
 		},
 	)
-	s := Get[*Service](scope)
+	s := scope.Get[*Service]()
 	if s.Val() != 1 {
 		t.Fatal()
 	}
 
 	scope2 := scope.Fork(Provide(int(2)))
-	s2 := Get[*Service](scope2)
+	s2 := scope2.Get[*Service]()
 	if s2.Val() != 2 {
 		t.Fatalf("expected 2, got %d", s2.Val())
 	}

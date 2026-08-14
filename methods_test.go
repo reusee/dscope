@@ -94,13 +94,13 @@ func TestMethodsEmbeddedValue(t *testing.T) {
 	scope := New(Methods(&testMethodsContainer{})...)
 
 	// Should find Value() (int64)
-	if v := Get[int64](scope); v != 1 {
+	if v := scope.Get[int64](); v != 1 {
 		t.Fatalf("expected 1, got %d", v)
 	}
 
 	// Should find Pointer() (int32)
 	// Before fix, this fails because we only visit testMethodsValueMod as a value
-	if v := Get[int32](scope); v != 2 {
+	if v := scope.Get[int32](); v != 2 {
 		t.Fatalf("expected 2, got %d", v)
 	}
 }
@@ -112,11 +112,11 @@ func TestMethodsDoublePointer(t *testing.T) {
 	scope := New(Methods(&m)...)
 
 	// Should find Value() (int64) from T
-	if v := Get[int64](scope); v != 1 {
+	if v := scope.Get[int64](); v != 1 {
 		t.Fatalf("expected 1, got %d", v)
 	}
 	// Should find Pointer() (int32) from *T
-	if v := Get[int32](scope); v != 2 {
+	if v := scope.Get[int32](); v != 2 {
 		t.Fatalf("expected 2, got %d", v)
 	}
 }
@@ -141,12 +141,12 @@ func TestMethodsEmbeddedValuePassedByValue(t *testing.T) {
 
 	// Should find Pointer() (int32) from *testMethodsValueMod
 	// This would fail if we didn't create an addressable copy of the embedded field
-	if v := Get[int32](scope); v != 2 {
+	if v := scope.Get[int32](); v != 2 {
 		t.Fatalf("expected 2, got %d", v)
 	}
 
 	// Should find Value() (int64) from testMethodsValueMod
-	if v := Get[int64](scope); v != 1 {
+	if v := scope.Get[int64](); v != 1 {
 		t.Fatalf("expected 1, got %d", v)
 	}
 }
@@ -164,13 +164,13 @@ func TestMethodsRootValueAddressability(t *testing.T) {
 	scope := New(Methods(m)...)
 
 	// Should find Value() -> int64
-	if v := Get[int64](scope); v != 1 {
+	if v := scope.Get[int64](); v != 1 {
 		t.Fatalf("expected 1, got %d", v)
 	}
 
 	// Should find Pointer() -> int32
 	// Without fix, this fails to find the provider for int32
-	if v := Get[int32](scope); v != 2 {
+	if v := scope.Get[int32](); v != 2 {
 		t.Fatalf("expected 2, got %d", v)
 	}
 }

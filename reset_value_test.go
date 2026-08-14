@@ -12,22 +12,22 @@ func TestGetResetValue(t *testing.T) {
 		return value
 	})
 
-	if v := Get[int](scope); v != 1 {
+	if v := scope.Get[int](); v != 1 {
 		t.Fatalf("expected 1, got %d", v)
 	}
 
-	r := Get[Reset](scope)
+	r := scope.Get[Reset]()
 	if r == nil {
 		t.Fatal("got nil Reset")
 	}
 
 	resetScope := r()
-	if v := Get[int](resetScope); v != 2 {
+	if v := resetScope.Get[int](); v != 2 {
 		t.Fatalf("expected 2 from reset scope, got %d", v)
 	}
 
 	// The original scope is unaffected by the reset scope.
-	if v := Get[int](scope); v != 1 {
+	if v := scope.Get[int](); v != 1 {
 		t.Fatalf("expected 1 from original scope, got %d", v)
 	}
 }
@@ -42,7 +42,7 @@ func TestCallWithResetDependency(t *testing.T) {
 			t.Fatal("Reset dependency was nil")
 		}
 		resetScope := r()
-		if Get[int](resetScope) != 42 {
+		if resetScope.Get[int]() != 42 {
 			t.Fatal("reset scope did not inherit int")
 		}
 	})
@@ -102,29 +102,11 @@ func TestResetValueIgnoredDefinition(t *testing.T) {
 			return func() Scope { return New() }
 		},
 	)
-	r := Get[Reset](scope)
+	r := scope.Get[Reset]()
 	resetScope := r()
 	// If the user definition were used, resetScope would be New() without int.
-	if Get[int](resetScope) != 42 {
+	if resetScope.Get[int]() != 42 {
 		t.Fatal("user-provided Reset definition was used instead of built-in")
-	}
-}
-
-func TestResetValueReflectGet(t *testing.T) {
-	scope := New(func() int {
-		return 42
-	})
-	v, ok := scope.Get(reflect.TypeFor[Reset]())
-	if !ok {
-		t.Fatal("Get(reflect.Type) returned ok=false")
-	}
-	r := v.Interface().(Reset)
-	if r == nil {
-		t.Fatal("got nil Reset from reflect.Value")
-	}
-	resetScope := r()
-	if Get[int](resetScope) != 42 {
-		t.Fatal("reflect-obtained Reset did not inherit parent")
 	}
 }
 
@@ -136,11 +118,11 @@ func TestResetDependencyResetForNewDefs(t *testing.T) {
 		func() Config { return 1 },
 		func(r Reset) Service {
 			counter++
-			return Service(Get[Config](r()))
+			return Service(r().Get[Config]())
 		},
 	)
 
-	if s := Get[Service](scope); s != 1 {
+	if s := scope.Get[Service](); s != 1 {
 		t.Fatalf("expected 1, got %d", s)
 	}
 	if counter != 1 {
@@ -149,7 +131,7 @@ func TestResetDependencyResetForNewDefs(t *testing.T) {
 
 	// A fork without new definitions must not re-evaluate the provider.
 	noNewDefs := scope.Fork()
-	if s := Get[Service](noNewDefs); s != 1 {
+	if s := noNewDefs.Get[Service](); s != 1 {
 		t.Fatalf("expected 1, got %d", s)
 	}
 	if counter != 1 {
@@ -159,7 +141,7 @@ func TestResetDependencyResetForNewDefs(t *testing.T) {
 	// A fork adding definitions must pessimistically re-evaluate the opaque
 	// Reset dependency binding against the new scope.
 	child := scope.Fork(func() Config { return 3 })
-	if s := Get[Service](child); s != 3 {
+	if s := child.Get[Service](); s != 3 {
 		t.Fatalf("expected 3, got %d", s)
 	}
 	if counter != 2 {

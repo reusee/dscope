@@ -12,21 +12,21 @@ func TestResetRecomputesValues(t *testing.T) {
 		return int(atomic.AddInt64(&counter, 1))
 	})
 
-	if v := Get[int](scope); v != 1 {
+	if v := scope.Get[int](); v != 1 {
 		t.Fatalf("expected 1, got %d", v)
 	}
-	if v := Get[int](scope); v != 1 {
+	if v := scope.Get[int](); v != 1 {
 		t.Fatalf("expected cached 1, got %d", v)
 	}
 
 	r := scope.Reset()
-	if v := Get[int](r); v != 2 {
+	if v := r.Get[int](); v != 2 {
 		t.Fatalf("expected 2 after reset, got %d", v)
 	}
-	if v := Get[int](r); v != 2 {
+	if v := r.Get[int](); v != 2 {
 		t.Fatalf("expected cached 2, got %d", v)
 	}
-	if v := Get[int](scope); v != 1 {
+	if v := scope.Get[int](); v != 1 {
 		t.Fatalf("original affected: expected 1, got %d", v)
 	}
 }
@@ -43,13 +43,13 @@ func TestResetLazy(t *testing.T) {
 		},
 	)
 
-	_ = Get[int](scope)
+	_ = scope.Get[int]()
 	if fooCounter != 1 || barCounter != 0 {
 		t.Fatalf("foo=%d, bar=%d", fooCounter, barCounter)
 	}
 
 	r := scope.Reset()
-	_ = Get[int](r)
+	_ = r.Get[int]()
 	if fooCounter != 2 {
 		t.Fatalf("expected foo 2, got %d", fooCounter)
 	}
@@ -57,7 +57,7 @@ func TestResetLazy(t *testing.T) {
 		t.Fatalf("bar should not be evaluated: %d", barCounter)
 	}
 
-	_ = Get[string](r)
+	_ = r.Get[string]()
 	if barCounter != 1 {
 		t.Fatalf("expected bar 1, got %d", barCounter)
 	}
@@ -69,19 +69,19 @@ func TestResetChain(t *testing.T) {
 		return int(atomic.AddInt64(&counter, 1))
 	})
 
-	_ = Get[int](scope) // 1
+	_ = scope.Get[int]() // 1
 	r1 := scope.Reset()
-	_ = Get[int](r1) // 2
+	_ = r1.Get[int]() // 2
 	r2 := r1.Reset()
-	_ = Get[int](r2) // 3
+	_ = r2.Get[int]() // 3
 
-	if v := Get[int](scope); v != 1 {
+	if v := scope.Get[int](); v != 1 {
 		t.Fatalf("expected 1, got %d", v)
 	}
-	if v := Get[int](r1); v != 2 {
+	if v := r1.Get[int](); v != 2 {
 		t.Fatalf("expected 2, got %d", v)
 	}
-	if v := Get[int](r2); v != 3 {
+	if v := r2.Get[int](); v != 3 {
 		t.Fatalf("expected 3, got %d", v)
 	}
 }
@@ -91,20 +91,20 @@ func TestResetFork(t *testing.T) {
 	scope := New(func() int {
 		return int(atomic.AddInt64(&counter, 1))
 	})
-	_ = Get[int](scope) // 1
+	_ = scope.Get[int]() // 1
 
 	r := scope.Reset()
 	child := r.Fork(func() string {
 		return "hello"
 	})
 
-	if v := Get[int](child); v != 2 {
+	if v := child.Get[int](); v != 2 {
 		t.Fatalf("expected 2, got %d", v)
 	}
-	if v := Get[string](child); v != "hello" {
+	if v := child.Get[string](); v != "hello" {
 		t.Fatalf("expected hello, got %s", v)
 	}
-	if v := Get[int](scope); v != 1 {
+	if v := scope.Get[int](); v != 1 {
 		t.Fatalf("original affected: expected 1, got %d", v)
 	}
 }
@@ -121,12 +121,12 @@ func TestResetDependencyChain(t *testing.T) {
 		},
 	)
 
-	if s := Get[string](scope); s != "A1" {
+	if s := scope.Get[string](); s != "A1" {
 		t.Fatalf("expected A1, got %s", s)
 	}
 
 	r := scope.Reset()
-	if s := Get[string](r); s != "B2" {
+	if s := r.Get[string](); s != "B2" {
 		t.Fatalf("expected B2, got %s", s)
 	}
 	if intCounter != 2 {
@@ -141,7 +141,7 @@ func TestResetPointerProvider(t *testing.T) {
 	val := 42
 	scope := New(&val)
 	r := scope.Reset()
-	if v := Get[int](r); v != 42 {
+	if v := r.Get[int](); v != 42 {
 		t.Fatalf("expected 42, got %d", v)
 	}
 }
@@ -176,7 +176,7 @@ func TestResetEmptyScope(t *testing.T) {
 				t.Fatal("should panic")
 			}
 		}()
-		Get[int](r)
+		r.Get[int]()
 	}()
 }
 

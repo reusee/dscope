@@ -22,7 +22,7 @@ func TestInitializerPanicRetry(t *testing.T) {
 					t.Fatalf("call %d: expected 'provider panic', got %v", i, str)
 				}
 			}()
-			Get[Foo](scope)
+			scope.Get[Foo]()
 		}()
 	}
 }
