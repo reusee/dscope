@@ -84,8 +84,19 @@ type _Forker struct {
 // posAtSorted represents the index of a value within the sorted slice of new values.
 type posAtSorted int
 
-// newForker analyzes the base scope and new definitions to create a _Forker.
-// It performs dependency analysis, detects loops, determines resets, and calculates signatures.
+type _DefOrigin struct {
+	defIndex    int
+	defType     reflect.Type
+	outputIndex int // -1 for pointer definitions
+}
+
+func (o _DefOrigin) String() string {
+	if o.outputIndex < 0 {
+		return fmt.Sprintf("definition #%d (%v)", o.defIndex+1, o.defType)
+	}
+	return fmt.Sprintf("definition #%d (%v, output %d)", o.defIndex+1, o.defType, o.outputIndex)
+}
+
 func newForker(
 	scope Scope,
 	defs []any,
@@ -94,11 +105,11 @@ func newForker(
 
 	// 1. Process Definitions: Create templates, store metadata, identify overrides.
 	newValuesTemplate := make([]_Value, 0, len(defs))
-	redefinedIDs := make(map[_TypeID]struct{})    // Set of overridden TypeIDs
-	newDefOutputIDs := make(map[_TypeID]struct{}) // Set of TypeIDs produced by new defs in this layer
+	redefinedIDs := make(map[_TypeID]struct{})      // Set of overridden TypeIDs
+	newDefOutputIDs := make(map[_TypeID]_DefOrigin) // TypeID -> origin of the first definition producing it
 	defNumValues := make([]int, 0, len(defs))
 	defKinds := make([]reflect.Kind, 0, len(defs))
-	for _, def := range defs {
+	for defIdx, def := range defs {
 		if def == nil {
 			panic(errors.Join(
 				fmt.Errorf("nil definition"),
@@ -142,9 +153,9 @@ func newForker(
 				id := getTypeID(t)
 
 				// Check for duplicate outputs within the new definitions slice
-				if _, ok := newDefOutputIDs[id]; ok {
+				if first, ok := newDefOutputIDs[id]; ok {
 					panic(errors.Join(
-						fmt.Errorf("%v has multiple definitions", t),
+						fmt.Errorf("%v has multiple definitions in the same Fork call: %s and %s", t, first, _DefOrigin{defIndex: defIdx, defType: defType, outputIndex: i}),
 						ErrBadDefinition,
 					))
 				}
@@ -158,7 +169,7 @@ func newForker(
 					},
 				})
 				numValues++
-				newDefOutputIDs[id] = struct{}{}
+				newDefOutputIDs[id] = _DefOrigin{defIndex: defIdx, defType: defType, outputIndex: i}
 				if _, ok := scope.values.Load(id); ok {
 					redefinedIDs[id] = struct{}{} // Mark override
 				}
@@ -178,9 +189,9 @@ func newForker(
 			t := defType.Elem()
 			id := getTypeID(t)
 
-			if _, ok := newDefOutputIDs[id]; ok {
+			if first, ok := newDefOutputIDs[id]; ok {
 				panic(errors.Join(
-					fmt.Errorf("%s has multiple definitions", t),
+					fmt.Errorf("%v has multiple definitions in the same Fork call: %s and %s", t, first, _DefOrigin{defIndex: defIdx, defType: defType, outputIndex: -1}),
 					ErrBadDefinition,
 				))
 			}
@@ -191,7 +202,7 @@ func newForker(
 					DefType: defType,
 				},
 			})
-			newDefOutputIDs[id] = struct{}{}
+			newDefOutputIDs[id] = _DefOrigin{defIndex: defIdx, defType: defType, outputIndex: -1}
 			if _, ok := scope.values.Load(id); ok {
 				redefinedIDs[id] = struct{}{} // Mark override
 			}

@@ -55,8 +55,6 @@ dscope core theory:
   ToDOT — reflects the effective definitions of the scope it is invoked on.
 `
 
-// TheoryOfScopeDefinitions documents the accepted definition forms and the
-// validation applied to them during scope construction.
 const TheoryOfScopeDefinitions = `
 dscope definition theory:
 - A definition is a provider function (its parameters are dependencies resolved
@@ -69,8 +67,9 @@ dscope definition theory:
 - Public scope construction validates every definition before deriving type
   identity: nil definitions, nil function or pointer definitions, functions
   that return nothing, and non-function non-pointer values are rejected.
-- Two definitions in the same Fork call must not produce the same type;
-  redefining an inherited type is the override mechanism of a later Fork layer.
+- Two definitions in the same Fork call must not produce the same type; a
+  duplicate is rejected with an error naming both conflicting definitions.
+  Redefining an inherited type is the override mechanism of a later Fork layer.
 - Invalid definitions produce structured dscope errors rather than leaking
   reflection, hashing, or storage implementation panics.
 `

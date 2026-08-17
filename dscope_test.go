@@ -249,6 +249,66 @@ func TestPanic(t *testing.T) {
 
 }
 
+func TestDuplicateDefinitionErrorDetails(t *testing.T) {
+	t.Run("pointer and function", func(t *testing.T) {
+		i := 42
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			err, ok := p.(error)
+			if !ok {
+				t.Fatalf("panic value not an error: %v", p)
+			}
+			if !errors.Is(err, ErrBadDefinition) {
+				t.Fatalf("expected ErrBadDefinition, got %T: %v", err, err)
+			}
+			msg := err.Error()
+			if !strings.Contains(msg, "int has multiple definitions") {
+				t.Fatalf("missing type in error message: %s", msg)
+			}
+			if !strings.Contains(msg, "*int") {
+				t.Fatalf("missing pointer definition in error message: %s", msg)
+			}
+			if !strings.Contains(msg, "func() int") {
+				t.Fatalf("missing function definition in error message: %s", msg)
+			}
+			if !strings.Contains(msg, "definition #1") || !strings.Contains(msg, "definition #2") {
+				t.Fatalf("missing definition indices in error message: %s", msg)
+			}
+		}()
+		New(
+			&i,
+			func() int { return 2 },
+		)
+	})
+
+	t.Run("same function duplicate output", func(t *testing.T) {
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			err, ok := p.(error)
+			if !ok {
+				t.Fatalf("panic value not an error: %v", p)
+			}
+			if !errors.Is(err, ErrBadDefinition) {
+				t.Fatalf("expected ErrBadDefinition, got %T: %v", err, err)
+			}
+			msg := err.Error()
+			if !strings.Contains(msg, "int has multiple definitions") {
+				t.Fatalf("missing type in error message: %s", msg)
+			}
+			if !strings.Contains(msg, "output 0") || !strings.Contains(msg, "output 1") {
+				t.Fatalf("missing output indices in error message: %s", msg)
+			}
+		}()
+		New(func() (int, int) { return 1, 2 })
+	})
+}
+
 func TestForkScope(t *testing.T) {
 	type Foo int
 	type Bar int
