@@ -432,10 +432,6 @@ func (scope Scope) getArgsSlow(fnType reflect.Type, args []reflect.Value) int {
 	return v.(func(Scope, []reflect.Value) int)(scope, args)
 }
 
-// Cache for mapping return types to their position index for a given function type.
-// reflect.Type -> map[reflect.Type]int
-var fnRetTypes sync.Map
-
 const reflectValuesPoolMaxLen = 64
 
 var reflectValuesPool = sync.Pool{
@@ -463,19 +459,5 @@ func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 	}
 	n := scope.getArgs(fnType, args)
 	res.Values = fnValue.Call(args[:n])
-
-	// Cache return type positions
-	if v, ok := fnRetTypes.Load(fnType); ok {
-		res.positionsByType = v.(map[reflect.Type][]int)
-	} else {
-		m := make(map[reflect.Type][]int)
-		for i := range fnType.NumOut() {
-			t := fnType.Out(i)
-			m[t] = append(m[t], i)
-		}
-		actual, _ := fnRetTypes.LoadOrStore(fnType, m)
-		res.positionsByType = actual.(map[reflect.Type][]int)
-	}
-
 	return
 }

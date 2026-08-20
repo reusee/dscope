@@ -20,8 +20,7 @@ dscope call result theory:
 `
 
 type CallResult struct {
-	positionsByType map[reflect.Type][]int
-	Values          []reflect.Value
+	Values []reflect.Value
 }
 
 // Extract extracts results by positions
