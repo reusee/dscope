@@ -1950,3 +1950,80 @@ func TestStaleInjectField(t *testing.T) {
 		t.Fatalf("expected 2, got %d", s2.Val())
 	}
 }
+
+type loopPathTypeA int
+type loopPathTypeB int
+type loopPathTypeC int
+
+// TestDependencyLoopPathShowsCycle verifies that the dependency-loop error
+// reports a closed path: the first type on the reported path must repeat at
+// the end, so the loop is visible in the message.
+func TestDependencyLoopPathShowsCycle(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected a dependency loop panic")
+		}
+		err, ok := r.(error)
+		if !ok {
+			t.Fatalf("panic is not an error: %v", r)
+		}
+		message := err.Error()
+		const marker = "path: "
+		if !strings.Contains(message, marker) {
+			t.Fatalf("error message has no path: %s", message)
+		}
+		path := strings.TrimSpace(message[strings.Index(message, marker)+len(marker):])
+		parts := strings.Split(path, " -> ")
+		if len(parts) < 3 {
+			t.Fatalf("path too short: %q", path)
+		}
+		if parts[0] != parts[len(parts)-1] {
+			t.Fatalf("path does not close the cycle: %q", path)
+		}
+	}()
+	// The cycle loopA -> loopB -> loopC -> loopA spans two Fork layers:
+	// a single call cannot express it because loopA would be defined twice.
+	base := New(func() loopPathTypeA { return 0 })
+	_ = base.Fork(
+		func(a loopPathTypeA) loopPathTypeB { return 0 },
+		func(b loopPathTypeB) loopPathTypeC { return 0 },
+		func(c loopPathTypeC) loopPathTypeA { return 0 },
+	)
+}
+
+// TestNilDefinitionOnCachedForker verifies that definition validation runs on
+// every Fork call, including calls served by a cached _Forker. The forker
+// cache is keyed by definition types only, so a cached path must still reject
+// nil function and nil pointer definitions at Fork time instead of deferring
+// the panic to the first value access.
+func TestNilDefinitionOnCachedForker(t *testing.T) {
+	t.Run("nil function", func(t *testing.T) {
+		New(func() int { return 1 }) // warm the forker cache for this definition type
+		var nilFunc func() int
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("nil function definition must panic at Fork time")
+			}
+			if !errors.Is(p.(error), ErrBadArgument) {
+				t.Fatalf("expected ErrBadArgument, got %v", p)
+			}
+		}()
+		New(nilFunc)
+	})
+	t.Run("nil pointer", func(t *testing.T) {
+		New(Provide(1)) // warm the forker cache for *int
+		var nilPtr *int
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("nil pointer definition must panic at Fork time")
+			}
+			if !errors.Is(p.(error), ErrBadArgument) {
+				t.Fatalf("expected ErrBadArgument, got %v", p)
+			}
+		}()
+		New(nilPtr)
+	})
+}

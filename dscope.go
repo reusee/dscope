@@ -102,30 +102,9 @@ func New(
 // _Hash -> *_Forker
 var forkers sync.Map
 
-// Fork creates a new scope by layering the given definitions (`defs`) on top
-// of the current scope's definitions. The result is a new branch of the same
-// definition lineage: scopes have no child-parent relationship, and the
-// original scope is never mutated. Fork handles overriding existing
-// definitions and ensures values are lazily initialized.
-//
-// Definitions can be provider functions or pointers to values. When a pointer is
-// provided, the value it points to is copied; subsequent changes to the original
-// variable will not affect the value in the scope. To provide a shared singleton,
-// use a provider function that returns a pointer.
 func (scope Scope) Fork(
 	defs ...any,
 ) Scope {
-
-	// Validate before reflection and cache-key generation so malformed public
-	// input cannot leak implementation-specific panics.
-	for _, def := range defs {
-		if def == nil {
-			panic(errors.Join(
-				fmt.Errorf("nil definition"),
-				ErrBadArgument,
-			))
-		}
-	}
 
 	// handle modules
 	var moduleObjects []any
@@ -145,6 +124,15 @@ func (scope Scope) Fork(
 			}
 		}
 		defs = append(newDefs, Methods(moduleObjects...)...)
+	}
+
+	// Validate every (possibly module-expanded) definition before reflection
+	// and cache-key generation. The forker cache is keyed by definition types
+	// only, so on a cache hit newForker never runs; validation must therefore
+	// happen here on every call, or malformed definitions would reach value
+	// construction and leak reflection panics at first access.
+	for _, def := range defs {
+		validateDefinition(def)
 	}
 
 	// sorting defs may reduce memory consumption if there're calls with same defs but different order
@@ -222,8 +210,6 @@ func (scope Scope) Reset() Scope {
 	}
 }
 
-// TheoryOfScopeAssignment documents the retrieval semantics shared by the
-// assignment entry points.
 const TheoryOfScopeAssignment = `
 dscope assignment theory:
 - Values are retrieved from a scope through typed pointers: Scope.Assign[T]
@@ -241,8 +227,9 @@ dscope assignment theory:
   position.
 - Assign[T] accepts a single typed pointer; a nil pointer is a bad argument
   and must produce a structured dscope error instead of leaking a runtime or
-  reflection panic. CallResult.Assign and CallResult.Extract validate nil and
-  non-pointer targets for the same reason.
+  reflection panic. CallResult.Assign and CallResult.Extract reject non-pointer
+  and typed nil pointer targets; an untyped nil target is a placeholder and
+  is skipped.
 `
 
 // Assign retrieves the value of type T from the scope and writes it to the
@@ -398,7 +385,7 @@ func (scope Scope) Call(fn any) CallResult {
 }
 
 // Cache for the argument-fetching logic for a given function type.
-// reflect.Type -> func(Scope, []reflect.Value) (int, error)
+// reflect.Type -> func(Scope, []reflect.Value) int
 var getArgsFunc sync.Map
 
 // getArgs resolves the arguments for a function of type `fnType` from the scope

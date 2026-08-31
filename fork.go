@@ -97,6 +97,48 @@ func (o _DefOrigin) String() string {
 	return fmt.Sprintf("definition #%d (%v, output %d)", o.defIndex+1, o.defType, o.outputIndex)
 }
 
+// validateDefinition rejects malformed definitions with structured errors.
+// It runs on every Fork call — not only on forker-cache misses — because the
+// forker cache is keyed by definition types alone and a cached path would
+// otherwise skip construction-time validation entirely.
+func validateDefinition(def any) {
+	if def == nil {
+		panic(errors.Join(
+			fmt.Errorf("nil definition"),
+			ErrBadArgument,
+		))
+	}
+	defValue := reflect.ValueOf(def)
+	defType := defValue.Type()
+	switch defType.Kind() {
+	case reflect.Func:
+		if defValue.IsNil() {
+			panic(errors.Join(
+				fmt.Errorf("%T nil function provided", def),
+				ErrBadArgument,
+			))
+		}
+		if defType.NumOut() == 0 {
+			panic(errors.Join(
+				fmt.Errorf("%T returns nothing", def),
+				ErrBadArgument,
+			))
+		}
+	case reflect.Pointer:
+		if defValue.IsNil() {
+			panic(errors.Join(
+				fmt.Errorf("%T nil pointer provided", def),
+				ErrBadArgument,
+			))
+		}
+	default:
+		panic(errors.Join(
+			fmt.Errorf("%T is not a valid definition", def),
+			ErrBadArgument,
+		))
+	}
+}
+
 func newForker(
 	scope Scope,
 	defs []any,
@@ -258,13 +300,14 @@ func newForker(
 				fmt.Errorf("found dependency loop in definition %v", value.typeInfo.DefType),
 				ErrDependencyLoop,
 				func() error {
+					// The reported path must close the loop: the gray node is
+					// revisited here, so repeat it after the ancestor chain.
 					buf := new(strings.Builder)
-					for i, id := range path {
-						if i > 0 {
-							buf.WriteString(" -> ")
-						}
-						buf.WriteString(typeIDToType(id).String())
+					for _, pathID := range path {
+						buf.WriteString(typeIDToType(pathID).String())
+						buf.WriteString(" -> ")
 					}
+					buf.WriteString(typeIDToType(id).String())
 					return fmt.Errorf("path: %s", buf.String())
 				}(),
 			)

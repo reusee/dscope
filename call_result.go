@@ -6,7 +6,6 @@ import (
 	"reflect"
 )
 
-// TheoryOfCallResult documents how call return values reach their targets.
 const TheoryOfCallResult = `
 dscope call result theory:
 - CallResult carries the return values of a scope.Call invocation.
@@ -15,8 +14,9 @@ dscope call result theory:
 - Assign matches values to targets by type, preferring exact matches over
   assignable (interface) matches: an interface target never captures a
   concrete return value that a later exact target needs.
-- Both methods validate targets up front: nil and non-pointer targets are bad
-  arguments and yield structured dscope errors.
+- Both methods validate targets up front: non-pointer targets and typed nil
+  pointer targets are bad arguments and yield structured dscope errors. An
+  untyped nil target is a positional placeholder and is skipped.
 `
 
 type CallResult struct {
