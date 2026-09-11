@@ -29,17 +29,14 @@ func TestInjectStruct(t *testing.T) {
 		t.Fatal()
 	}
 
-	scope.Call(func(
-		inject InjectStruct,
-	) {
-		var s struct {
-			I int `dscope:"."`
-		}
-		inject(&s)
-		if s.I != 42 {
-			t.Fatal()
-		}
-	})
+	inject := scope.Get[InjectStruct]()
+	var s2 struct {
+		I int `dscope:"."`
+	}
+	inject(&s2)
+	if s2.I != 42 {
+		t.Fatal()
+	}
 }
 
 func BenchmarkInjectStruct(b *testing.B) {
@@ -57,9 +54,29 @@ func BenchmarkInjectStruct(b *testing.B) {
 }
 
 func TestInjectStructBadType(t *testing.T) {
-	New().Call(func(
-		inject InjectStruct,
-	) {
+	inject := New().Get[InjectStruct]()
+	func() {
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			msg := fmt.Sprintf("%v", p)
+			if !strings.Contains(msg, "target type int is not a struct or pointer to struct") {
+				t.Fatalf("got %v", msg)
+			}
+		}()
+		inject(ptrTo(ptrTo(ptrTo(42))))
+	}()
+}
+
+func TestInjectStructNotFound(t *testing.T) {
+	t.Run("wrapped", func(t *testing.T) {
+		inject := New().Get[InjectStruct]()
+		var s struct {
+			I Inject[int]
+		}
+		inject(&s)
 		func() {
 			defer func() {
 				p := recover()
@@ -67,61 +84,32 @@ func TestInjectStructBadType(t *testing.T) {
 					t.Fatal("should panic")
 				}
 				msg := fmt.Sprintf("%v", p)
-				if !strings.Contains(msg, "target type int is not a struct or pointer to struct") {
+				if !strings.Contains(msg, "no definition for int") {
 					t.Fatalf("got %v", msg)
 				}
 			}()
-			inject(ptrTo(ptrTo(ptrTo(42))))
+			s.I()
 		}()
-	})
-}
-
-func TestInjectStructNotFound(t *testing.T) {
-	t.Run("wrapped", func(t *testing.T) {
-		New().Call(func(
-			inject InjectStruct,
-		) {
-			var s struct {
-				I Inject[int]
-			}
-			inject(&s)
-			func() {
-				defer func() {
-					p := recover()
-					if p == nil {
-						t.Fatal("should panic")
-					}
-					msg := fmt.Sprintf("%v", p)
-					if !strings.Contains(msg, "no definition for int") {
-						t.Fatalf("got %v", msg)
-					}
-				}()
-				s.I()
-			}()
-		})
 	})
 
 	t.Run("tagged", func(t *testing.T) {
-		New().Call(func(
-			inject InjectStruct,
-		) {
-			var s struct {
-				I int `dscope:"."`
-			}
-			func() {
-				defer func() {
-					p := recover()
-					if p == nil {
-						t.Fatal("should panic")
-					}
-					msg := fmt.Sprintf("%v", p)
-					if !strings.Contains(msg, "no definition for int") {
-						t.Fatalf("got %v", msg)
-					}
-				}()
-				inject(&s)
+		inject := New().Get[InjectStruct]()
+		var s struct {
+			I int `dscope:"."`
+		}
+		func() {
+			defer func() {
+				p := recover()
+				if p == nil {
+					t.Fatal("should panic")
+				}
+				msg := fmt.Sprintf("%v", p)
+				if !strings.Contains(msg, "no definition for int") {
+					t.Fatalf("got %v", msg)
+				}
 			}()
-		})
+			inject(&s)
+		}()
 	})
 }
 

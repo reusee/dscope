@@ -5,19 +5,16 @@ import (
 )
 
 func TestInject(t *testing.T) {
-	New(
+	inject := New(
 		Provide(int(42)),
-	).Call(func(
-		inject InjectStruct,
-	) {
-		var s struct {
-			I Inject[int]
-		}
-		inject(&s)
-		if s.I() != 42 {
-			t.Fatal()
-		}
-	})
+	).Get[InjectStruct]()
+	var s struct {
+		I Inject[int]
+	}
+	inject(&s)
+	if s.I() != 42 {
+		t.Fatal()
+	}
 }
 
 func TestGetInjectStruct(t *testing.T) {

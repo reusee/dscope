@@ -47,11 +47,15 @@ dscope core theory:
 - Providers are lazy: a provider evaluates at most once per cached value, on
   first access, and the cached result is shared by all consumers. Overriding
   a type or resetting a scope installs fresh caches for the affected types.
+- A computation is a provider: fork the computing function, then get its
+  result type. The parameters are the dependencies and the results are the
+  computed values, so one declaration carries both, and no separate
+  invocation entry point is needed.
 - Three built-in dependencies — InjectStruct, Fork, Reset — are always
   available, bound to the current scope, and cannot be overridden: they are
   the escape hatches through which providers interact with the scope
   dynamically.
-- Every public operation — Get, TryGet, Assign, Call, InjectStruct, AllTypes,
+- Every public operation — Get, TryGet, Assign, InjectStruct, AllTypes,
   ToDOT — reflects the effective definitions of the scope it is invoked on.
 `
 
@@ -222,14 +226,9 @@ dscope assignment theory:
   Scope.TryGetType take a reflect.Type and return a reflect.Value; GetType
   panics on a missing type, TryGetType returns (zero Value, false), and a
   nil type is a bad argument.
-- CallResult.Assign matches return values to targets by type, preferring exact
-  matches over assignable (interface) matches; CallResult.Extract assigns by
-  position.
 - Assign[T] accepts a single typed pointer; a nil pointer is a bad argument
   and must produce a structured dscope error instead of leaking a runtime or
-  reflection panic. CallResult.Assign and CallResult.Extract reject non-pointer
-  and typed nil pointer targets; an untyped nil target is a placeholder and
-  is skipped.
+  reflection panic.
 `
 
 // Assign retrieves the value of type T from the scope and writes it to the
@@ -275,48 +274,6 @@ func (scope Scope) get(id _TypeID) (
 	}
 
 	return value.initializer.get(scope, value.typeInfo.Position), true
-}
-
-// TheoryOfScopeInvocation documents the semantics of scope.Call and the
-// validation applied to call targets.
-const TheoryOfScopeInvocation = `
-dscope invocation theory:
-- scope.Call executes a function whose parameters are resolved from the scope
-  as dependencies; the parameter list doubles as the dependency declaration,
-  so a consumer declares exactly what it needs and nothing more, and the
-  return values are delivered through CallResult.
-- Exported call entry points must reject malformed call targets with dscope
-  errors instead of leaking raw reflect panics: nil, invalid, or non-function
-  call targets are bad arguments because the container cannot establish
-  dependency semantics for them.
-- Once a target is verified as callable, dependency resolution and provider
-  execution follow the normal scope semantics.
-`
-
-func validateCallableValue(fnValue reflect.Value) reflect.Type {
-	if !fnValue.IsValid() {
-		panic(errors.Join(
-			fmt.Errorf("nil function provided"),
-			ErrBadArgument,
-		))
-	}
-
-	fnType := fnValue.Type()
-	if fnType.Kind() != reflect.Func {
-		panic(errors.Join(
-			fmt.Errorf("%v is not a function", fnType),
-			ErrBadArgument,
-		))
-	}
-
-	if fnValue.IsNil() {
-		panic(errors.Join(
-			fmt.Errorf("%v nil function provided", fnType),
-			ErrBadArgument,
-		))
-	}
-
-	return fnType
 }
 
 // Get is a type-safe generic method to retrieve a single value of type T.
@@ -377,13 +334,6 @@ func (scope Scope) TryGetType(typ reflect.Type) (reflect.Value, bool) {
 	return value, true
 }
 
-// Call executes the given function `fn`, resolving its arguments from the scope.
-// It returns a CallResult containing the return values of the function.
-// Panics if argument resolution fails or if `fn` is not a function.
-func (scope Scope) Call(fn any) CallResult {
-	return scope.CallValue(reflect.ValueOf(fn))
-}
-
 // Cache for the argument-fetching logic for a given function type.
 // reflect.Type -> func(Scope, []reflect.Value) int
 var getArgsFunc sync.Map
@@ -427,11 +377,12 @@ var reflectValuesPool = sync.Pool{
 	},
 }
 
-// CallValue executes the given function value after resolving its arguments from the scope.
-// It returns a CallResult containing the function's return values.
-// It panics with ErrBadArgument if fnValue is invalid, nil, or not a function.
-func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
-	fnType := validateCallableValue(fnValue)
+// call resolves the parameters of fnValue from the scope, invokes fnValue, and
+// returns its results. fnValue is a definition that already passed
+// validateDefinition — a valid, non-nil function returning at least one value —
+// so the invocation itself cannot fail on malformed input.
+func (scope Scope) call(fnValue reflect.Value) []reflect.Value {
+	fnType := fnValue.Type()
 	var args []reflect.Value
 	// Use pool for small number of arguments
 	if nArgs := fnType.NumIn(); nArgs <= reflectValuesPoolMaxLen {
@@ -445,6 +396,5 @@ func (scope Scope) CallValue(fnValue reflect.Value) (res CallResult) {
 		args = make([]reflect.Value, nArgs)
 	}
 	n := scope.getArgs(fnType, args)
-	res.Values = fnValue.Call(args[:n])
-	return
+	return fnValue.Call(args[:n])
 }

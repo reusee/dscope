@@ -146,7 +146,7 @@ func TestResetPointerProvider(t *testing.T) {
 	}
 }
 
-func TestResetAssignAndCall(t *testing.T) {
+func TestResetAssignAndGet(t *testing.T) {
 	var counter int64
 	scope := New(func() int {
 		return int(atomic.AddInt64(&counter, 1))
@@ -161,11 +161,9 @@ func TestResetAssignAndCall(t *testing.T) {
 		t.Fatalf("expected 2, got %d", v)
 	}
 
-	r.Call(func(i int) {
-		if i != 2 {
-			t.Fatalf("expected 2 from Call, got %d", i)
-		}
-	})
+	if r.Get[int]() != 2 {
+		t.Fatalf("expected 2 from Get, got %d", r.Get[int]())
+	}
 }
 
 func TestResetEmptyScope(t *testing.T) {

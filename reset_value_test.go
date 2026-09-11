@@ -32,20 +32,19 @@ func TestGetResetValue(t *testing.T) {
 	}
 }
 
-func TestCallWithResetDependency(t *testing.T) {
+func TestGetResetDependency(t *testing.T) {
 	scope := New(func() int {
 		return 42
 	})
 
-	scope.Call(func(r Reset) {
-		if r == nil {
-			t.Fatal("Reset dependency was nil")
-		}
-		resetScope := r()
-		if resetScope.Get[int]() != 42 {
-			t.Fatal("reset scope did not inherit int")
-		}
-	})
+	r := scope.Get[Reset]()
+	if r == nil {
+		t.Fatal("Reset dependency was nil")
+	}
+	resetScope := r()
+	if resetScope.Get[int]() != 42 {
+		t.Fatal("reset scope did not inherit int")
+	}
 }
 
 func TestAssignReset(t *testing.T) {

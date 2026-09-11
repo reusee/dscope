@@ -8,7 +8,7 @@ Managing dependencies in larger Go applications can become complex. `dscope` off
 
 *   **Type-Safe Dependencies**: Leverages Go's type system to ensure that dependencies are resolved correctly at compile time or with clear runtime panics if a type is missing. Generic functions like `Get[T](scope)` provide compile-time type checking for retrievals.
 *   **Define and Depend on Interfaces (or Concrete Types)**: While you can register and request concrete types directly, `dscope` fully supports defining providers that return interfaces and requesting dependencies via those interfaces, promoting loose coupling.
-*   **Cleaner Function Signatures**: The `scope.Call(yourFunction)` feature automatically resolves the arguments for `yourFunction` from the scope. This means `yourFunction` only needs to declare its essential operational arguments, not a long list of dependencies it needs to acquire manually.
+*   **Cleaner Function Signatures**: A provider function declares its dependencies as parameters, and `Fork` resolves them from the scope. Computing a value needs no extra API: fork the computing function and get its result type. The function declares exactly what it needs and nothing more.
 *   **Enhanced Testability**:
     *   **Immutability**: Scopes are immutable. Operations like `Fork` create new scopes, leaving the original untouched. This predictability is great for testing.
     *   **Easy Overriding**: You can easily `Fork` a scope and provide alternative (mock or stub) implementations for specific types, making unit and integration testing more straightforward.
@@ -63,10 +63,12 @@ fmt.Println(dscope.Get[int](resetScope)) // Output: 2 (recomputed)
 `dscope.Reset` (type `Reset func() Scope`) is also provided as a built-in dependency bound to the current scope's `Reset` method, so it can be injected into providers, similar to `dscope.Fork`:
 
 ```go
-scope.Call(func(reset dscope.Reset) {
-	// reset() returns a reset scope of the current scope
-})
-```## Basic Usage Examples
+reset := scope.Get[dscope.Reset]()
+// reset() returns a reset scope of the current scope
+resetScope := reset()
+```
+
+## Basic Usage Examples
 
 ### 1. Creating a New Scope
 
@@ -136,9 +138,9 @@ You can retrieve values from the scope using `scope.GetType(reflect.Type)`, the 
     }
     ```
 
-### 3. Calling Functions in a Scope
+### 3. Computing Values in a Scope
 
-`scope.Call(fn)` executes `fn`, automatically resolving its arguments from the scope. Return values are wrapped in a `CallResult`.
+A computation is a provider: fork the computing function and get its result type. `Fork` resolves the function's parameters from the scope, and the returned values become types of the new scope.
 
 ```go
 type Salutation string
@@ -149,15 +151,12 @@ func provideSalutation() Salutation {
 
 scope = scope.Fork(provideSalutation) // Add Salutation to the scope
 
-result := scope.Call(func(s Salutation, m Message) string {
+finalMsg := scope.Fork(func(s Salutation, m Message) string {
 	return fmt.Sprintf("%s! %s", s, m)
-})
+}).Get[string]()
 
-var finalMsg string
-result.Assign(&finalMsg) // Assigns the string return value
-// or result.Extract(&finalMsg) if order matters and you know the return position
-
-fmt.Println(finalMsg) // Output: Greetings! Hello, dscope!```
+fmt.Println(finalMsg) // Output: Greetings! Hello, dscope!
+```
 
 ### 4. Forking a Scope
 
@@ -256,8 +255,7 @@ Note: The example with `dscope.WithTypeQualifier` is illustrative if multiple pr
 
     scope := dscope.New(provideGreeter, provideMessage)
     var myInstance MyStruct
-    // scope.Call(func(inject dscope.InjectStruct) { inject(&myInstance) })
-    // OR directly:
+    // The scope provides InjectStruct; retrieve it and call it on the target:
     scope.InjectStruct(&myInstance)
 
 

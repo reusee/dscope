@@ -24,23 +24,22 @@ func TestGetForkValue(t *testing.T) {
 	}
 }
 
-func TestCallWithForkDependency(t *testing.T) {
+func TestGetForkDependency(t *testing.T) {
 	scope := New(func() int {
 		return 42
 	})
 
-	scope.Call(func(f Fork) {
-		if f == nil {
-			t.Fatal("Fork dependency was nil")
-		}
-		child := f(func() string { return "from child" })
-		if child.Get[int]() != 42 {
-			t.Fatal("child did not inherit int")
-		}
-		if child.Get[string]() != "from child" {
-			t.Fatal("child did not add string")
-		}
-	})
+	f := scope.Get[Fork]()
+	if f == nil {
+		t.Fatal("Fork dependency was nil")
+	}
+	child := f(func() string { return "from child" })
+	if child.Get[int]() != 42 {
+		t.Fatal("child did not inherit int")
+	}
+	if child.Get[string]() != "from child" {
+		t.Fatal("child did not add string")
+	}
 }
 
 func TestAssignFork(t *testing.T) {

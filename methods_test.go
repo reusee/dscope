@@ -9,13 +9,9 @@ import (
 
 func TestMethods(t *testing.T) {
 	s := New(Methods(new(TestMethodsFoo))...)
-	s.Call(func(
-		foo int,
-	) {
-		if foo != 42 {
-			t.Fatal()
-		}
-	})
+	if s.Get[int]() != 42 {
+		t.Fatal()
+	}
 }
 
 type TestMethodsFoo struct {

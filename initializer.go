@@ -76,7 +76,7 @@ func (i *_Initializer) get(scope Scope, position int) (ret reflect.Value) {
 		i.mu.Lock()
 		defer i.mu.Unlock()
 		if !i.done.Load() {
-			i.Values = scope.CallValue(reflect.ValueOf(i.Def)).Values
+			i.Values = scope.call(reflect.ValueOf(i.Def))
 			i.done.Store(true)
 		}
 	}

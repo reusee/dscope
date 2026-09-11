@@ -147,7 +147,9 @@ func TestPanic(t *testing.T) {
 				t.Fatal()
 			}
 		}()
-		scope.Call(func(string) {})
+		scope.Fork(func(string) int64 {
+			return 0
+		}).Get[int64]()
 	}()
 
 	func() {
@@ -332,67 +334,6 @@ func TestForkScope(t *testing.T) {
 	if foo != 66 {
 		t.Fatal("bad foo")
 	}
-}
-
-func TestCall(t *testing.T) {
-	scope := New().Fork(
-		func() int {
-			return 42
-		},
-		func() float64 {
-			return 42
-		},
-	)
-	res := scope.Call(func(i int, f float64) int {
-		return 42 + i + int(f)
-	})
-	if len(res.Values) != 1 {
-		t.Fatalf("bad returns")
-	}
-	if res.Values[0].Kind() != reflect.Int {
-		t.Fatalf("bad return type")
-	}
-	if res.Values[0].Int() != 126 {
-		t.Fatalf("bad return")
-	}
-}
-
-func TestCallRejectsInvalidTargets(t *testing.T) {
-	scope := New()
-
-	assertBadArgument := func(name string, wantMessage string, fn func()) {
-		t.Run(name, func(t *testing.T) {
-			defer func() {
-				p := recover()
-				if p == nil {
-					t.Fatal("should panic")
-				}
-				err, ok := p.(error)
-				if !ok {
-					t.Fatalf("panic value not an error: %v", p)
-				}
-				if !errors.Is(err, ErrBadArgument) {
-					t.Fatalf("expected ErrBadArgument, got %T: %v", err, err)
-				}
-				if !strings.Contains(err.Error(), wantMessage) {
-					t.Fatalf("unexpected error message: %v", err)
-				}
-			}()
-			fn()
-		})
-	}
-
-	assertBadArgument("non-function", "int is not a function", func() {
-		scope.Call(42)
-	})
-
-	assertBadArgument("nil function", "nil function provided", func() {
-		scope.Call((func())(nil))
-	})
-
-	assertBadArgument("invalid reflect.Value", "nil function provided", func() {
-		scope.CallValue(reflect.Value{})
-	})
 }
 
 func TestForkScope2(t *testing.T) {
@@ -659,90 +600,6 @@ func TestBadOnceSharing(t *testing.T) {
 	var a int
 	scope.Assign(&a)
 	scope2.Assign(&a)
-}
-
-func TestCallReturn(t *testing.T) {
-	scope := New().Fork(
-		func() int {
-			return 42
-		},
-		func() error {
-			return fmt.Errorf("foo")
-		},
-	)
-
-	var i int
-	var err error
-	scope.Call(func(
-		i int,
-		err error,
-	) (int, error) {
-		return i, err
-	}).Assign(&i, &err)
-	if i != 42 {
-		t.Fatal()
-	}
-	if err.Error() != "foo" {
-		t.Fatal()
-	}
-
-	var i2 int
-	scope.Call(func(
-		i int,
-		err error,
-	) (int, error) {
-		return i, err
-	}).Assign(&i2)
-	if i != 42 {
-		t.Fatal()
-	}
-
-	func() {
-		defer func() {
-			p := recover()
-			if p == nil {
-				t.Fatal("should panic")
-			}
-			err, ok := p.(error)
-			if !ok {
-				t.Fatal()
-			}
-			if !errors.Is(err, ErrBadArgument) {
-				t.Fatal()
-			}
-			if !strings.Contains(err.Error(), "is not a pointer") {
-				t.Fatal()
-			}
-		}()
-		scope.Call(func() (int, error) {
-			return 42, nil
-		}).Assign(42)
-	}()
-
-	func() {
-		defer func() {
-			p := recover()
-			if p == nil {
-				t.Fatal("should panic")
-			}
-			err, ok := p.(error)
-			if !ok {
-				t.Fatal()
-			}
-			if !errors.Is(err, ErrBadArgument) {
-				t.Fatal()
-			}
-			msg := err.Error()
-			if !strings.Contains(msg, "cannot assign value of type int to target of type string") {
-				t.Fatalf("got %s", msg)
-			}
-		}()
-		var s string
-		scope.Call(func() (int, error) {
-			return 42, nil
-		}).Extract(&s)
-	}()
-
 }
 
 func TestGeneratedFunc(t *testing.T) {
@@ -1118,13 +975,9 @@ func TestPointerProvider(t *testing.T) {
 			return int(f)
 		},
 	)
-	scope.Call(func(
-		i int,
-	) {
-		if i != 42 {
-			t.Fatal()
-		}
-	})
+	if scope.Get[int]() != 42 {
+		t.Fatal()
+	}
 
 	scope = New(
 		func(f float64) int {
@@ -1132,13 +985,9 @@ func TestPointerProvider(t *testing.T) {
 		},
 		&i,
 	)
-	scope.Call(func(
-		i int,
-	) {
-		if i != 42 {
-			t.Fatal()
-		}
-	})
+	if scope.Get[int]() != 42 {
+		t.Fatal()
+	}
 
 	scope = New(
 		func(f float64) int {
@@ -1150,13 +999,9 @@ func TestPointerProvider(t *testing.T) {
 			return 24
 		},
 	)
-	scope.Call(func(
-		i int,
-	) {
-		if i != 24 {
-			t.Fatal()
-		}
-	})
+	if scope.Get[int]() != 24 {
+		t.Fatal()
+	}
 
 	scope = New(
 		func(f float64) int {
@@ -1168,13 +1013,9 @@ func TestPointerProvider(t *testing.T) {
 			return 24
 		},
 	)
-	scope.Call(func(
-		i int,
-	) {
-		if i != 24 {
-			t.Fatal()
-		}
-	})
+	if scope.Get[int]() != 24 {
+		t.Fatal()
+	}
 
 	scope = New(func() int {
 		return 42
@@ -1182,24 +1023,19 @@ func TestPointerProvider(t *testing.T) {
 		i := 42
 		return &i
 	}())
-	scope.Call(func(
-		i int,
-	) {
-		if i != 42 {
-			t.Fatal()
-		}
-	})
+	if scope.Get[int]() != 42 {
+		t.Fatal()
+	}
 
 }
 
-func TestRacyCall(t *testing.T) {
+func TestRacyGet(t *testing.T) {
 	s := New(func() int {
 		return 42
 	})
 	for range 512 {
 		go func() {
-			s.Call(func(i int) {
-			})
+			s.Get[int]()
 		}()
 	}
 }
@@ -1314,11 +1150,13 @@ func TestSignature(t *testing.T) {
 
 }
 
-func TestPcallValueArgs(t *testing.T) {
-	scope := New(func() int {
+func TestProviderManyArgs(t *testing.T) {
+	type Result int
+	base := New(func() int {
 		return 42
 	})
 	intType := reflect.TypeFor[int]()
+	resultType := reflect.TypeFor[Result]()
 	for i := 0; i <= 50; i++ {
 		var args []reflect.Type
 		for range i {
@@ -1327,7 +1165,7 @@ func TestPcallValueArgs(t *testing.T) {
 		fn := reflect.MakeFunc(
 			reflect.FuncOf(
 				args,
-				[]reflect.Type{},
+				[]reflect.Type{resultType},
 				false,
 			),
 			func(args []reflect.Value) (rets []reflect.Value) {
@@ -1336,36 +1174,37 @@ func TestPcallValueArgs(t *testing.T) {
 						t.Fatal()
 					}
 				}
-				return
+				return []reflect.Value{reflect.ValueOf(Result(42))}
 			},
 		).Interface()
-		scope.Call(fn)
+		if base.Fork(fn).Get[Result]() != 42 {
+			t.Fatal()
+		}
 	}
 }
 
 type testFuncDef struct{}
 
-func TestCallResultFork(t *testing.T) {
-	var i int
-	New(func() int {
-		return 42
-	}).Call(func(i int) int {
-		return i * 2
-	}).Extract(&i)
-	if i != 84 {
-		t.Fatal()
-	}
-}
-
 type acc2 int
 
-func TestCallManyArgs(t *testing.T) {
-	New(func() int {
+func TestForkManyArgs(t *testing.T) {
+	type Result int
+	got := New(func() int {
 		return 42
-	}).Call(func(
-		_ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int,
-	) {
-	})
+	}).Fork(func(
+		_ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int,
+		_ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int,
+		_ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int,
+		_ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int,
+		_ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int,
+		_ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int, _ int,
+		_ int, _ int, _ int, _ int, _ int,
+	) Result {
+		return 42
+	}).Get[Result]()
+	if got != 42 {
+		t.Fatal(got)
+	}
 }
 
 func TestResetSameInitializer(t *testing.T) {
@@ -1473,25 +1312,6 @@ func TestNilInterfacePointerDefinition(t *testing.T) {
 	scope.Assign(&assigned)
 	if assigned != nil {
 		t.Fatalf("Assign returned %v, want nil", assigned)
-	}
-
-	scope.Call(func(injected any) {
-		if injected != nil {
-			t.Fatalf("Call injected %v, want nil", injected)
-		}
-	})
-}
-
-func TestCallResultAssignDuplicateReturns(t *testing.T) {
-	scope := New()
-
-	var i1, i2 int
-	scope.Call(func() (int, string, int) {
-		return 1, "foo", 2
-	}).Assign(&i1, &i2)
-
-	if i1 != 1 || i2 != 2 {
-		t.Fatalf("Expected i1=1, i2=2, got i1=%d, i2=%d", i1, i2)
 	}
 }
 
@@ -1696,21 +1516,13 @@ func TestTryGetType(t *testing.T) {
 func TestPointerProviderMutated(t *testing.T) {
 	i := 42
 	scope := New(&i)
-	scope.Call(func(
-		i int,
-	) {
-		if i != 42 {
-			t.Fatal()
-		}
-	})
+	if scope.Get[int]() != 42 {
+		t.Fatal()
+	}
 	i = 1
-	scope.Call(func(
-		i int,
-	) {
-		if i != 42 {
-			t.Fatalf("got %v", i)
-		}
-	})
+	if scope.Get[int]() != 42 {
+		t.Fatalf("got %v", scope.Get[int]())
+	}
 }
 
 func TestTryGetProviderPanicPropagates(t *testing.T) {
@@ -1741,14 +1553,9 @@ func TestSharedInstanceProvider(t *testing.T) {
 		return service
 	})
 
-	// Two different functions get the service injected.
-	var s1, s2 *Service
-	scope.Call(func(s *Service) {
-		s1 = s
-	})
-	scope.Call(func(s *Service) {
-		s2 = s
-	})
+	// Two lookups get the service injected.
+	s1 := scope.Get[*Service]()
+	s2 := scope.Get[*Service]()
 
 	// Both should have received the *exact same instance*.
 	if s1 != service {
