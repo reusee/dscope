@@ -229,3 +229,49 @@ func TestMethodsRecursivePointer(t *testing.T) {
 
 	Methods(pointer)
 }
+
+type testMethodsPromotedLeaf struct {
+	Module
+}
+
+func (testMethodsPromotedLeaf) LeafValue() int32 { return 2 }
+
+// TestMethodsPromotedInner defines a method of its own and carries a named
+// module field, so it exercises both promotion and descent. The type name is
+// exported because an embedded field whose type name is unexported is itself
+// an unexported field, which method discovery skips.
+type TestMethodsPromotedInner struct {
+	Module
+	Leaf testMethodsPromotedLeaf
+}
+
+func (TestMethodsPromotedInner) InnerValue() int64 { return 1 }
+
+// testMethodsPromotedOuter embeds an exported module by value, so InnerValue is
+// promoted into its method set.
+type testMethodsPromotedOuter struct {
+	TestMethodsPromotedInner
+}
+
+func (testMethodsPromotedOuter) OuterValue() string { return "outer" }
+
+func TestMethodsEmbeddedModulePromotion(t *testing.T) {
+	// InnerValue is promoted into Outer, so discovery must collect it once:
+	// before the fix this returned four definitions and New panicked with
+	// "int64 has multiple definitions in the same Fork call".
+	defs := Methods(new(testMethodsPromotedOuter))
+	if n := len(defs); n != 3 {
+		t.Fatalf("expected 3 definitions, got %d", n)
+	}
+
+	scope := New(defs...)
+	if v := scope.Get[int64](); v != 1 {
+		t.Fatalf("promoted module method not provided: got %d", v)
+	}
+	if v := scope.Get[string](); v != "outer" {
+		t.Fatalf("module's own method not provided: got %s", v)
+	}
+	if v := scope.Get[int32](); v != 2 {
+		t.Fatalf("method of a named module field inside an embedded module not provided: got %d", v)
+	}
+}
