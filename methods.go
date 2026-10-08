@@ -148,6 +148,16 @@ func Methods(objects ...any) (ret []any) {
 			} else {
 				v = v.Elem()
 			}
+			// A nil pointer on the chain is materialised so that methods
+			// collected from it bind to an allocated receiver; when the pointer
+			// is settable the new value is linked back into the chain.
+			if v.Kind() == reflect.Pointer && v.IsNil() {
+				if v.CanSet() {
+					v.Set(reflect.New(v.Type().Elem()))
+				} else {
+					v = reflect.New(v.Type().Elem())
+				}
+			}
 
 			if t.Kind() == reflect.Pointer {
 				// Collect methods from intermediate pointers (e.g. *T when we started with **T)

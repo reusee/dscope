@@ -126,6 +126,39 @@ func TestMethodsMultiPointerNil(t *testing.T) {
 	}
 }
 
+func TestMethodsNilChainProviderCallable(t *testing.T) {
+	// A typed nil pointer anywhere on the chain must be materialised, so a
+	// provider collected from a mid-chain pointer binds to a non-nil receiver
+	// instead of panicking when invoked.
+	t.Run("nil double pointer", func(t *testing.T) {
+		scope := New(Methods((**TestMethodsFoo)(nil))...)
+		if v := scope.Get[int](); v != 42 {
+			t.Fatalf("expected 42, got %d", v)
+		}
+	})
+	t.Run("nil triple pointer", func(t *testing.T) {
+		scope := New(Methods((***TestMethodsFoo)(nil))...)
+		if v := scope.Get[int](); v != 42 {
+			t.Fatalf("expected 42, got %d", v)
+		}
+	})
+	t.Run("non-nil outer nil inner", func(t *testing.T) {
+		scope := New(Methods(new(*TestMethodsFoo))...)
+		if v := scope.Get[int](); v != 42 {
+			t.Fatalf("expected 42, got %d", v)
+		}
+	})
+	t.Run("value and pointer receivers", func(t *testing.T) {
+		scope := New(Methods((**testMethodsValueMod)(nil))...)
+		if v := scope.Get[int64](); v != 1 {
+			t.Fatalf("expected 1, got %d", v)
+		}
+		if v := scope.Get[int32](); v != 2 {
+			t.Fatalf("expected 2, got %d", v)
+		}
+	})
+}
+
 func TestMethodsEmbeddedValuePassedByValue(t *testing.T) {
 	// This test verifies that we can capture methods on pointer receivers
 	// of embedded modules even when the parent struct is passed by value (non-addressable).

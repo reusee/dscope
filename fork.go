@@ -124,6 +124,12 @@ func validateDefinition(def any) {
 				ErrBadArgument,
 			))
 		}
+		if defType.IsVariadic() {
+			panic(errors.Join(
+				fmt.Errorf("%T is variadic, variadic provider functions are not supported", def),
+				ErrBadArgument,
+			))
+		}
 	case reflect.Pointer:
 		if defValue.IsNil() {
 			panic(errors.Join(

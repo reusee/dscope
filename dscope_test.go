@@ -1261,6 +1261,48 @@ func TestNilFuncDef(t *testing.T) {
 	}()
 }
 
+func TestVariadicFuncDef(t *testing.T) {
+	type I int
+	t.Run("rejected at definition time", func(t *testing.T) {
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			err, ok := p.(error)
+			if !ok {
+				t.Fatalf("panic value not an error: %T: %v", p, p)
+			}
+			if !errors.Is(err, ErrBadArgument) {
+				t.Fatalf("expected ErrBadArgument, got %v", err)
+			}
+			if !strings.Contains(err.Error(), "variadic") {
+				t.Fatalf("unexpected error message: %v", err)
+			}
+		}()
+		New(func(...int) I { return 0 })
+	})
+	t.Run("rejected even when slice dependency is provided", func(t *testing.T) {
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			err, ok := p.(error)
+			if !ok {
+				t.Fatalf("panic value not an error: %T: %v", p, p)
+			}
+			if !errors.Is(err, ErrBadArgument) {
+				t.Fatalf("expected ErrBadArgument, got %v", err)
+			}
+			if !strings.Contains(err.Error(), "variadic") {
+				t.Fatalf("unexpected error message: %v", err)
+			}
+		}()
+		New(Provide([]int{1, 2, 3}), func(...int) I { return 0 })
+	})
+}
+
 func TestNilPointerDef(t *testing.T) {
 	func() {
 		defer func() {

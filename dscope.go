@@ -70,7 +70,8 @@ dscope definition theory:
   expanded into its exported methods, which then act as provider functions.
 - Public scope construction validates every definition before deriving type
   identity: nil definitions, nil function or pointer definitions, functions
-  that return nothing, and non-function non-pointer values are rejected.
+  that return nothing, variadic functions, and non-function non-pointer
+  values are rejected.
 - Two definitions in the same Fork call must not produce the same type; a
   duplicate is rejected with an error naming both conflicting definitions.
   Redefining an inherited type is the override mechanism of a later Fork layer.
