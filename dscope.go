@@ -7,14 +7,20 @@ import (
 	"sync/atomic"
 )
 
+// _Value is one provided type in one layer. id repeats the identifier of
+// typeInfo so that a search compares one word instead of chasing the typeInfo
+// pointer, and it is the field every lookup, memo and sort reads.
 type _Value struct {
-	typeInfo    *_TypeInfo
+	id          _TypeID
 	initializer *_Initializer
+	typeInfo    *_TypeInfo
 }
 
+// _TypeInfo describes how one definition produces one of its values: the
+// definition type, the output position of the value, and the dependencies of the
+// definition that produced it.
 type _TypeInfo struct {
 	DefType      reflect.Type
-	TypeID       _TypeID
 	Position     int
 	Dependencies []_TypeID
 }
@@ -290,9 +296,8 @@ func (scope Scope) Reset() Scope {
 	}
 	return Scope{
 		values: &_StackedMap{
-			ResetBase:  scope.values,
-			ResetCache: new(sync.Map),
-			Height:     1,
+			reset:  &_ResetState{base: scope.values},
+			Height: 1,
 		},
 		signature: scope.signature,
 	}

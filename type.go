@@ -43,20 +43,7 @@ func getTypeID(t reflect.Type) _TypeID {
 	if entry := typeIDLastEntry.Load(); entry != nil && entry.typ == t {
 		return entry.id
 	}
-	slot, ok := typeIDCacheSlot(t)
-	if !ok {
-		return getTypeIDUncached(t)
-	}
-	if entry := typeIDCache[slot].Load(); entry != nil && entry.typ == t {
-		return entry.id
-	}
-	// Both caches missed: resolve through the authorative identifier table, then
-	// publish the mapping in the slot cache and as the most recent one. The
-	// identifier is still decided exactly once per type.
-	entry := &_TypeIDCacheEntry{typ: t, id: getTypeIDUncached(t)}
-	typeIDCache[slot].Store(entry)
-	typeIDLastEntry.Store(entry)
-	return entry.id
+	return getTypeIDCached(t)
 }
 
 func getTypeIDSlow(t reflect.Type) _TypeID {
@@ -76,6 +63,25 @@ func getTypeIDSlow(t reflect.Type) _TypeID {
 		// We won the race; the mapping is now canonical.
 		return id
 	}
+}
+
+// getTypeIDCached resolves a type through the slot cache and the authoritative
+// identifier table. The most recent entry did not match when this function runs.
+func getTypeIDCached(t reflect.Type) _TypeID {
+	slot, ok := typeIDCacheSlot(t)
+	if !ok {
+		return getTypeIDUncached(t)
+	}
+	if entry := typeIDCache[slot].Load(); entry != nil && entry.typ == t {
+		return entry.id
+	}
+	// Both caches missed: resolve through the authorative identifier table, then
+	// publish the mapping in the slot cache and as the most recent one. The
+	// identifier is still decided exactly once per type.
+	entry := &_TypeIDCacheEntry{typ: t, id: getTypeIDUncached(t)}
+	typeIDCache[slot].Store(entry)
+	typeIDLastEntry.Store(entry)
+	return entry.id
 }
 
 // getTypeIDUncached resolves a type through the authoritative identifier table.

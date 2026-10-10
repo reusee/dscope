@@ -27,27 +27,37 @@ dscope lazy initialization theory:
 // initializer it hands out by the inherited initializer itself, so two
 // initializers of the same definition in different scopes stay apart.
 type _Initializer struct {
-	Def          any
+	Def    any
+	Values []reflect.Value
+	mu     sync.Mutex
+	done   atomic.Bool
+	// DefIsPointer marks a pointer definition. Its value is copied when the
+	// initializer is built and never re-evaluated.
 	DefIsPointer bool
-	Values       []reflect.Value
-	_values      [1]reflect.Value
-	done         atomic.Bool
-	mu           sync.Mutex
+	// _values backs Values for a pointer definition, so copying such a
+	// definition needs no separate slice.
+	_values [1]reflect.Value
 }
 
 func newInitializer(def any, isPointer bool) *_Initializer {
-	ret := &_Initializer{
-		Def:          def,
-		DefIsPointer: isPointer,
-	}
+	ret := new(_Initializer)
+	initInitializer(ret, def, isPointer)
+	return ret
+}
+
+// initInitializer fills an initializer from def. The caller owns the storage of
+// the initializer: a Fork keeps the initializers of its definitions in the
+// allocation of its layer.
+func initInitializer(i *_Initializer, def any, isPointer bool) {
+	i.Def = def
+	i.DefIsPointer = isPointer
 	if isPointer {
 		definitionValue := reflect.ValueOf(def).Elem()
 		copiedValue := reflect.New(definitionValue.Type()).Elem()
 		copiedValue.Set(definitionValue)
-		ret._values[0] = copiedValue
-		ret.Values = ret._values[:1]
+		i._values[0] = copiedValue
+		i.Values = i._values[:1]
 	}
-	return ret
 }
 
 // reset make the initializer re-evaluate Values
@@ -63,14 +73,25 @@ func (s *_Initializer) reset() *_Initializer {
 	}
 }
 
+// evaluate runs the definition once and caches its values. A panic of the
+// definition leaves done unset, so the next access runs the definition again and
+// reproduces the panic.
+func (i *_Initializer) evaluate(scope Scope) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if i.done.Load() {
+		return
+	}
+	i.Values = scope.call(reflect.ValueOf(i.Def))
+	i.done.Store(true)
+}
+
+// get returns the value of one output and evaluates the definition on first
+// access. The check of the cached state stays small, so the compiler inlines the
+// function into its callers.
 func (i *_Initializer) get(scope Scope, position int) (ret reflect.Value) {
 	if !i.DefIsPointer && !i.done.Load() {
-		i.mu.Lock()
-		defer i.mu.Unlock()
-		if !i.done.Load() {
-			i.Values = scope.call(reflect.ValueOf(i.Def))
-			i.done.Store(true)
-		}
+		i.evaluate(scope)
 	}
 	return i.Values[position]
 }

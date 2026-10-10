@@ -22,10 +22,10 @@ func (s Scope) AllTypes() iter.Seq[reflect.Type] {
 			// definition for them, but Scope.get ignores such definitions and
 			// always returns the built-in. Skip them here to avoid yielding the
 			// same type more than once.
-			if isAlwaysProvided(value.typeInfo.TypeID) {
+			if isAlwaysProvided(value.id) {
 				continue
 			}
-			if !yield(typeIDToType(value.typeInfo.TypeID)) {
+			if !yield(typeIDToType(value.id)) {
 				return
 			}
 		}

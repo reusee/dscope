@@ -131,12 +131,16 @@ func TestForkResetLayerIsLazy(t *testing.T) {
 	child := scope.Fork(func() Config { return 2 })
 
 	layer := child.values
-	if layer == nil || !layer.Refresh {
-		t.Fatal("fork did not install a reset layer")
+	if layer == nil || layer.reset == nil || layer.reset.base != nil {
+		t.Fatal("fork did not install a partial reset layer")
 	}
 	count := func() int {
+		cache := layer.reset.cache.Load()
+		if cache == nil {
+			return 0
+		}
 		n := 0
-		layer.ResetCache.Range(func(_, _ any) bool {
+		cache.Range(func(_, _ any) bool {
 			n++
 			return true
 		})
@@ -151,6 +155,79 @@ func TestForkResetLayerIsLazy(t *testing.T) {
 	}
 	if n := count(); n != 1 {
 		t.Fatalf("reset layer holds %d initializers after one access", n)
+	}
+}
+
+// TestRefreshKeepsOutputsApart verifies that a scope which hands out fresh
+// values answers with the output that was asked for. The outputs of one
+// definition share one provider, so a reset layer keeps them apart by the
+// requested output and not by the fresh provider it shares.
+func TestRefreshKeepsOutputsApart(t *testing.T) {
+	type (
+		Config int
+		A      int
+		B      int
+	)
+	scope := New(
+		func() Config { return 1 },
+		func(c Config) (A, B) { return A(c), B(c * 2) },
+	)
+
+	reset := scope.Reset()
+	if v := reset.Get[A](); v != 1 {
+		t.Fatalf("expected A 1, got %d", v)
+	}
+	if v := reset.Get[B](); v != 2 {
+		t.Fatalf("expected B 2, got %d", v)
+	}
+
+	child := scope.Fork(func() Config { return 3 })
+	if v := child.Get[A](); v != 3 {
+		t.Fatalf("expected A 3, got %d", v)
+	}
+	if v := child.Get[B](); v != 6 {
+		t.Fatalf("expected B 6, got %d", v)
+	}
+}
+
+// TestResetLayerKeepsMappingsApart verifies that a reset layer hands out one
+// fresh value for each inherited initializer, even when a program resolves
+// several refreshed types in turn: a type must never receive the fresh value of
+// another type.
+func TestResetLayerKeepsMappingsApart(t *testing.T) {
+	type (
+		Config int
+		A      int
+		B      int
+	)
+	scope := New(
+		func() Config { return 2 },
+		func(c Config) A { return A(c) },
+		func(c Config) B { return B(c * 3) },
+	)
+	reset := scope.Reset()
+
+	for range 4 {
+		if v := reset.Get[A](); v != 2 {
+			t.Fatalf("expected A 2, got %d", v)
+		}
+		if v := reset.Get[B](); v != 6 {
+			t.Fatalf("expected B 6, got %d", v)
+		}
+	}
+
+	// The layer holds one fresh value for each refreshed type, and no more.
+	cache := reset.values.reset.cache.Load()
+	if cache == nil {
+		t.Fatal("reset layer created no cache")
+	}
+	n := 0
+	cache.Range(func(_, _ any) bool {
+		n++
+		return true
+	})
+	if n != 3 {
+		t.Fatalf("reset layer holds %d fresh values, want 3", n)
 	}
 }
 

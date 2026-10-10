@@ -55,18 +55,23 @@ dscope fork flatten theory:
 - Fork can be called any number of times. Repeated forking never grows the
   value stack without bound, so lookups never slow down over time.
 - Each Fork appends one sorted layer onto the scope's value stack. Unbounded
-  layering would degrade lookups, because every lookup binary-searches each
-  layer.
+  layering would degrade lookups, because every lookup searches each layer.
+- A layer with many values indexes them, so a lookup costs one probe; a shorter
+  layer keeps its binary search and pays no memory. A layer also remembers the
+  entry it resolved most recently, so a program that asks for the same type over
+  and over pays one comparison. The index is built while the layer is created and
+  never changes, so a lookup reads it without locking.
 - A Fork whose definitions change no effective value adds no layer at all: the
   new scope shares the value stack of its base. A Fork with no definitions
   returns its base scope as it is, because there is nothing to analyze and
   nothing to add.
 - Appending flattens the stack first when it is deeper than an internal
-  threshold, and always when the base layer is a lazy reset layer, because
-  binary search needs a single sorted stack.
+  threshold, and always when the base layer is a lazy reset layer, because a
+  search needs a single sorted stack.
 - The layer of a Fork holds the definitions the fork adds and the inherited
   types whose recomputation those definitions affect. It marks an affected type
-  instead of copying it and refreshes the type on first access, so a Fork pays
+  instead of copying it and refreshes the type on first access; the cache of
+  fresh initializers comes into existence at that access. A Fork therefore pays
   neither for the size of the affected set nor for the values the new scope
   never resolves.
 - Flattening is transparent: effective values and override semantics are
@@ -90,6 +95,11 @@ dscope type granularity theory:
 // binary-searches an unbounded number of layers.
 const stackHeightLimit = 16
 
+// forkInlineInitializers is the number of definition initializers a Fork stores
+// inside its own allocation. Most Forks add one definition, so the common case
+// pays one allocation of exactly the size of its layer and its initializer.
+const forkInlineInitializers = 1
+
 // _Forker pre-calculates the information required to efficiently create a new
 // scope from a base scope and new definitions. Instances are cached based on
 // the base scope's signature and the types of the new definitions.
@@ -110,6 +120,17 @@ type _Forker struct {
 
 // posAtSorted represents the index of a value within the sorted slice of new values.
 type posAtSorted int
+
+// _ForkBundle carries the layer of one Fork and the initializer of its first
+// definition in one allocation. A Fork that adds more definitions than the
+// bundle holds keeps all its initializers in one slice of their own, so the
+// bytes a Fork pays stay proportional to the definitions it adds. An initializer
+// keeps its identity as the address the layer stores, so a bundled initializer
+// behaves like a separately allocated one.
+type _ForkBundle struct {
+	layer _StackedMap
+	inits [forkInlineInitializers]_Initializer
+}
 
 type _DefOrigin struct {
 	defIndex    int
@@ -160,6 +181,15 @@ func checkDuplicateOutput(origins map[_TypeID]_DefOrigin, t reflect.Type, id _Ty
 	}
 }
 
+// newForkBundle allocates the layer of a Fork and the initializer of its first
+// definition together. base is the layer the new layer sits on and numValues the
+// number of values the fork adds.
+func newForkBundle(base *_StackedMap, numValues int) *_ForkBundle {
+	bundle := new(_ForkBundle)
+	initStackedMapLayer(&bundle.layer, base, numValues)
+	return bundle
+}
+
 func newForker(
 	scope Scope,
 	defs []any,
@@ -199,8 +229,8 @@ func newForker(
 				checkDuplicateOutput(newDefOutputIDs, t, id, origin)
 
 				newValuesTemplate = append(newValuesTemplate, _Value{
+					id: id,
 					typeInfo: &_TypeInfo{
-						TypeID:       id,
 						DefType:      defType,
 						Position:     i,
 						Dependencies: dependencies,
@@ -223,8 +253,8 @@ func newForker(
 			checkDuplicateOutput(newDefOutputIDs, t, id, origin)
 
 			newValuesTemplate = append(newValuesTemplate, _Value{
+				id: id,
 				typeInfo: &_TypeInfo{
-					TypeID:  id,
 					DefType: defType,
 				},
 			})
@@ -247,8 +277,8 @@ func newForker(
 	}
 	slices.SortFunc(posesAtTemplate, func(a, b posAtTemplate) int {
 		return cmp.Compare(
-			newValuesTemplate[a].typeInfo.TypeID,
-			newValuesTemplate[b].typeInfo.TypeID,
+			newValuesTemplate[a].id,
+			newValuesTemplate[b].id,
 		)
 	})
 	// Type IDs are unique within a Fork call, so the sorted index order is
@@ -280,7 +310,7 @@ func newForker(
 	var path []_TypeID
 	var traverse func(value _Value) (reset bool, err error)
 	traverse = func(value _Value) (reset bool, err error) {
-		id := value.typeInfo.TypeID
+		id := value.id
 
 		// Cycle Detection & Memoization
 		state := states[id]
@@ -407,7 +437,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 		return scope
 	}
 	base := scope.values
-	if base != nil && (base.ResetBase != nil || base.Height > stackHeightLimit) {
+	if base != nil && (base.isLazyReset() || base.Height > stackHeightLimit) {
 		// A lazy reset layer, and a stack above the height limit, are
 		// materialised first: lookups need one sorted stack to search.
 		base = base.flatten()
@@ -417,34 +447,48 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 	//    new definitions together with the inherited types whose recomputation
 	//    they affect. A marked type holds no value in the layer and gets a fresh
 	//    initializer on first access, so the cost of a Fork does not grow with
-	//    the dependent set.
-	layer := newStackedMapLayer(base, len(f.NewValuesTemplate))
+	//    the dependent set. A fork that adds as many definitions as the bundle
+	//    holds pays one allocation for its layer and its initializer together;
+	//    a fork with more definitions keeps them in one slice of their own.
+	var layer *_StackedMap
+	var initializers []_Initializer
+	if len(f.DefKinds) <= forkInlineInitializers {
+		bundle := newForkBundle(base, len(f.NewValuesTemplate))
+		layer = &bundle.layer
+		initializers = bundle.inits[:]
+	} else {
+		layer = newStackedMapLayer(base, len(f.NewValuesTemplate))
+		initializers = make([]_Initializer, len(f.DefKinds))
+	}
 
 	// 3. Instantiate the definitions: every output of one definition shares its
 	//    initializer, so a multi-value provider evaluates once.
 	valueIdx := 0
 	for defIdx, def := range defs {
+		initializer := &initializers[defIdx]
 		switch f.DefKinds[defIdx] {
 		case reflect.Func:
-			initializer := newInitializer(def, false)
+			initInitializer(initializer, def, false)
 			for range f.DefNumValues[defIdx] {
 				template := f.NewValuesTemplate[valueIdx]
-				layer.Values[f.PosesAtSorted[valueIdx]] = _Value{
-					typeInfo:    template.typeInfo,
-					initializer: initializer, // Share initializer for multi-return
-				}
+				template.initializer = initializer // Share initializer for multi-return
+				layer.Values[f.PosesAtSorted[valueIdx]] = template
 				valueIdx++
 			}
 		case reflect.Pointer:
-			layer.Values[f.PosesAtSorted[valueIdx]] = _Value{
-				typeInfo:    f.NewValuesTemplate[valueIdx].typeInfo,
-				initializer: newInitializer(def, true),
-			}
+			initInitializer(initializer, def, true)
+			template := f.NewValuesTemplate[valueIdx]
+			template.initializer = initializer
+			layer.Values[f.PosesAtSorted[valueIdx]] = template
 			valueIdx++
 		}
 	}
 
-	// 4. A fork that overrides or adds definitions also marks the inherited
+	// 4. A layer with many values answers a lookup with one probe instead of a
+	//    search. The index is built here, while the layer is still being built.
+	layer.buildIndex()
+
+	// 5. A fork that overrides or adds definitions also marks the inherited
 	//    types whose recomputation the change affects.
 	if len(f.ResetIDs) > 0 {
 		layer.markRefresh(f.ResetIDs)
