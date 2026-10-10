@@ -1,6 +1,7 @@
 package dscope
 
 import (
+	"encoding/binary"
 	"hash/maphash"
 	"reflect"
 	"sync"
@@ -24,78 +25,62 @@ type _TypeID int
 // _Hash is used for scope signatures and cache keys. A scope's identity is its
 // sorted set of definition type IDs; a collision would bind a scope to another
 // scope's forker and silently hand out wrong values, so the digest stays 128
-// bits wide, keyed with two independent random seeds.
+// bits wide, produced by two independent seeds of the runtime's fast hash.
 type _Hash [2]uint64
 
-// hashSeeds keys the two halves of every _Hash. The keys come from the runtime's
-// random hash seed and never leave the process: signatures and fork keys are
-// process-local.
-var hashSeeds = [2]uint64{
-	maphash.Bytes(maphash.MakeSeed(), []byte("dscope hash key 0")),
-	maphash.Bytes(maphash.MakeSeed(), []byte("dscope hash key 1")),
+// hashSeeds seeds the two halves of every _Hash. The seeds are random per
+// process and never leave it: signatures and fork keys are process-local.
+var hashSeeds = [2]maphash.Seed{
+	maphash.MakeSeed(),
+	maphash.MakeSeed(),
 }
 
-// hashMul0 and hashMul1 are odd multipliers that spread the bits of a folded
-// word over the whole 64 bits of a hash half.
-const (
-	hashMul0 = 0x9e3779b97f4a7c15
-	hashMul1 = 0xbf58476d1ce4e5b9
-)
-
-// hashAbsorb folds one 64-bit word into a hash state. Each half of the state
-// mixes the word with a multiplier of its own, so a collision must satisfy both
-// halves at once.
-func hashAbsorb(h0, h1, word uint64) (uint64, uint64) {
-	return (h0 ^ word) * hashMul0, (h1 ^ word) * hashMul1
-}
-
-// hashFinal spreads the bits of one half of a hash state, so that every bit of
-// the input reaches every bit of the digest.
-func hashFinal(h uint64) uint64 {
-	h ^= h >> 33
-	h *= 0xff51afd7ed558ccd
-	h ^= h >> 33
-	h *= 0xc4ceb9fe1a85ec53
-	h ^= h >> 33
-	return h
-}
-
-// hashDigest spreads a hash state into the final digest.
-func hashDigest(h0, h1 uint64) (ret _Hash) {
-	ret[0] = hashFinal(h0)
-	ret[1] = hashFinal(h1)
-	return
-}
-
-// hashTypeIDs hashes a seed followed by the given type IDs, each absorbed as one
-// 64-bit word. A scope's identity is its sorted set of definition type IDs, so
-// every signature and cache key must use this encoding. The IDs stream into the
-// state one at a time, so the digest needs no intermediate buffer.
+// hashTypeIDs hashes a seed followed by the given type IDs, each encoded as one
+// native-endian uint64. A scope's identity is its sorted set of definition type
+// IDs, so every signature and cache key must use this encoding. Each half of the
+// digest gets a Hash value of its own, seeded before its only use, so the halves
+// come from two independent seeds. The IDs stream into the hashers one at a
+// time, so the digest needs no intermediate buffer.
 func hashTypeIDs(seed []byte, ids []_TypeID) (ret _Hash) {
-	h0, h1 := hashSeeds[0], hashSeeds[1]
-	for _, b := range seed {
-		h0, h1 = hashAbsorb(h0, h1, uint64(b))
-	}
+	var h0, h1 maphash.Hash
+	h0.SetSeed(hashSeeds[0])
+	h1.SetSeed(hashSeeds[1])
+	_, _ = h0.Write(seed)
+	_, _ = h1.Write(seed)
+	var idBuf [8]byte
 	for _, id := range ids {
-		h0, h1 = hashAbsorb(h0, h1, uint64(id))
+		binary.NativeEndian.PutUint64(idBuf[:], uint64(id))
+		_, _ = h0.Write(idBuf[:])
+		_, _ = h1.Write(idBuf[:])
 	}
-	return hashDigest(h0, h1)
+	ret[0] = h0.Sum64()
+	ret[1] = h1.Sum64()
+	return
 }
 
 // forkKey derives the forker cache key of a Fork call: the base scope's
 // signature followed by the type IDs of the new definitions, in the encoding
-// hashTypeIDs uses. It streams the signature and each ID into the state, so the
-// key needs no intermediate buffer and a cache lookup of a small Fork call
+// hashTypeIDs uses. It streams the signature and each ID into the hashers, so
+// the key needs no intermediate buffer and a cache lookup of a small Fork call
 // allocates nothing.
 func forkKey(signature _Hash, defs []any) (ret _Hash) {
-	h0, h1 := hashSeeds[0], hashSeeds[1]
+	var h0, h1 maphash.Hash
+	h0.SetSeed(hashSeeds[0])
+	h1.SetSeed(hashSeeds[1])
+	var idBuf [8]byte
 	for _, word := range signature {
-		h0, h1 = hashAbsorb(h0, h1, word)
+		binary.NativeEndian.PutUint64(idBuf[:], word)
+		_, _ = h0.Write(idBuf[:])
+		_, _ = h1.Write(idBuf[:])
 	}
 	for _, def := range defs {
-		h0, h1 = hashAbsorb(h0, h1, uint64(getTypeID(reflect.TypeOf(def))))
+		binary.NativeEndian.PutUint64(idBuf[:], uint64(getTypeID(reflect.TypeOf(def))))
+		_, _ = h0.Write(idBuf[:])
+		_, _ = h1.Write(idBuf[:])
 	}
-	return hashDigest(h0, h1)
+	ret[0] = h0.Sum64()
+	ret[1] = h1.Sum64()
+	return
 }
 
 // TheoryOfScopeCore documents the fundamental model of dscope: an immutable,
