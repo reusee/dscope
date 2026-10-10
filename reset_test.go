@@ -116,6 +116,44 @@ func TestResetFork(t *testing.T) {
 	}
 }
 
+// TestForkResetLayerIsLazy verifies that the reset layer a Fork installs keeps
+// the inherited initializers until a value is accessed: the fresh initializer
+// of a dependent comes into existence only when the new scope resolves it.
+func TestForkResetLayerIsLazy(t *testing.T) {
+	type (
+		Config  int
+		Service int
+	)
+	scope := New(
+		func() Config { return 1 },
+		func(c Config) Service { return Service(c) },
+	)
+	child := scope.Fork(func() Config { return 2 })
+
+	layer := child.values
+	if layer == nil || !layer.Refresh {
+		t.Fatal("fork did not install a reset layer")
+	}
+	count := func() int {
+		n := 0
+		layer.ResetCache.Range(func(_, _ any) bool {
+			n++
+			return true
+		})
+		return n
+	}
+	if n := count(); n != 0 {
+		t.Fatalf("reset layer holds %d initializers before any access", n)
+	}
+
+	if v := child.Get[Service](); v != 2 {
+		t.Fatalf("expected 2, got %d", v)
+	}
+	if n := count(); n != 1 {
+		t.Fatalf("reset layer holds %d initializers after one access", n)
+	}
+}
+
 func TestResetDependencyChain(t *testing.T) {
 	var intCounter, stringCounter int64
 	scope := New(

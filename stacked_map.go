@@ -15,11 +15,18 @@ import (
 // delegate to ResetBase but every _Initializer is replaced with a fresh copy so
 // that providers are re-evaluated on first access. Fresh initializers are cached
 // in ResetCache, preserving the at-most-once evaluation guarantee per scope.
+//
+// When Refresh is set the node acts as a partial reset layer: its values carry
+// the initializers inherited from lower layers, and only a value that is
+// actually resolved is replaced with a fresh copy from ResetCache. Fork uses
+// this mode so that a new scope re-evaluates the overridden types and their
+// dependents, and only those values the scope touches.
 type _StackedMap struct {
 	Next       *_StackedMap // Previous layer in the stack.
 	Values     []_Value     // Values in this layer, sorted by TypeID.
 	Height     int          // Height of the stack from this node downwards.
 	ResetBase  *_StackedMap // Non-nil for lazy reset layers; delegates to this base.
+	Refresh    bool         // Set for a partial reset layer; refresh values on access.
 	ResetCache *sync.Map    // Caches fresh initializers (initializer ID -> *_Initializer).
 }
 
@@ -51,6 +58,11 @@ func (s *_StackedMap) Load(id _TypeID) (ret _Value, ok bool) {
 			} else if midID < id {
 				left = mid + 1
 			} else {
+				if s.Refresh {
+					// A partial reset layer hands out a fresh initializer for
+					// the value, so the provider re-evaluates in this scope.
+					return s.refreshValue(values[mid]), true
+				}
 				return values[mid], true // Found
 			}
 		}
@@ -91,17 +103,21 @@ func (s *_StackedMap) IterValues() iter.Seq[_Value] {
 	}
 	return func(yield func(_Value) bool) {
 		keys := make(map[_TypeID]struct{})
-		for s != nil {
-			for _, d := range s.Values {
+		for cur := s; cur != nil; cur = cur.Next {
+			for _, d := range cur.Values {
 				if _, ok := keys[d.typeInfo.TypeID]; ok {
 					continue
 				}
 				keys[d.typeInfo.TypeID] = struct{}{}
+				if cur.Refresh {
+					// A partial reset layer yields the refreshed value, so
+					// flattening keeps the reset semantics.
+					d = cur.refreshValue(d)
+				}
 				if !yield(d) {
 					return
 				}
 			}
-			s = s.Next
 		}
 	}
 }
@@ -124,6 +140,19 @@ func (s *_StackedMap) Append(values []_Value) *_StackedMap {
 		Next:   s,
 		Height: height,
 	}
+}
+
+// AppendRefresh appends a layer that replaces the initializers of inherited
+// values with fresh ones. The values in the layer keep their inherited
+// initializers: the fresh initializer of a value comes into existence in the
+// layer's cache only when the value is actually resolved, so a Fork pays for the
+// values its scope touches and no more. The provided values must be pre-sorted
+// by TypeID.
+func (s *_StackedMap) AppendRefresh(values []_Value) *_StackedMap {
+	ret := s.Append(values)
+	ret.Refresh = true
+	ret.ResetCache = new(sync.Map)
+	return ret
 }
 
 // Len returns the total number of individual _Value entries across all layers.

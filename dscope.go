@@ -27,15 +27,33 @@ type _Hash [sha256.Size]byte
 
 // hashTypeIDs hashes a seed followed by the given type IDs, each encoded as one
 // native-endian uint64. A scope's identity is its sorted set of definition type
-// IDs, so every signature and cache key must use this encoding.
+// IDs, so every signature and cache key must use this encoding. The IDs stream
+// into the hasher one at a time, so the digest needs no intermediate buffer.
 func hashTypeIDs(seed []byte, ids []_TypeID) (ret _Hash) {
 	h := sha256.New() // use cryptographic hash to avoid collision
 	_, _ = h.Write(seed)
-	buf := make([]byte, 0, len(ids)*8)
+	var idBuf [8]byte
 	for _, id := range ids {
-		buf = binary.NativeEndian.AppendUint64(buf, uint64(id))
+		binary.NativeEndian.PutUint64(idBuf[:], uint64(id))
+		_, _ = h.Write(idBuf[:])
 	}
-	_, _ = h.Write(buf)
+	h.Sum(ret[:0])
+	return
+}
+
+// forkKey derives the forker cache key of a Fork call: the base scope's
+// signature followed by the type IDs of the new definitions, in the encoding
+// hashTypeIDs uses. It streams the signature and each ID into the hasher, so the
+// key needs no intermediate buffer and a cache lookup of a small Fork call
+// allocates nothing.
+func forkKey(signature _Hash, defs []any) (ret _Hash) {
+	h := sha256.New() // use cryptographic hash to avoid collision
+	_, _ = h.Write(signature[:])
+	var idBuf [8]byte
+	for _, def := range defs {
+		binary.NativeEndian.PutUint64(idBuf[:], uint64(getTypeID(reflect.TypeOf(def))))
+		_, _ = h.Write(idBuf[:])
+	}
 	h.Sum(ret[:0])
 	return
 }
@@ -145,21 +163,16 @@ func (scope Scope) Fork(
 	// Calculate cache key for this Fork operation.
 	// Key is based on the base scope signature and the types of new definitions.
 	// Hashing types is sufficient as only one definition instance per type is effectively used.
-	ids := make([]_TypeID, 0, len(defs))
-	for _, def := range defs {
-		ids = append(ids, getTypeID(reflect.TypeOf(def)))
-	}
-	key := hashTypeIDs(scope.signature[:], ids)
+	key := forkKey(scope.signature, defs)
 
 	// Check cache
-	v, ok := forkers.Load(key)
-	if ok {
+	if v, ok := forkers.Load(key); ok {
 		return v.(*_Forker).Fork(scope, defs)
 	}
 
 	// Cache miss, create and cache forker
 	forker := newForker(scope, defs)
-	v, _ = forkers.LoadOrStore(key, forker)
+	v, _ := forkers.LoadOrStore(key, forker)
 
 	return v.(*_Forker).Fork(scope, defs)
 }
@@ -349,18 +362,19 @@ var reflectValuesPool = sync.Pool{
 // so the invocation itself cannot fail on malformed input.
 func (scope Scope) call(fnValue reflect.Value) []reflect.Value {
 	fnType := fnValue.Type()
-	var args []reflect.Value
+	nArgs := fnType.NumIn()
 	// Use pool for small number of arguments
-	if nArgs := fnType.NumIn(); nArgs <= reflectValuesPoolMaxLen {
+	if nArgs <= reflectValuesPoolMaxLen {
 		ptr := reflectValuesPool.Get().(*[reflectValuesPoolMaxLen]reflect.Value)
-		args = (*ptr)[:]
-		defer func() {
-			clear(args)
-			reflectValuesPool.Put(ptr)
-		}()
-	} else {
-		args = make([]reflect.Value, nArgs)
+		args := ptr[:nArgs]
+		n := scope.getArgs(fnType, args)
+		rets := fnValue.Call(args[:n])
+		// Release the resolved arguments before the buffer returns to the pool.
+		clear(args)
+		reflectValuesPool.Put(ptr)
+		return rets
 	}
+	args := make([]reflect.Value, nArgs)
 	n := scope.getArgs(fnType, args)
 	return fnValue.Call(args[:n])
 }

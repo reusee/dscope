@@ -39,12 +39,19 @@ dscope fork flatten theory:
   value stack without bound, so lookups never slow down over time.
 - Each Fork appends new sorted layers onto the scope's value stack. Unbounded
   layering would degrade lookups, because Load binary-searches each layer.
+- A Fork whose definitions change no effective value adds no layer at all: the
+  new scope shares the value stack of its base.
 - Appending flattens the stack first when it is deeper than an internal
   threshold, and always when the base layer is a lazy reset layer, because
   binary search needs a single sorted stack.
+- The reset layer of a Fork keeps the inherited initializers and refreshes them
+  on first access, so a Fork creates fresh initializers only for the values the
+  new scope actually resolves.
 - Flattening is transparent: effective values and override semantics are
   preserved. Users never need to compact scopes manually.
 `
+
+// @@ai keep flat-layer lookups allocation free
 
 const TheoryOfTypeGranularity = `
 dscope type granularity theory:
@@ -141,8 +148,8 @@ func newForker(
 
 	// 1. Process Definitions: Create templates, store metadata, identify overrides.
 	newValuesTemplate := make([]_Value, 0, len(defs))
-	redefinedIDs := make(map[_TypeID]struct{})      // Set of overridden TypeIDs
-	newDefOutputIDs := make(map[_TypeID]_DefOrigin) // TypeID -> origin of the first definition producing it
+	redefinedIDs := make(map[_TypeID]struct{}, len(defs))      // Set of overridden TypeIDs
+	newDefOutputIDs := make(map[_TypeID]_DefOrigin, len(defs)) // TypeID -> origin of the first definition producing it
 	defNumValues := make([]int, 0, len(defs))
 	defKinds := make([]reflect.Kind, 0, len(defs))
 	for defIdx, def := range defs {
@@ -222,25 +229,30 @@ func newForker(
 			newValuesTemplate[b].typeInfo.TypeID,
 		)
 	})
+	// Type IDs are unique within a Fork call, so the sorted index order is
+	// unambiguous: the sorted template is built from it directly instead of
+	// sorting a second copy.
 	posesAtSorted := make([]posAtSorted, len(posesAtTemplate))
+	sortedNewValuesTemplate := make([]_Value, len(posesAtTemplate))
 	for i, j := range posesAtTemplate {
 		posesAtSorted[j] = posAtSorted(i) // posesAtSorted[original_index] = sorted_index
+		sortedNewValuesTemplate[i] = newValuesTemplate[j]
 	}
-	sortedNewValuesTemplate := slices.Clone(newValuesTemplate)
-	slices.SortFunc(sortedNewValuesTemplate, func(a, b _Value) int {
-		return cmp.Compare(a.typeInfo.TypeID, b.typeInfo.TypeID)
-	})
 
 	// 3. Build Conceptual Next Scope & Analyze Dependencies via DFS:
 	//    - `valuesTemplate`: Temporary _StackedMap representing the potential new scope.
 	//    - Detect loops (`colors`: 0=White, 1=Gray, 2=Black).
 	//    - Determine which types need reset (`needsReset`).
 	valuesTemplate := scope.values.Append(sortedNewValuesTemplate)
-	colors := make(map[_TypeID]int)      // For cycle detection
-	needsReset := make(map[_TypeID]bool) // Memoization for reset status
+	colors := make(map[_TypeID]int, len(newValuesTemplate))      // For cycle detection
+	needsReset := make(map[_TypeID]bool, len(newValuesTemplate)) // Memoization for reset status
 
-	var traverse func(value _Value, path []_TypeID) (reset bool, err error)
-	traverse = func(value _Value, path []_TypeID) (reset bool, err error) {
+	// path is the ancestor chain of the node being traversed, held in one stack
+	// that grows and shrinks with the recursion. It is read only when a loop is
+	// reported, so a traversal without loops allocates nothing for it.
+	var path []_TypeID
+	var traverse func(value _Value) (reset bool, err error)
+	traverse = func(value _Value) (reset bool, err error) {
 		id := value.typeInfo.TypeID
 
 		// Cycle Detection & Memoization
@@ -267,12 +279,6 @@ func newForker(
 		}
 
 		colors[id] = 1 // Mark as visiting (Gray)
-		defer func() { // Ensure state is updated on return
-			if err == nil {
-				colors[id] = 2
-				needsReset[id] = reset
-			}
-		}()
 
 		// Base Case: Check if directly redefined in this fork
 		if _, ok := redefinedIDs[id]; ok {
@@ -280,6 +286,7 @@ func newForker(
 		}
 
 		// Recursive Step: Check Dependencies
+		path = append(path, id)
 		for _, depID := range value.typeInfo.Dependencies {
 			if isAlwaysProvided(depID) {
 				// InjectStruct, Fork, and Reset are opaque dependencies: a
@@ -296,15 +303,20 @@ func newForker(
 			}
 			depValue, ok := valuesTemplate.Load(depID)
 			if !ok {
+				path = path[:len(path)-1]
 				return false, errWith(ErrDependencyNotFound, "dependency not found in definition %v, no definition for %v", value.typeInfo.DefType, typeIDToType(depID))
 			}
-			depResets, err := traverse(depValue, append(path, value.typeInfo.TypeID))
+			depResets, err := traverse(depValue)
 			if err != nil {
+				path = path[:len(path)-1]
 				return false, err
 			}
 			reset = reset || depResets // Propagate reset requirement
 		}
+		path = path[:len(path)-1]
 
+		colors[id] = 2
+		needsReset[id] = reset
 		return
 	}
 
@@ -314,18 +326,17 @@ func newForker(
 	defTypeIDs := make([]_TypeID, 0, valuesTemplate.Len()) // For signature
 
 	for value := range valuesTemplate.IterValues() {
-		if _, err := traverse(value, nil); err != nil {
+		if _, err := traverse(value); err != nil {
 			panic(err)
 		}
 
-		// Collect definition type IDs (sorted insert)
-		defTypeID := getTypeID(value.typeInfo.DefType)
-		i, found := slices.BinarySearch(defTypeIDs, defTypeID)
-		if !found {
-			defTypeIDs = slices.Insert(defTypeIDs, i, defTypeID)
-		}
-
+		// Collect definition type IDs
+		defTypeIDs = append(defTypeIDs, getTypeID(value.typeInfo.DefType))
 	}
+	// A type ID repeats when several outputs of one definition share the type,
+	// so the collected IDs are sorted and deduplicated in one pass.
+	slices.Sort(defTypeIDs)
+	defTypeIDs = slices.Compact(defTypeIDs)
 
 	// 5. Calculate the New Scope Signature: Hash sorted definition type IDs.
 	signature := hashTypeIDs(nil, defTypeIDs)
@@ -359,10 +370,15 @@ func newForker(
 // Fork applies the pre-calculated changes from the _Forker to a base scope, creating a new scope.
 func (f *_Forker) Fork(s Scope, defs []any) Scope {
 
-	// 1. Start from the base scope's value stack, flattening it when it is deep.
+	// 1. Start from the base scope's value stack.
 	scope := Scope{
 		signature: f.Signature,
 		values:    s.values,
+	}
+	if len(f.NewValuesTemplate) == 0 && len(f.ResetIDs) == 0 {
+		// A fork that changes no effective value adds no layer: the fork and
+		// its base share every value and its initializer.
+		return scope
 	}
 	if scope.values != nil && scope.values.Height > stackHeightLimit {
 		scope.values = scope.values.flatten()
@@ -400,28 +416,21 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 	}
 	scope.values = scope.values.Append(newValues)
 
-	// 3. Create and Add Reset Values Layer: Contains reset initializers for inherited values affected by overrides.
+	// 3. Create and Add Reset Values Layer: Contains the inherited values that
+	//    the overrides or the newly added definitions affect. The layer refreshes
+	//    a value's initializer on first access, so a Fork creates fresh
+	//    initializers only for the values the new scope actually resolves.
 	if len(f.ResetIDs) > 0 {
 		resetValues := make([]_Value, 0, len(f.ResetIDs))
-		resetInitializers := make(map[int64]*_Initializer) // Track reset initializers for sharing
 		for _, id := range f.ResetIDs {
 			currentDef, ok := scope.values.Load(id) // Load definitions from current stack
 			if !ok {
 				panic("impossible: reset ID not found in scope")
 			}
-			initID := currentDef.initializer.ID
-			resetInit, found := resetInitializers[initID]
-			if !found {
-				resetInit = currentDef.initializer.reset() // Create fresh initializer
-				resetInitializers[initID] = resetInit
-			}
-			resetValues = append(resetValues, _Value{
-				typeInfo:    currentDef.typeInfo,
-				initializer: resetInit,
-			})
+			resetValues = append(resetValues, currentDef)
 		}
 		// resetValues are implicitly sorted by type ID.
-		scope.values = scope.values.Append(resetValues)
+		scope.values = scope.values.AppendRefresh(resetValues)
 	}
 
 	return scope
