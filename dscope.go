@@ -55,8 +55,8 @@ dscope core theory:
   available, bound to the current scope, and cannot be overridden: they are
   the escape hatches through which providers interact with the scope
   dynamically.
-- Every public operation — Get, TryGet, Assign, InjectStruct, AllTypes,
-  ToDOT — reflects the effective definitions of the scope it is invoked on.
+- Every public operation — Get, TryGet, Assign, InjectStruct, AllTypes —
+  reflects the effective definitions of the scope it is invoked on.
 `
 
 const TheoryOfScopeDefinitions = `
