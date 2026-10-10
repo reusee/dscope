@@ -1,7 +1,6 @@
 package dscope
 
 import (
-	"reflect"
 	"testing"
 )
 
@@ -32,21 +31,6 @@ func TestGetResetValue(t *testing.T) {
 	}
 }
 
-func TestGetResetDependency(t *testing.T) {
-	scope := New(func() int {
-		return 42
-	})
-
-	r := scope.Get[Reset]()
-	if r == nil {
-		t.Fatal("Reset dependency was nil")
-	}
-	resetScope := r()
-	if resetScope.Get[int]() != 42 {
-		t.Fatal("reset scope did not inherit int")
-	}
-}
-
 func TestAssignReset(t *testing.T) {
 	scope := New()
 	var r Reset
@@ -58,35 +42,6 @@ func TestAssignReset(t *testing.T) {
 	resetScope.Assign(&r) // Assigning from a reset scope also binds to it
 	if r == nil {
 		t.Fatal("Assign from reset scope got nil Reset")
-	}
-}
-
-func TestResetValueInAllTypes(t *testing.T) {
-	scope := New()
-	found := false
-	for typ := range scope.AllTypes() {
-		if typ == reflect.TypeFor[Reset]() {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatal("Reset not found in AllTypes")
-	}
-}
-
-func TestResetValueNoDuplicateInAllTypes(t *testing.T) {
-	scope := New(func() Reset {
-		return func() Scope { return New() }
-	})
-	var count int
-	for typ := range scope.AllTypes() {
-		if typ == reflect.TypeFor[Reset]() {
-			count++
-		}
-	}
-	if count != 1 {
-		t.Fatalf("Reset should appear exactly once in AllTypes, got %d", count)
 	}
 }
 

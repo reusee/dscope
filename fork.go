@@ -2,8 +2,6 @@ package dscope
 
 import (
 	"cmp"
-	"crypto/sha256"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"reflect"
@@ -19,9 +17,9 @@ dscope fork theory:
   layered on top. There is no child-parent relationship between scopes: the
   original and the fork are independent branches, and forking or overriding
   in one never changes the definitions of the other.
-- Each type has exactly one effective definition per scope: the innermost one.
-  Forking a definition for an inherited type overrides it in the new scope;
-  Forking a type the original lacks adds it.
+- The innermost definition of a type is the effective one: forking a
+  definition for an inherited type overrides it, and forking a type the
+  original lacks adds it.
 - Override triggers fine-grained recomputation: the overridden type and its
   transitive dependents re-evaluate lazily in the new scope, while untouched
   providers keep the cached values they had in the original.
@@ -38,28 +36,30 @@ dscope fork theory:
 const TheoryOfScopeForkFlatten = `
 dscope fork flatten theory:
 - Fork can be called any number of times. Repeated forking never grows the
-  value stack without bound and never leaks memory: users do not need to
-  worry about memory consumption or lookups slowing down over time.
+  value stack without bound, so lookups never slow down over time.
 - Each Fork appends new sorted layers onto the scope's value stack. Unbounded
   layering would degrade lookups, because Load binary-searches each layer.
-- When the base scope's stack height exceeds an internal threshold, Fork
-  automatically collects all effective values into a single sorted layer
-  before appending the new layer, bounding stack height.
+- Appending flattens the stack first when it is deeper than an internal
+  threshold, and always when the base layer is a lazy reset layer, because
+  binary search needs a single sorted stack.
 - Flattening is transparent: effective values and override semantics are
   preserved. Users never need to compact scopes manually.
 `
 
 const TheoryOfTypeGranularity = `
 dscope type granularity theory:
-- A Fork override recomputes the overridden type and its transitive dependents;
-  untouched providers keep their cached values. Type granularity therefore
-  bounds recomputation precision: the finer the type definitions, the narrower
-  the recomputation scope when a value is updated.
+- Type granularity bounds recomputation precision: the finer the type
+  definitions, the narrower the recomputation scope when a value is updated.
 - Prefer single-value types over composite types with multiple mutable fields.
   Splitting a composite into per-field types lets an update recompute only the
   providers that depend on the changed field, leaving consumers of the other
   fields cached.
 `
+
+// stackHeightLimit bounds the number of layers in a value stack. Fork
+// flattens a deeper stack before appending new layers, so that Load never
+// binary-searches an unbounded number of layers.
+const stackHeightLimit = 16
 
 // _Forker pre-calculates the information required to efficiently create a new
 // scope from a base scope and new definitions. Instances are cached based on
@@ -77,8 +77,6 @@ type _Forker struct {
 	ResetIDs []_TypeID // sorted
 	// Signature is a hash representing the structural identity of the scope *after* this fork.
 	Signature _Hash
-	// Key is the cache key for this _Forker, derived from the base signature and new definition types.
-	Key _Hash
 }
 
 // posAtSorted represents the index of a value within the sorted slice of new values.
@@ -98,58 +96,48 @@ func (o _DefOrigin) String() string {
 }
 
 // validateDefinition rejects malformed definitions with structured errors.
-// It runs on every Fork call — not only on forker-cache misses — because the
-// forker cache is keyed by definition types alone and a cached path would
-// otherwise skip construction-time validation entirely.
 func validateDefinition(def any) {
 	if def == nil {
-		panic(errors.Join(
-			fmt.Errorf("nil definition"),
-			ErrBadArgument,
-		))
+		panic(errWith(ErrBadArgument, "nil definition"))
 	}
 	defValue := reflect.ValueOf(def)
 	defType := defValue.Type()
 	switch defType.Kind() {
 	case reflect.Func:
 		if defValue.IsNil() {
-			panic(errors.Join(
-				fmt.Errorf("%T nil function provided", def),
-				ErrBadArgument,
-			))
+			panic(errWith(ErrBadArgument, "%T nil function provided", def))
 		}
 		if defType.NumOut() == 0 {
-			panic(errors.Join(
-				fmt.Errorf("%T returns nothing", def),
-				ErrBadArgument,
-			))
+			panic(errWith(ErrBadArgument, "%T returns nothing", def))
 		}
 		if defType.IsVariadic() {
-			panic(errors.Join(
-				fmt.Errorf("%T is variadic, variadic provider functions are not supported", def),
-				ErrBadArgument,
-			))
+			panic(errWith(ErrBadArgument, "%T is variadic, variadic provider functions are not supported", def))
 		}
 	case reflect.Pointer:
 		if defValue.IsNil() {
-			panic(errors.Join(
-				fmt.Errorf("%T nil pointer provided", def),
-				ErrBadArgument,
-			))
+			panic(errWith(ErrBadArgument, "%T nil pointer provided", def))
 		}
 	default:
-		panic(errors.Join(
-			fmt.Errorf("%T is not a valid definition", def),
-			ErrBadArgument,
-		))
+		panic(errWith(ErrBadArgument, "%T is not a valid definition", def))
+	}
+}
+
+// checkDuplicateOutput panics with ErrBadDefinition when a type produced by a
+// new definition was already produced by an earlier definition in the same
+// Fork call, naming both conflicting definitions.
+func checkDuplicateOutput(origins map[_TypeID]_DefOrigin, t reflect.Type, id _TypeID, origin _DefOrigin) {
+	if first, ok := origins[id]; ok {
+		panic(errWith(ErrBadDefinition, "%v has multiple definitions in the same Fork call: %s and %s", t, first, origin))
 	}
 }
 
 func newForker(
 	scope Scope,
 	defs []any,
-	key _Hash, // Cache key
 ) *_Forker {
+
+	// Scope.Fork validates every definition before this function runs, so each
+	// def here is a non-nil function or pointer.
 
 	// 1. Process Definitions: Create templates, store metadata, identify overrides.
 	newValuesTemplate := make([]_Value, 0, len(defs))
@@ -158,32 +146,11 @@ func newForker(
 	defNumValues := make([]int, 0, len(defs))
 	defKinds := make([]reflect.Kind, 0, len(defs))
 	for defIdx, def := range defs {
-		if def == nil {
-			panic(errors.Join(
-				fmt.Errorf("nil definition"),
-				ErrBadArgument,
-			))
-		}
-
 		defType := reflect.TypeOf(def)
-		defValue := reflect.ValueOf(def)
 		defKinds = append(defKinds, defType.Kind())
 
 		switch defType.Kind() {
 		case reflect.Func:
-			// Validate function
-			if defValue.IsNil() {
-				panic(errors.Join(
-					fmt.Errorf("%T nil function provided", def),
-					ErrBadArgument,
-				))
-			}
-			if defType.NumOut() == 0 {
-				panic(errors.Join(
-					fmt.Errorf("%T returns nothing", def),
-					ErrBadArgument,
-				))
-			}
 
 			// Extract Dependencies
 			numIn := defType.NumIn()
@@ -199,14 +166,8 @@ func newForker(
 			for i := range numOut {
 				t := defType.Out(i)
 				id := getTypeID(t)
-
-				// Check for duplicate outputs within the new definitions slice
-				if first, ok := newDefOutputIDs[id]; ok {
-					panic(errors.Join(
-						fmt.Errorf("%v has multiple definitions in the same Fork call: %s and %s", t, first, _DefOrigin{defIndex: defIdx, defType: defType, outputIndex: i}),
-						ErrBadDefinition,
-					))
-				}
+				origin := _DefOrigin{defIndex: defIdx, defType: defType, outputIndex: i}
+				checkDuplicateOutput(newDefOutputIDs, t, id, origin)
 
 				newValuesTemplate = append(newValuesTemplate, _Value{
 					typeInfo: &_TypeInfo{
@@ -217,7 +178,7 @@ func newForker(
 					},
 				})
 				numValues++
-				newDefOutputIDs[id] = _DefOrigin{defIndex: defIdx, defType: defType, outputIndex: i}
+				newDefOutputIDs[id] = origin
 				if _, ok := scope.values.Load(id); ok {
 					redefinedIDs[id] = struct{}{} // Mark override
 				}
@@ -225,24 +186,12 @@ func newForker(
 			defNumValues = append(defNumValues, numValues)
 
 		case reflect.Pointer:
-			// Validate pointer
-			if defValue.IsNil() {
-				panic(errors.Join(
-					fmt.Errorf("%T nil pointer provided", def),
-					ErrBadArgument,
-				))
-			}
 
 			// Create Value Template
 			t := defType.Elem()
 			id := getTypeID(t)
-
-			if first, ok := newDefOutputIDs[id]; ok {
-				panic(errors.Join(
-					fmt.Errorf("%v has multiple definitions in the same Fork call: %s and %s", t, first, _DefOrigin{defIndex: defIdx, defType: defType, outputIndex: -1}),
-					ErrBadDefinition,
-				))
-			}
+			origin := _DefOrigin{defIndex: defIdx, defType: defType, outputIndex: -1}
+			checkDuplicateOutput(newDefOutputIDs, t, id, origin)
 
 			newValuesTemplate = append(newValuesTemplate, _Value{
 				typeInfo: &_TypeInfo{
@@ -250,17 +199,14 @@ func newForker(
 					DefType: defType,
 				},
 			})
-			newDefOutputIDs[id] = _DefOrigin{defIndex: defIdx, defType: defType, outputIndex: -1}
+			newDefOutputIDs[id] = origin
 			if _, ok := scope.values.Load(id); ok {
 				redefinedIDs[id] = struct{}{} // Mark override
 			}
 			defNumValues = append(defNumValues, 1)
 
 		default:
-			panic(errors.Join(
-				fmt.Errorf("%T is not a valid definition", def),
-				ErrBadArgument,
-			))
+			panic("impossible")
 		}
 	}
 
@@ -302,20 +248,18 @@ func newForker(
 		switch color {
 
 		case 1: // Gray: Loop detected
+			// The reported path must close the loop: the gray node is
+			// revisited here, so repeat it after the ancestor chain.
+			buf := new(strings.Builder)
+			for _, pathID := range path {
+				buf.WriteString(typeIDToType(pathID).String())
+				buf.WriteString(" -> ")
+			}
+			buf.WriteString(typeIDToType(id).String())
 			return false, errors.Join(
 				fmt.Errorf("found dependency loop in definition %v", value.typeInfo.DefType),
 				ErrDependencyLoop,
-				func() error {
-					// The reported path must close the loop: the gray node is
-					// revisited here, so repeat it after the ancestor chain.
-					buf := new(strings.Builder)
-					for _, pathID := range path {
-						buf.WriteString(typeIDToType(pathID).String())
-						buf.WriteString(" -> ")
-					}
-					buf.WriteString(typeIDToType(id).String())
-					return fmt.Errorf("path: %s", buf.String())
-				}(),
+				fmt.Errorf("path: %s", buf.String()),
 			)
 
 		case 2: // Black: Already processed
@@ -345,17 +289,14 @@ func newForker(
 				// definitions are added we must pessimistically assume the
 				// opaque dependency depends on them and force a reset so the
 				// provider is re-evaluated against the new scope.
-				if (depID == injectStructTypeID || depID == forkTypeID || depID == resetTypeID) && len(newValuesTemplate) > 0 {
+				if len(newValuesTemplate) > 0 {
 					reset = true
 				}
 				continue
 			}
 			depValue, ok := valuesTemplate.Load(depID)
 			if !ok {
-				return false, errors.Join(
-					fmt.Errorf("dependency not found in definition %v, no definition for %v", value.typeInfo.DefType, typeIDToType(depID)),
-					ErrDependencyNotFound,
-				)
+				return false, errWith(ErrDependencyNotFound, "dependency not found in definition %v, no definition for %v", value.typeInfo.DefType, typeIDToType(depID))
 			}
 			depResets, err := traverse(depValue, append(path, value.typeInfo.TypeID))
 			if err != nil {
@@ -387,18 +328,7 @@ func newForker(
 	}
 
 	// 5. Calculate the New Scope Signature: Hash sorted definition type IDs.
-	h := sha256.New()
-	buf := make([]byte, 0, len(defTypeIDs)*8)
-	for _, id := range defTypeIDs {
-		buf = binary.NativeEndian.AppendUint64(buf, uint64(id))
-	}
-	// h.Write (from sha256.New()) is not expected to return an error,
-	// but check is included for robustness.
-	if _, err := h.Write(buf); err != nil {
-		panic(fmt.Errorf("unexpected error during signature hash calculation in newForker: %w", err))
-	}
-	var signature _Hash
-	h.Sum(signature[:0])
+	signature := hashTypeIDs(nil, defTypeIDs)
 
 	// 6. Identify Values Requiring Reset: Collect TypeIDs that need reset AND existed in the base scope.
 	resetIDs := make([]_TypeID, 0, len(needsReset))
@@ -415,10 +345,9 @@ func newForker(
 	}
 	slices.Sort(resetIDs)
 
-	// 8. Return the completed _Forker.
+	// 7. Return the completed _Forker.
 	return &_Forker{
 		Signature:         signature,
-		Key:               key,
 		NewValuesTemplate: newValuesTemplate,
 		DefKinds:          defKinds,
 		DefNumValues:      defNumValues,
@@ -430,31 +359,16 @@ func newForker(
 // Fork applies the pre-calculated changes from the _Forker to a base scope, creating a new scope.
 func (f *_Forker) Fork(s Scope, defs []any) Scope {
 
-	// 1. Initialize the new scope shell.
+	// 1. Start from the base scope's value stack, flattening it when it is deep.
 	scope := Scope{
-		signature:   f.Signature,
-		forkFuncKey: f.Key,
+		signature: f.Signature,
+		values:    s.values,
+	}
+	if scope.values != nil && scope.values.Height > stackHeightLimit {
+		scope.values = scope.values.flatten()
 	}
 
-	// 2. Flatten the base scope's stack if it is deep.
-	if s.values != nil && s.values.Height > 16 { // Threshold for flattening
-		var flatValues []_Value
-		for parentValue := range s.values.IterValues() {
-			flatValues = append(flatValues, parentValue)
-		}
-
-		slices.SortFunc(flatValues, func(a, b _Value) int { // Sort flattened values
-			return cmp.Compare(a.typeInfo.TypeID, b.typeInfo.TypeID)
-		})
-		scope.values = &_StackedMap{
-			Values: flatValues,
-			Height: 1,
-		}
-	} else {
-		scope.values = s.values // Reuse the base scope's stack
-	}
-
-	// 3. Create and Add New Values Layer: Instantiate initializers and values.
+	// 2. Create and Add New Values Layer: Instantiate initializers and values.
 	newValues := make([]_Value, len(f.NewValuesTemplate))
 	valueIdx := 0
 	for defIdx, def := range defs {
@@ -486,7 +400,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 	}
 	scope.values = scope.values.Append(newValues)
 
-	// 4. Create and Add Reset Values Layer: Contains reset initializers for inherited values affected by overrides.
+	// 3. Create and Add Reset Values Layer: Contains reset initializers for inherited values affected by overrides.
 	if len(f.ResetIDs) > 0 {
 		resetValues := make([]_Value, 0, len(f.ResetIDs))
 		resetInitializers := make(map[int64]*_Initializer) // Track reset initializers for sharing

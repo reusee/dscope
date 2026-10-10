@@ -9,9 +9,8 @@ dscope module theory:
 - A module is a struct embedding dscope.Module; it groups related providers
   as methods around one capability — a database, an HTTP server, a domain
   service — instead of scattering provider functions.
-- Each exported method of the module instance becomes a provider: its
-  parameters are dependencies resolved from the scope and its results are
-  the provided values. A method must return at least one value.
+- Each exported method of the module instance becomes a provider. A method
+  must return at least one value.
 - Modules compose: embedding one module in another, or holding module-typed
   fields, pulls in the embedded module's methods recursively.
 - A module reaches the scope either as a definition passed to New or Fork

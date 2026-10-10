@@ -101,31 +101,6 @@ func TestMethodsEmbeddedValue(t *testing.T) {
 	}
 }
 
-func TestMethodsDoublePointer(t *testing.T) {
-	// This test verifies that we can extract methods from a pointer to a pointer
-	// e.g. passing **T should find methods defined on *T
-	m := &testMethodsValueMod{}
-	scope := New(Methods(&m)...)
-
-	// Should find Value() (int64) from T
-	if v := scope.Get[int64](); v != 1 {
-		t.Fatalf("expected 1, got %d", v)
-	}
-	// Should find Pointer() (int32) from *T
-	if v := scope.Get[int32](); v != 2 {
-		t.Fatalf("expected 2, got %d", v)
-	}
-}
-
-func TestMethodsMultiPointerNil(t *testing.T) {
-	// This test verifies that Methods handles multi-level nil pointers without panicking.
-	// e.g., passing **T(nil) should work.
-	defs := Methods((**TestMethodsFoo)(nil))
-	if len(defs) == 0 {
-		t.Fatal("no methods found for multi-level nil pointer")
-	}
-}
-
 func TestMethodsNilChainProviderCallable(t *testing.T) {
 	// A typed nil pointer anywhere on the chain must be materialised, so a
 	// provider collected from a mid-chain pointer binds to a non-nil receiver

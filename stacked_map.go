@@ -113,18 +113,7 @@ func (s *_StackedMap) IterValues() iter.Seq[_Value] {
 // sorted stack so that subsequent binary searches remain correct.
 func (s *_StackedMap) Append(values []_Value) *_StackedMap {
 	if s != nil && s.ResetBase != nil {
-		var flatValues []_Value
-		for v := range s.IterValues() {
-			flatValues = append(flatValues, v)
-		}
-		slices.SortFunc(flatValues, func(a, b _Value) int {
-			return cmp.Compare(a.typeInfo.TypeID, b.typeInfo.TypeID)
-		})
-		base := &_StackedMap{
-			Values: flatValues,
-			Height: 1,
-		}
-		return base.Append(values)
+		return s.flatten().Append(values)
 	}
 	var height int = 1
 	if s != nil {
@@ -151,4 +140,20 @@ func (s *_StackedMap) Len() int {
 		s = s.Next
 	}
 	return ret
+}
+
+// flatten materialises the effective values of the stack into a single sorted
+// layer. Effective values and override semantics are preserved.
+func (s *_StackedMap) flatten() *_StackedMap {
+	var flatValues []_Value
+	for value := range s.IterValues() {
+		flatValues = append(flatValues, value)
+	}
+	slices.SortFunc(flatValues, func(a, b _Value) int {
+		return cmp.Compare(a.typeInfo.TypeID, b.typeInfo.TypeID)
+	})
+	return &_StackedMap{
+		Values: flatValues,
+		Height: 1,
+	}
 }

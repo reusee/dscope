@@ -50,35 +50,48 @@ func TestAllTypes(t *testing.T) {
 
 }
 
-func TestAllTypesInjectStruct(t *testing.T) {
-	scope := New()
-	found := false
-	for typ := range scope.AllTypes() {
-		if typ == reflect.TypeFor[InjectStruct]() {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatal("InjectStruct not found in AllTypes")
-	}
-}
-
-func TestAllTypesNoDuplicateInjectStruct(t *testing.T) {
-	// Providing an always-provided type (InjectStruct) as a definition must not
-	// cause AllTypes to yield it twice. The built-in version is emitted first;
-	// the user-provided definition (which Scope.get ignores) must be skipped in
-	// the values iteration.
-	scope := New(func() InjectStruct {
-		return func(target any) {}
-	})
-	var count int
-	for typ := range scope.AllTypes() {
-		if typ == reflect.TypeFor[InjectStruct]() {
-			count++
-		}
-	}
-	if count != 1 {
-		t.Fatalf("InjectStruct should appear exactly once in AllTypes, got %d", count)
+// TestAllTypesBuiltins verifies that each built-in dependency appears exactly
+// once in AllTypes, also when a user definition for the same type is present.
+func TestAllTypesBuiltins(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		defs []any
+	}{
+		{
+			name: "empty scope",
+		},
+		{
+			name: "user definitions",
+			defs: []any{
+				func() InjectStruct {
+					return func(target any) {}
+				},
+				func() Fork {
+					return func(defs ...any) Scope { return New() }
+				},
+				func() Reset {
+					return func() Scope { return New() }
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			scope := New(tc.defs...)
+			for _, typ := range []reflect.Type{
+				reflect.TypeFor[InjectStruct](),
+				reflect.TypeFor[Fork](),
+				reflect.TypeFor[Reset](),
+			} {
+				var count int
+				for got := range scope.AllTypes() {
+					if got == typ {
+						count++
+					}
+				}
+				if count != 1 {
+					t.Fatalf("%v should appear exactly once in AllTypes, got %d", typ, count)
+				}
+			}
+		})
 	}
 }

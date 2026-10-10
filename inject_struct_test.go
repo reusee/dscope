@@ -37,6 +37,15 @@ func TestInjectStruct(t *testing.T) {
 	if s2.I != 42 {
 		t.Fatal()
 	}
+
+	// The "inject" tag is an alias of ".".
+	var s3 struct {
+		I int `dscope:"inject"`
+	}
+	inject(&s3)
+	if s3.I != 42 {
+		t.Fatal()
+	}
 }
 
 func BenchmarkInjectStruct(b *testing.B) {
@@ -66,7 +75,7 @@ func TestInjectStructBadType(t *testing.T) {
 				t.Fatalf("got %v", msg)
 			}
 		}()
-		inject(ptrTo(ptrTo(ptrTo(42))))
+		inject(Provide(Provide(Provide(42))))
 	}()
 }
 
@@ -110,6 +119,42 @@ func TestInjectStructNotFound(t *testing.T) {
 			}()
 			inject(&s)
 		}()
+	})
+}
+
+// TestInjectStructBadTarget verifies that a nil or non-pointer injection
+// target panics with a structured bad-argument error.
+func TestInjectStructBadTarget(t *testing.T) {
+	scope := New(Provide(42))
+
+	checkPanic := func(t *testing.T, target any) {
+		defer func() {
+			p := recover()
+			if p == nil {
+				t.Fatal("should panic")
+			}
+			err, ok := p.(error)
+			if !ok {
+				t.Fatalf("panic value not an error: %v", p)
+			}
+			if !errors.Is(err, ErrBadArgument) {
+				t.Fatalf("expected ErrBadArgument, got %T: %v", err, err)
+			}
+			if !strings.Contains(err.Error(), "target must be a pointer") {
+				t.Fatalf("unexpected error message: %s", err.Error())
+			}
+		}()
+		scope.InjectStruct(target)
+	}
+
+	t.Run("nil target", func(t *testing.T) {
+		checkPanic(t, nil)
+	})
+
+	t.Run("non-pointer target", func(t *testing.T) {
+		checkPanic(t, struct {
+			I int `dscope:"."`
+		}{})
 	})
 }
 
@@ -249,79 +294,6 @@ func TestInjectStructEmbeddedNilPointer(t *testing.T) {
 	}
 }
 
-func TestInjectStructWithInjectTag(t *testing.T) {
-	scope := New(
-		Provide(int(42)),
-	)
-	var s struct {
-		I int `dscope:"inject"`
-	}
-	scope.InjectStruct(&s)
-	if s.I != 42 {
-		t.Fatal()
-	}
-}
-
-func TestInjectStructWithTaggedInjectField(t *testing.T) {
-	scope := New(
-		Provide(int(42)),
-	)
-	var s struct {
-		I Inject[int] `dscope:"."`
-	}
-	scope.InjectStruct(&s)
-	if s.I() != 42 {
-		t.Fatal()
-	}
-}
-
-func TestInjectStructTaggedEmbedded(t *testing.T) {
-	type Inner struct {
-		I int `dscope:"."`
-	}
-	type Outer struct {
-		Inner // Embedded, no tag -> should recurse
-	}
-
-	scope := New(
-		Provide(42), // Provides int, but not Inner
-	)
-
-	var outer Outer
-	// Before the fix, this panics because it tries to find a provider for `Inner`.
-	// After the fix, this should recursively inject into the embedded struct.
-	scope.InjectStruct(&outer)
-
-	if outer.I != 42 {
-		t.Fatalf("Embedded tagged struct field not injected: got %d, want %d", outer.I, 42)
-	}
-}
-
-func TestInjectStructNonPointerTarget(t *testing.T) {
-	scope := New(Provide(42))
-	// Pass a non‑pointer struct value; should panic with ErrBadArgument.
-	var s struct {
-		I int `dspace:"."`
-	}
-	defer func() {
-		if p := recover(); p == nil {
-			t.Fatal("should panic")
-		} else {
-			err, ok := p.(error)
-			if !ok {
-				t.Fatalf("panic value not an error: %v", p)
-			}
-			if !errors.Is(err, ErrBadArgument) {
-				t.Fatalf("expected ErrBadArgument, got %T: %v", err, err)
-			}
-			if !strings.Contains(err.Error(), "target must be a pointer") {
-				t.Fatalf("unexpected error message: %s", err.Error())
-			}
-		}
-	}()
-	injectStruct(scope, s, 0) // non‑pointer target
-}
-
 func TestInjectStructEmbeddedValue(t *testing.T) {
 	type Inner struct {
 		I int `dscope:"."`
@@ -423,29 +395,6 @@ func TestInjectStructPointerToInject(t *testing.T) {
 	var s S
 	// Should not panic. It should simply ignore the field or handle it gracefully.
 	scope.InjectStruct(&s)
-}
-
-func TestInjectStructNil(t *testing.T) {
-	scope := New()
-	defer func() {
-		p := recover()
-		if p == nil {
-			t.Fatal("InjectStruct(nil) should panic")
-		}
-		err, ok := p.(error)
-		if !ok {
-			t.Fatalf("panic value not an error: %v", p)
-		}
-		// We expect a structured ErrBadArgument, not a raw reflect panic.
-		if !errors.Is(err, ErrBadArgument) {
-			t.Errorf("expected ErrBadArgument, got %T: %v", err, err)
-		}
-		if !strings.Contains(err.Error(), "target must be a pointer") {
-			t.Errorf("unexpected error message: %s", err.Error())
-		}
-	}()
-	// This currently causes a reflect panic because Type() is called on invalid value
-	scope.InjectStruct(nil)
 }
 
 func TestInjectStructCircularEmbedding(t *testing.T) {

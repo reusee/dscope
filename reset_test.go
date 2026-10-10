@@ -29,6 +29,13 @@ func TestResetRecomputesValues(t *testing.T) {
 	if v := scope.Get[int](); v != 1 {
 		t.Fatalf("original affected: expected 1, got %d", v)
 	}
+
+	// Assign from a reset scope resolves through the same fresh initializers.
+	var assigned int
+	r.Assign(&assigned)
+	if assigned != 2 {
+		t.Fatalf("expected 2 from Assign, got %d", assigned)
+	}
 }
 
 func TestResetLazy(t *testing.T) {
@@ -143,26 +150,6 @@ func TestResetPointerProvider(t *testing.T) {
 	r := scope.Reset()
 	if v := r.Get[int](); v != 42 {
 		t.Fatalf("expected 42, got %d", v)
-	}
-}
-
-func TestResetAssignAndGet(t *testing.T) {
-	var counter int64
-	scope := New(func() int {
-		return int(atomic.AddInt64(&counter, 1))
-	})
-
-	var v int
-	scope.Assign(&v)
-
-	r := scope.Reset()
-	r.Assign(&v)
-	if v != 2 {
-		t.Fatalf("expected 2, got %d", v)
-	}
-
-	if r.Get[int]() != 2 {
-		t.Fatalf("expected 2 from Get, got %d", r.Get[int]())
 	}
 }
 

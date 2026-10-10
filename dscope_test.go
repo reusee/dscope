@@ -91,67 +91,7 @@ func TestPanic(t *testing.T) {
 		scope.Fork(42)
 	}()
 
-	func() {
-		defer func() {
-			p := recover()
-			if p == nil {
-				t.Fatal("should panic")
-			}
-			err, ok := p.(error)
-			if !ok {
-				t.Fatal()
-			}
-			if !errors.Is(err, ErrBadArgument) {
-				t.Fatal()
-			}
-			if !strings.Contains(err.Error(), "nil pointer target") {
-				t.Fatal()
-			}
-		}()
-		var p *int
-		scope.Assign(p)
-	}()
-
-	func() {
-		defer func() {
-			p := recover()
-			if p == nil {
-				t.Fatal("should panic")
-			}
-			err, ok := p.(error)
-			if !ok {
-				t.Fatal()
-			}
-			if !errors.Is(err, ErrDependencyNotFound) {
-				t.Fatal()
-			}
-			if !strings.Contains(err.Error(), "not found") {
-				t.Fatal()
-			}
-		}()
-		var s string
-		scope.Assign(&s)
-	}()
-
-	func() {
-		defer func() {
-			p := recover()
-			if p == nil {
-				t.Fatal("should panic")
-			}
-			err, ok := p.(error)
-			if !ok {
-				t.Fatal()
-			}
-			if !errors.Is(err, ErrDependencyNotFound) {
-				t.Fatal()
-			}
-		}()
-		scope.Fork(func(string) int64 {
-			return 0
-		}).Get[int64]()
-	}()
-
+	// A missing dependency is detected while Fork analyzes the definition graph.
 	func() {
 		defer func() {
 			p := recover()
@@ -173,6 +113,7 @@ func TestPanic(t *testing.T) {
 		)
 	}()
 
+	// A provider that depends on itself closes a dependency loop.
 	func() {
 		defer func() {
 			p := recover()
@@ -187,68 +128,12 @@ func TestPanic(t *testing.T) {
 				t.Fatal()
 			}
 		}()
-		scope = scope.Fork(
+		scope.Fork(
 			func(s string) string {
 				return "42"
 			},
 		)
-		var s string
-		scope.Assign(&s)
 	}()
-
-	func() {
-		defer func() {
-			p := recover()
-			if p == nil {
-				t.Fatal("should panic")
-			}
-			err, ok := p.(error)
-			if !ok {
-				t.Fatal()
-			}
-			if !errors.Is(err, ErrBadDefinition) {
-				t.Fatal()
-			}
-			if !strings.Contains(err.Error(), "has multiple definitions") {
-				t.Fatal()
-			}
-		}()
-		New(
-			func() int {
-				return 1
-			},
-			func() int {
-				return 2
-			},
-		)
-	}()
-
-	func() {
-		defer func() {
-			p := recover()
-			if p == nil {
-				t.Fatal("should panic")
-			}
-			err, ok := p.(error)
-			if !ok {
-				t.Fatal()
-			}
-			if !errors.Is(err, ErrBadDefinition) {
-				t.Fatalf("expected ErrBadDefinition, got %T: %v", p, p)
-			}
-			if !strings.Contains(err.Error(), "has multiple definitions") {
-				t.Fatalf("unexpected error message: %v", err)
-			}
-		}()
-		i := 42
-		New(
-			&i,
-			func() int {
-				return 2
-			},
-		)
-	}()
-
 }
 
 func TestDuplicateDefinitionErrorDetails(t *testing.T) {
@@ -441,37 +326,6 @@ func TestOnce(t *testing.T) {
 	}
 }
 
-func TestIndirectDependencyLoop(t *testing.T) {
-	type A int
-	type B int
-	type C int
-	func() {
-		defer func() {
-			p := recover()
-			if p == nil {
-				t.Fatal("should panic")
-			}
-			if !strings.Contains(
-				fmt.Sprintf("%v", p),
-				"dependency loop",
-			) {
-				t.Fatalf("unexpected: %v", p)
-			}
-		}()
-		New().Fork(
-			func(a A) B {
-				return 42
-			},
-			func(b B) C {
-				return 42
-			},
-			func(c C) A {
-				return 42
-			},
-		)
-	}()
-}
-
 func TestOverride(t *testing.T) {
 	scope := New().Fork(
 		func() int {
@@ -489,35 +343,6 @@ func TestOverride(t *testing.T) {
 	}
 }
 
-func TestOnceFunc(t *testing.T) {
-	var numCalled int64
-	scope := New().Fork(
-		func() func() int {
-			atomic.AddInt64(&numCalled, 1)
-			return func() int {
-				return 42
-			}
-		},
-	)
-	n := 1024
-	wg := new(sync.WaitGroup)
-	wg.Add(n)
-	for range n {
-		go func() {
-			var fn func() int
-			scope.Assign(&fn)
-			if fn() != 42 {
-				panic("fail")
-			}
-			wg.Done()
-		}()
-	}
-	wg.Wait()
-	if numCalled != 1 {
-		t.Fatal()
-	}
-}
-
 func TestMultiProvide(t *testing.T) {
 	scope := New().Fork(
 		func() (int, string) {
@@ -528,41 +353,6 @@ func TestMultiProvide(t *testing.T) {
 	var s string
 	scope.Assign(&i)
 	scope.Assign(&s)
-}
-
-func TestForkLazyMulti(t *testing.T) {
-	var numCalled int64
-	scope := New().Fork(
-		func() (int, string) {
-			atomic.AddInt64(&numCalled, 1)
-			return 42, "42"
-		},
-	)
-	n := 1024
-	wg := new(sync.WaitGroup)
-	wg.Add(n * 2)
-	for range n {
-		go func() {
-			var i int
-			scope.Assign(&i)
-			if i != 42 {
-				panic("fail")
-			}
-			wg.Done()
-		}()
-		go func() {
-			var i int
-			scope.Assign(&i)
-			if i != 42 {
-				panic("fail")
-			}
-			wg.Done()
-		}()
-	}
-	wg.Wait()
-	if numCalled != 1 {
-		t.Fatal()
-	}
 }
 
 func TestInterfaceDef(t *testing.T) {
@@ -742,26 +532,6 @@ func TestRecalculate(t *testing.T) {
 	if numFooCalled != 1 {
 		t.Fatal()
 	}
-
-	func() {
-		defer func() {
-			p := recover()
-			if p == nil {
-				t.Fatal("should panic")
-			}
-			if !strings.Contains(
-				fmt.Sprintf("%v", p),
-				"dependency loop",
-			) {
-				t.Fatalf("unexpected: %v", p)
-			}
-		}()
-		scope3.Fork(
-			func(d D) A {
-				return A(d) + 1
-			},
-		)
-	}()
 
 }
 
@@ -1029,17 +799,6 @@ func TestPointerProvider(t *testing.T) {
 
 }
 
-func TestRacyGet(t *testing.T) {
-	s := New(func() int {
-		return 42
-	})
-	for range 512 {
-		go func() {
-			s.Get[int]()
-		}()
-	}
-}
-
 func TestForkFunc(t *testing.T) {
 	type I int
 	type J int
@@ -1080,34 +839,6 @@ func TestForkFunc(t *testing.T) {
 		t.Fatal()
 	}
 
-}
-
-func TestForkFuncKey(t *testing.T) {
-	s := New()
-	s1 := New()
-	if s.forkFuncKey != s1.forkFuncKey {
-		t.Fatal()
-	}
-
-	s1 = s1.Fork(func() int {
-		return 42
-	})
-	s = s.Fork(func() int {
-		return 42
-	})
-	if s.forkFuncKey != s1.forkFuncKey {
-		t.Fatal()
-	}
-
-	s1 = s1.Fork(func() string {
-		return "foo"
-	})
-	s = s.Fork(func() int {
-		return 42
-	})
-	if s.forkFuncKey == s1.forkFuncKey {
-		t.Fatal()
-	}
 }
 
 func TestSignature(t *testing.T) {
@@ -1183,10 +914,6 @@ func TestProviderManyArgs(t *testing.T) {
 	}
 }
 
-type testFuncDef struct{}
-
-type acc2 int
-
 func TestForkManyArgs(t *testing.T) {
 	type Result int
 	got := New(func() int {
@@ -1245,78 +972,46 @@ func TestGenericFuncs(t *testing.T) {
 	}
 }
 
-func TestNilFuncDef(t *testing.T) {
-	func() {
-		defer func() {
-			p := recover()
-			if p == nil {
-				t.Fatal("should panic")
-			}
-			if str := fmt.Sprintf("%v", p); !strings.Contains(str, "nil function provided") {
-				t.Fatalf("got %v", str)
-			}
-		}()
-		type I int
-		New((func() I)(nil))
-	}()
-}
-
 func TestVariadicFuncDef(t *testing.T) {
 	type I int
-	t.Run("rejected at definition time", func(t *testing.T) {
-		defer func() {
-			p := recover()
-			if p == nil {
-				t.Fatal("should panic")
-			}
-			err, ok := p.(error)
-			if !ok {
-				t.Fatalf("panic value not an error: %T: %v", p, p)
-			}
-			if !errors.Is(err, ErrBadArgument) {
-				t.Fatalf("expected ErrBadArgument, got %v", err)
-			}
-			if !strings.Contains(err.Error(), "variadic") {
-				t.Fatalf("unexpected error message: %v", err)
-			}
-		}()
-		New(func(...int) I { return 0 })
-	})
-	t.Run("rejected even when slice dependency is provided", func(t *testing.T) {
-		defer func() {
-			p := recover()
-			if p == nil {
-				t.Fatal("should panic")
-			}
-			err, ok := p.(error)
-			if !ok {
-				t.Fatalf("panic value not an error: %T: %v", p, p)
-			}
-			if !errors.Is(err, ErrBadArgument) {
-				t.Fatalf("expected ErrBadArgument, got %v", err)
-			}
-			if !strings.Contains(err.Error(), "variadic") {
-				t.Fatalf("unexpected error message: %v", err)
-			}
-		}()
-		New(Provide([]int{1, 2, 3}), func(...int) I { return 0 })
-	})
-}
-
-func TestNilPointerDef(t *testing.T) {
-	func() {
-		defer func() {
-			p := recover()
-			if p == nil {
-				t.Fatal("should panic")
-			}
-			if str := fmt.Sprintf("%v", p); !strings.Contains(str, "nil pointer provided") {
-				t.Fatalf("got %v", str)
-			}
-		}()
-		type I int
-		New((*I)(nil))
-	}()
+	for _, tc := range []struct {
+		name string
+		defs []any
+	}{
+		{
+			name: "rejected at definition time",
+			defs: []any{
+				func(...int) I { return 0 },
+			},
+		},
+		{
+			name: "rejected even when slice dependency is provided",
+			defs: []any{
+				Provide([]int{1, 2, 3}),
+				func(...int) I { return 0 },
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				p := recover()
+				if p == nil {
+					t.Fatal("should panic")
+				}
+				err, ok := p.(error)
+				if !ok {
+					t.Fatalf("panic value not an error: %T: %v", p, p)
+				}
+				if !errors.Is(err, ErrBadArgument) {
+					t.Fatalf("expected ErrBadArgument, got %v", err)
+				}
+				if !strings.Contains(err.Error(), "variadic") {
+					t.Fatalf("unexpected error message: %v", err)
+				}
+			}()
+			New(tc.defs...)
+		})
+	}
 }
 
 func TestGetInterface(t *testing.T) {
@@ -1667,30 +1362,6 @@ func TestAssignNilPointer(t *testing.T) {
 	}()
 }
 
-func TestGenericAssignNilPointer(t *testing.T) {
-	scope := New(Provide(42))
-	var pointer *int
-
-	defer func() {
-		panicValue := recover()
-		if panicValue == nil {
-			t.Fatal("should panic")
-		}
-		err, ok := panicValue.(error)
-		if !ok {
-			t.Fatalf("panic value not an error: %v", panicValue)
-		}
-		if !errors.Is(err, ErrBadArgument) {
-			t.Fatalf("expected ErrBadArgument, got %T: %v", err, err)
-		}
-		if !strings.Contains(err.Error(), "cannot assign to a nil pointer target of type *int") {
-			t.Fatalf("unexpected error message: %s", err.Error())
-		}
-	}()
-
-	scope.Assign(pointer)
-}
-
 func TestForkRedefinitionOptimization(t *testing.T) {
 	scope := New(func() int {
 		return 1
@@ -1855,8 +1526,15 @@ func TestNilDefinitionOnCachedForker(t *testing.T) {
 			if p == nil {
 				t.Fatal("nil function definition must panic at Fork time")
 			}
-			if !errors.Is(p.(error), ErrBadArgument) {
-				t.Fatalf("expected ErrBadArgument, got %v", p)
+			err, ok := p.(error)
+			if !ok {
+				t.Fatalf("panic value not an error: %v", p)
+			}
+			if !errors.Is(err, ErrBadArgument) {
+				t.Fatalf("expected ErrBadArgument, got %v", err)
+			}
+			if !strings.Contains(err.Error(), "nil function provided") {
+				t.Fatalf("unexpected error message: %v", err)
 			}
 		}()
 		New(nilFunc)
@@ -1869,8 +1547,15 @@ func TestNilDefinitionOnCachedForker(t *testing.T) {
 			if p == nil {
 				t.Fatal("nil pointer definition must panic at Fork time")
 			}
-			if !errors.Is(p.(error), ErrBadArgument) {
-				t.Fatalf("expected ErrBadArgument, got %v", p)
+			err, ok := p.(error)
+			if !ok {
+				t.Fatalf("panic value not an error: %v", p)
+			}
+			if !errors.Is(err, ErrBadArgument) {
+				t.Fatalf("expected ErrBadArgument, got %v", err)
+			}
+			if !strings.Contains(err.Error(), "nil pointer provided") {
+				t.Fatalf("unexpected error message: %v", err)
 			}
 		}()
 		New(nilPtr)

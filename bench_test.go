@@ -298,15 +298,6 @@ func BenchmarkAssign(b *testing.B) {
 	}
 }
 
-func BenchmarkGenericAssign(b *testing.B) {
-	scope := New().Fork(assignBenchDefs...)
-
-	var t30 T30
-	for b.Loop() {
-		scope.Assign(&t30)
-	}
-}
-
 func BenchmarkFork(b *testing.B) {
 	scope := New()
 

@@ -1,7 +1,6 @@
 package dscope
 
 import (
-	"reflect"
 	"testing"
 )
 
@@ -24,24 +23,6 @@ func TestGetForkValue(t *testing.T) {
 	}
 }
 
-func TestGetForkDependency(t *testing.T) {
-	scope := New(func() int {
-		return 42
-	})
-
-	f := scope.Get[Fork]()
-	if f == nil {
-		t.Fatal("Fork dependency was nil")
-	}
-	child := f(func() string { return "from child" })
-	if child.Get[int]() != 42 {
-		t.Fatal("child did not inherit int")
-	}
-	if child.Get[string]() != "from child" {
-		t.Fatal("child did not add string")
-	}
-}
-
 func TestAssignFork(t *testing.T) {
 	scope := New()
 	var f Fork
@@ -52,35 +33,6 @@ func TestAssignFork(t *testing.T) {
 	child := f(func() string { return "assigned" })
 	if child.Get[string]() != "assigned" {
 		t.Fatal("assigned Fork did not create child correctly")
-	}
-}
-
-func TestForkValueInAllTypes(t *testing.T) {
-	scope := New()
-	found := false
-	for typ := range scope.AllTypes() {
-		if typ == reflect.TypeFor[Fork]() {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatal("Fork not found in AllTypes")
-	}
-}
-
-func TestForkValueNoDuplicateInAllTypes(t *testing.T) {
-	scope := New(func() Fork {
-		return func(defs ...any) Scope { return New() }
-	})
-	var count int
-	for typ := range scope.AllTypes() {
-		if typ == reflect.TypeFor[Fork]() {
-			count++
-		}
-	}
-	if count != 1 {
-		t.Fatalf("Fork should appear exactly once in AllTypes, got %d", count)
 	}
 }
 

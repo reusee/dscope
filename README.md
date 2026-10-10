@@ -10,7 +10,6 @@ Managing dependencies in larger Go applications can become complex. `dscope` off
 *   **Define and Depend on Interfaces (or Concrete Types)**: While you can register and request concrete types directly, `dscope` fully supports defining providers that return interfaces and requesting dependencies via those interfaces, promoting loose coupling.
 *   **Cleaner Function Signatures**: A provider function declares its dependencies as parameters, and `Fork` resolves them from the scope. Computing a value needs no extra API: fork the computing function and get its result type. The function declares exactly what it needs and nothing more.
 *   **Enhanced Testability**:
-    *   **Immutability**: Scopes are immutable. Operations like `Fork` create new scopes, leaving the original untouched. This predictability is great for testing.
     *   **Easy Overriding**: You can easily `Fork` a scope and provide alternative (mock or stub) implementations for specific types, making unit and integration testing more straightforward.
 *   **Immutable and Predictable Scopes**: Each scope is an immutable container. Modifying a scope (e.g., adding new definitions or overriding existing ones) results in a new scope instance. This makes the state of dependencies predictable and easier to reason about.
 *   **Lazy Initialization**: Values within a scope are initialized lazily. A provider function is only called when the value it provides (or a dependant value) is actually requested for the first time. This can improve application startup time and resource usage.
@@ -215,32 +214,7 @@ func main() {
 service_using_db_connection_string
 ```
 
-You can also pass instances of structs that embed `dscope.Module` directly to `New` or `Fork`:
-```go
-type ModA struct {
-    dscope.Module
-}
-func (m ModA) GetA() string { return "A from ModA" }
-
-type ModB struct {
-    dscope.Module
-    MyModA ModA // ModA's methods will be included
-}
-func (m ModB) GetB() string { return "B from ModB" }
-
-
-func main() {
-    scope := dscope.New(
-        new(ModB), // Automatically uses Methods() for types embedding dscope.Module
-    )
-    fmt.Println(dscope.Get[string](scope, dscope.WithTypeQualifier("GetA"))) // Assuming a way to qualify if GetA and GetB return string
-    // For distinct return types, direct Get[T] works:
-    // e.g. if GetA returns type AVal and GetB returns type BVal
-    // aVal := dscope.Get[AVal](scope)
-    // bVal := dscope.Get[BVal](scope)
-}
-```
-Note: The example with `dscope.WithTypeQualifier` is illustrative if multiple providers return the same type. If return types are unique, `dscope.Get[ReturnType]` is sufficient. `dscope` primarily resolves by type.
+A struct that embeds `dscope.Module` can also be passed directly to `New` or `Fork`: the scope expands it into its methods automatically.
 
 ### 6. Struct Field Injection
 

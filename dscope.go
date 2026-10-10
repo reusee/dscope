@@ -3,8 +3,6 @@ package dscope
 import (
 	"crypto/sha256"
 	"encoding/binary"
-	"errors"
-	"fmt"
 	"reflect"
 	"sync"
 )
@@ -27,6 +25,21 @@ type _TypeID int
 // _Hash is used for scope signatures and cache keys.
 type _Hash [sha256.Size]byte
 
+// hashTypeIDs hashes a seed followed by the given type IDs, each encoded as one
+// native-endian uint64. A scope's identity is its sorted set of definition type
+// IDs, so every signature and cache key must use this encoding.
+func hashTypeIDs(seed []byte, ids []_TypeID) (ret _Hash) {
+	h := sha256.New() // use cryptographic hash to avoid collision
+	_, _ = h.Write(seed)
+	buf := make([]byte, 0, len(ids)*8)
+	for _, id := range ids {
+		buf = binary.NativeEndian.AppendUint64(buf, uint64(id))
+	}
+	_, _ = h.Write(buf)
+	h.Sum(ret[:0])
+	return
+}
+
 // TheoryOfScopeCore documents the fundamental model of dscope: an immutable,
 // type-keyed container of lazily evaluated definitions.
 const TheoryOfScopeCore = `
@@ -34,19 +47,9 @@ dscope core theory:
 - A Scope is an immutable, type-keyed container. Every provided value is
   identified by its declared Go type — concrete or interface — and a type has
   at most one effective definition per scope.
-- A definition is a provider function (parameters are dependencies, results
-  are the provided values) or a pointer (the pointed-at value is copied into
-  the scope at construction time).
-- Fork layers new definitions onto a scope and returns a new scope: a branch
-  of the same definition lineage. Scopes have no child-parent relationship:
-  the original scope is never mutated, and the innermost definition of a
-  type is the effective one in each branch.
 - Resolution is by exact declared type: a provider returning an interface
   satisfies requests for that interface, not requests for the concrete value
   it holds; no implicit conversions are performed.
-- Providers are lazy: a provider evaluates at most once per cached value, on
-  first access, and the cached result is shared by all consumers. Overriding
-  a type or resetting a scope installs fresh caches for the affected types.
 - A computation is a provider: fork the computing function, then get its
   result type. The parameters are the dependencies and the results are the
   computed values, so one declaration carries both, and no separate
@@ -66,8 +69,6 @@ dscope definition theory:
   (the pointed-at value is copied into the scope at construction time).
 - A provider may return multiple values; each result type becomes a provided
   type of the scope, and a single evaluation feeds all of them.
-- Modules are not definitions themselves: a module passed to New or Fork is
-  expanded into its exported methods, which then act as provider functions.
 - Public scope construction validates every definition before deriving type
   identity: nil definitions, nil function or pointer definitions, functions
   that return nothing, variadic functions, and non-function non-pointer
@@ -87,8 +88,6 @@ type Scope struct {
 	// signature is a hash representing the structural identity of this scope,
 	// based on all definition types involved in its creation.
 	signature _Hash
-	// forkFuncKey is a cache key representing the specific Fork operation that created this scope.
-	forkFuncKey _Hash
 }
 
 // Universe is the empty root scope.
@@ -146,21 +145,11 @@ func (scope Scope) Fork(
 	// Calculate cache key for this Fork operation.
 	// Key is based on the base scope signature and the types of new definitions.
 	// Hashing types is sufficient as only one definition instance per type is effectively used.
-	h := sha256.New() // use cryptographic hash to avoid collision
-	h.Write(scope.signature[:])
-	buf := make([]byte, 0, len(defs)*8)
+	ids := make([]_TypeID, 0, len(defs))
 	for _, def := range defs {
-		id := getTypeID(reflect.TypeOf(def))
-		buf = binary.NativeEndian.AppendUint64(buf, uint64(id))
+		ids = append(ids, getTypeID(reflect.TypeOf(def)))
 	}
-	// h.Write (from sha256.New()) is not expected to return an error,
-	// but check is included for robustness against potential future changes
-	// or different hash.Hash implementations.
-	if _, err := h.Write(buf); err != nil {
-		panic(fmt.Errorf("unexpected error during hash calculation in Scope.Fork: %w", err))
-	}
-	var key _Hash
-	h.Sum(key[:0])
+	key := hashTypeIDs(scope.signature[:], ids)
 
 	// Check cache
 	v, ok := forkers.Load(key)
@@ -169,7 +158,7 @@ func (scope Scope) Fork(
 	}
 
 	// Cache miss, create and cache forker
-	forker := newForker(scope, defs, key)
+	forker := newForker(scope, defs)
 	v, _ = forkers.LoadOrStore(key, forker)
 
 	return v.(*_Forker).Fork(scope, defs)
@@ -183,10 +172,6 @@ dscope reset theory:
 - Reset is O(1): it installs a lazy reset layer over the existing value stack.
   Fresh initializers are created on demand, only for types that are actually
   accessed; untouched types incur zero overhead.
-- The reset layer caches fresh initializers so each provider still evaluates at
-  most once within the reset scope.
-- Appending to (Forking from) a reset scope materialises the layer into a flat
-  stack, preserving correct dependency-analysis invariants.
 - Typical use: keep the definitions but drop every cached result, either to
   observe fresh provider evaluation in tests, or to re-run the graph after
   external state (files, clocks, globals) has changed.
@@ -194,12 +179,6 @@ dscope reset theory:
 
 // Reset returns a new Scope in which every value will be recomputed the next
 // time it is requested. The original scope is unaffected.
-//
-// Reset is O(1): it wraps the value stack in a lazy reset layer rather than
-// eagerly iterating all definitions. Fresh initializers are created on demand
-// only for types that are actually accessed, so untouched types incur zero
-// overhead. Once a provider is re-evaluated in the reset scope the result is
-// cached, preserving the at-most-once evaluation guarantee.
 func (scope Scope) Reset() Scope {
 	if scope.values == nil {
 		return scope
@@ -210,8 +189,7 @@ func (scope Scope) Reset() Scope {
 			ResetCache: new(sync.Map),
 			Height:     1,
 		},
-		signature:   scope.signature,
-		forkFuncKey: scope.forkFuncKey,
+		signature: scope.signature,
 	}
 }
 
@@ -237,10 +215,7 @@ dscope assignment theory:
 // It's safe to call Assign concurrently.
 func (scope Scope) Assign[T any](ptr *T) {
 	if ptr == nil {
-		panic(errors.Join(
-			fmt.Errorf("cannot assign to a nil pointer target of type %T", ptr),
-			ErrBadArgument,
-		))
+		panic(errWith(ErrBadArgument, "cannot assign to a nil pointer target of type %T", ptr))
 	}
 	*ptr = scope.Get[T]()
 }
@@ -250,22 +225,15 @@ func (scope Scope) get(id _TypeID) (
 	ok bool,
 ) {
 
-	// special types
+	// Built-in dependencies are bound method values. Convert each to its named
+	// type so that type assertions and generic Get[T] succeed: a method value
+	// has an unnamed function type, which is not identical to the named type.
 	switch id {
 	case injectStructTypeID:
-		// Convert to the named InjectStruct type so that type assertions and
-		// generic Get[InjectStruct] succeed. reflect.ValueOf of the method value
-		// yields the unnamed func(any) type, which is not identical to InjectStruct.
 		return reflect.ValueOf(scope.InjectStruct).Convert(reflect.TypeFor[InjectStruct]()), true
 	case forkTypeID:
-		// Convert to the named Fork type so that type assertions and
-		// generic Get[Fork] succeed. The method value yields an unnamed
-		// func(...any) type, which is not identical to Fork.
 		return reflect.ValueOf(scope.Fork).Convert(reflect.TypeFor[Fork]()), true
 	case resetTypeID:
-		// Convert to the named Reset type so that type assertions and
-		// generic Get[Reset] succeed. The method value yields an unnamed
-		// func() Scope type, which is not identical to Reset.
 		return reflect.ValueOf(scope.Reset).Convert(reflect.TypeFor[Reset]()), true
 	}
 
@@ -323,10 +291,7 @@ func (scope Scope) TryGetType(typ reflect.Type) (reflect.Value, bool) {
 	if typ == nil {
 		// Reject nil types up front: getTypeID(nil) would otherwise register a
 		// bogus nil -> id mapping in the global type tables.
-		panic(errors.Join(
-			fmt.Errorf("nil reflect.Type provided"),
-			ErrBadArgument,
-		))
+		panic(errWith(ErrBadArgument, "nil reflect.Type provided"))
 	}
 	value, found := scope.get(getTypeID(typ))
 	if !found {

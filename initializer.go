@@ -6,13 +6,6 @@ import (
 	"sync/atomic"
 )
 
-// TheoryOfLazyInitialization documents the design rationale for dscope's
-// lazy initialization mechanism. Provider functions are evaluated on first
-// access; results are cached and shared across all consumers within the same
-// scope. A panicking provider must NOT permanently cache the failure — subsequent
-// accesses must re-invoke the provider to reproduce the original error, ensuring
-// that transient provider failures are always diagnosable and never leave the
-// system in an unrecoverable or misleading state.
 const TheoryOfLazyInitialization = `
 dscope lazy initialization theory:
 - Providers evaluate at most once per initializer instance; results are cached.

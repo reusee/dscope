@@ -1,8 +1,6 @@
 package dscope
 
 import (
-	"errors"
-	"fmt"
 	"reflect"
 )
 
@@ -32,10 +30,7 @@ func validateFiniteMethodsPointerChain(typ reflect.Type) {
 	visitedTypes := make(map[reflect.Type]struct{})
 	for typ.Kind() == reflect.Pointer {
 		if _, exists := visitedTypes[typ]; exists {
-			panic(errors.Join(
-				fmt.Errorf("recursive pointer type %v", typ),
-				ErrBadArgument,
-			))
+			panic(errWith(ErrBadArgument, "recursive pointer type %v", typ))
 		}
 		visitedTypes[typ] = struct{}{}
 		typ = typ.Elem()
@@ -91,18 +86,12 @@ func Methods(objects ...any) (ret []any) {
 	var extend func(v reflect.Value, skipMethodNames map[string]reflect.Type)
 	extend = func(v reflect.Value, skipMethodNames map[string]reflect.Type) {
 		if !v.IsValid() {
-			panic(errors.Join(
-				fmt.Errorf("invalid value"),
-				ErrBadArgument,
-			))
+			panic(errWith(ErrBadArgument, "invalid value"))
 		}
 
 		// nil interface
 		if v.Kind() == reflect.Interface && v.IsNil() {
-			panic(errors.Join(
-				fmt.Errorf("invalid value: nil interface %v", v.Type()),
-				ErrBadArgument,
-			))
+			panic(errWith(ErrBadArgument, "invalid value: nil interface %v", v.Type()))
 		}
 
 		t := v.Type()
@@ -119,10 +108,7 @@ func Methods(objects ...any) (ret []any) {
 				base = base.Elem()
 			}
 			if base.Kind() == reflect.Interface {
-				panic(errors.Join(
-					fmt.Errorf("invalid value: nil pointer to interface %v", t),
-					ErrBadArgument,
-				))
+				panic(errWith(ErrBadArgument, "invalid value: nil pointer to interface %v", t))
 			}
 			// Construct concrete object for typed nil pointers like (*MyStruct)(nil)
 			v = reflect.New(t.Elem())

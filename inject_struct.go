@@ -1,14 +1,12 @@
 package dscope
 
 import (
-	"errors"
-	"fmt"
 	"reflect"
 	"sync"
 )
 
 // TheoryOfScopeInjectStruct documents struct field injection: how fields are
-// selected and how the built-in binding behaves.
+// selected and resolved.
 const TheoryOfScopeInjectStruct = `
 dscope inject theory:
 - InjectStruct fills the exported fields of a struct from the scope; it wires
@@ -18,15 +16,10 @@ dscope inject theory:
   a field of type Inject[T] receives a lazy function that resolves T on
   demand; an untagged embedded struct is recursed into, allocating nil pointer
   fields along the way.
-- Tagged fields are resolved by exact type like any other lookup; a missing
-  type panics with the standard dependency-not-found error. Unexported fields
+- Tagged fields are resolved exactly like any other lookup. Unexported fields
   are never touched.
 - The target may be a pointer chain ending in a struct; nil pointers along the
   chain are allocated when settable.
-- InjectStruct is always provided, bound to the current scope, and belongs to
-  the opaque built-in family: providers receiving it may pull any type from
-  the scope, so they are re-evaluated pessimistically whenever a Fork adds
-  definitions.
 `
 
 type InjectStruct func(target any)
@@ -45,16 +38,10 @@ var injectStructFuncs sync.Map
 func injectStruct(scope Scope, target any, depth int) {
 	v := reflect.ValueOf(target)
 	if !v.IsValid() {
-		panic(errors.Join(
-			fmt.Errorf("target must be a pointer to a struct, got nil"),
-			ErrBadArgument,
-		))
+		panic(errWith(ErrBadArgument, "target must be a pointer to a struct, got nil"))
 	}
 	if v.Kind() != reflect.Pointer {
-		panic(errors.Join(
-			fmt.Errorf("target must be a pointer to a struct, got %v", v.Type()),
-			ErrBadArgument,
-		))
+		panic(errWith(ErrBadArgument, "target must be a pointer to a struct, got %v", v.Type()))
 	}
 	targetType := v.Type()
 	if fn, ok := injectStructFuncs.Load(targetType); ok {
@@ -71,10 +58,7 @@ func makeInjectStructFunc(t reflect.Type) _InjectStructFunc {
 l:
 	for {
 		if numDeref > 100 {
-			panic(errors.Join(
-				fmt.Errorf("too many dereferences or recursive pointer type %v", t),
-				ErrBadArgument,
-			))
+			panic(errWith(ErrBadArgument, "too many dereferences or recursive pointer type %v", t))
 		}
 		switch t.Kind() {
 		case reflect.Pointer:
@@ -86,10 +70,7 @@ l:
 		case reflect.Struct:
 			break l
 		default:
-			panic(errors.Join(
-				fmt.Errorf("target type %v is not a struct or pointer to struct", t),
-				ErrBadArgument,
-			))
+			panic(errWith(ErrBadArgument, "target type %v is not a struct or pointer to struct", t))
 		}
 	}
 
@@ -146,18 +127,7 @@ l:
 
 	return func(scope Scope, value reflect.Value, depth int) {
 		if depth > 64 {
-			panic(errors.Join(
-				fmt.Errorf("recursive struct injection depth limit exceeded"),
-				ErrBadArgument,
-			))
-		}
-
-		// Check if the target pointer is nil before dereferencing
-		if value.Kind() == reflect.Pointer && value.IsNil() {
-			panic(errors.Join(
-				fmt.Errorf("cannot inject into a nil pointer target of type %v", value.Type()),
-				ErrBadArgument,
-			))
+			panic(errWith(ErrBadArgument, "recursive struct injection depth limit exceeded"))
 		}
 
 		for range numDeref {
@@ -165,16 +135,12 @@ l:
 				if value.CanSet() {
 					value.Set(reflect.New(value.Type().Elem()))
 				} else {
-					panic(errors.Join(
-						fmt.Errorf("cannot inject into a nil pointer target of type %v", value.Type()),
-						ErrBadArgument,
-					))
+					panic(errWith(ErrBadArgument, "cannot inject into a nil pointer target of type %v", value.Type()))
 				}
 			}
 			value = value.Elem()
 		}
 		for _, info := range infos {
-			info := info
 
 			if info.IsInject {
 				value.FieldByIndex(info.Field.Index).Set(
