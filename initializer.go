@@ -22,19 +22,21 @@ dscope lazy initialization theory:
   this contract: a fresh initializer always re-evaluates on first access.
 `
 
+// _Initializer holds the values of one definition in one scope and evaluates
+// them at most once. Its identity is its address: a reset layer keys the fresh
+// initializer it hands out by the inherited initializer itself, so two
+// initializers of the same definition in different scopes stay apart.
 type _Initializer struct {
 	Def          any
 	DefIsPointer bool
 	Values       []reflect.Value
 	_values      [1]reflect.Value
-	ID           int64
 	done         atomic.Bool
 	mu           sync.Mutex
 }
 
 func newInitializer(def any, isPointer bool) *_Initializer {
 	ret := &_Initializer{
-		ID:           atomic.AddInt64(&nextInitializerID, 1),
 		Def:          def,
 		DefIsPointer: isPointer,
 	}
@@ -56,13 +58,10 @@ func (s *_Initializer) reset() *_Initializer {
 	}
 	return &_Initializer{
 		// these fields recognize the provided type and def to get the values, so not changing
-		ID:           s.ID,
 		Def:          s.Def,
 		DefIsPointer: s.DefIsPointer,
 	}
 }
-
-var nextInitializerID int64 = 42
 
 func (i *_Initializer) get(scope Scope, position int) (ret reflect.Value) {
 	if !i.DefIsPointer && !i.done.Load() {

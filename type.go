@@ -31,16 +31,32 @@ type _TypeIDCacheEntry struct {
 // comparing the type itself, so a slot collision costs a miss and nothing more.
 var typeIDCache [typeIDCacheSize]atomic.Pointer[_TypeIDCacheEntry]
 
+// typeIDLastEntry remembers the mapping the slot cache confirmed most recently.
+// The hot pattern is a program resolving the same type over and over, for
+// example a loop that reads one value from a scope; the single entry serves that
+// pattern without computing a slot. Like every cache entry it is confirmed by
+// comparing the type itself, so a stale entry costs a miss and nothing more, and
+// only a genuine miss of the slot cache republishes it.
+var typeIDLastEntry atomic.Pointer[_TypeIDCacheEntry]
+
 func getTypeID(t reflect.Type) _TypeID {
-	if slot, ok := typeIDCacheSlot(t); ok {
-		if entry := typeIDCache[slot].Load(); entry != nil && entry.typ == t {
-			return entry.id
-		}
-		id := getTypeIDUncached(t)
-		typeIDCache[slot].Store(&_TypeIDCacheEntry{typ: t, id: id})
-		return id
+	if entry := typeIDLastEntry.Load(); entry != nil && entry.typ == t {
+		return entry.id
 	}
-	return getTypeIDUncached(t)
+	slot, ok := typeIDCacheSlot(t)
+	if !ok {
+		return getTypeIDUncached(t)
+	}
+	if entry := typeIDCache[slot].Load(); entry != nil && entry.typ == t {
+		return entry.id
+	}
+	// Both caches missed: resolve through the authorative identifier table, then
+	// publish the mapping in the slot cache and as the most recent one. The
+	// identifier is still decided exactly once per type.
+	entry := &_TypeIDCacheEntry{typ: t, id: getTypeIDUncached(t)}
+	typeIDCache[slot].Store(entry)
+	typeIDLastEntry.Store(entry)
+	return entry.id
 }
 
 func getTypeIDSlow(t reflect.Type) _TypeID {

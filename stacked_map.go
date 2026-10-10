@@ -22,6 +22,9 @@ import (
 // the node and replaces the initializer with a fresh copy from ResetCache, so a
 // Fork re-evaluates the affected types on first access and only those. A type
 // the node provides itself is never marked.
+//
+// A layer with few values keeps them in itself instead of a separate slice, so
+// the layer of a typical Fork costs one allocation.
 type _StackedMap struct {
 	Next       *_StackedMap // Previous layer in the stack.
 	Values     []_Value     // Values in this layer, sorted by TypeID.
@@ -29,7 +32,43 @@ type _StackedMap struct {
 	ResetBase  *_StackedMap // Non-nil for lazy reset layers; delegates to this base.
 	Refresh    bool         // Set for a partial reset layer; the types in RefreshIDs are refreshed on access.
 	RefreshIDs []_TypeID    // Sorted TypeIDs a partial reset layer refreshes; the slice belongs to the _Forker.
-	ResetCache *sync.Map    // Caches fresh initializers (initializer ID -> *_Initializer).
+	ResetCache *sync.Map    // Caches the fresh initializers of a reset layer, keyed by the inherited initializer.
+	// inline backs Values when the layer holds few values, so such a layer
+	// needs no separate value slice.
+	inline [stackedMapInlineValues]_Value
+}
+
+// stackedMapInlineValues is the number of values a layer holds in itself. A Fork
+// usually adds a few definitions, and most layers never grow.
+const stackedMapInlineValues = 2
+
+// newStackedMapLayer creates an empty layer that sits on top of base. The caller
+// fills Values with values sorted by TypeID.
+func newStackedMapLayer(base *_StackedMap, n int) *_StackedMap {
+	layer := &_StackedMap{
+		Next:   base,
+		Height: 1,
+	}
+	if base != nil {
+		layer.Height = base.Height + 1
+	}
+	if n <= stackedMapInlineValues {
+		layer.Values = layer.inline[:n]
+	} else {
+		layer.Values = make([]_Value, n)
+	}
+	return layer
+}
+
+// markRefresh turns the layer into a partial reset layer: the inherited types in
+// ids are refreshed on access. The layer keeps no initializer for a marked type,
+// so a fresh initializer comes into existence in the layer's cache only when the
+// type is actually resolved. ids must be sorted, belong to the scope below the
+// layer, and be disjoint from the types of the layer's own values.
+func (s *_StackedMap) markRefresh(ids []_TypeID) {
+	s.Refresh = true
+	s.RefreshIDs = ids
+	s.ResetCache = new(sync.Map)
 }
 
 // Load finds the value with the specified TypeID.
@@ -89,13 +128,13 @@ func (s *_StackedMap) refreshValue(v _Value) _Value {
 	if v.initializer.DefIsPointer {
 		return v
 	}
-	if cached, ok := s.ResetCache.Load(v.initializer.ID); ok {
+	if cached, ok := s.ResetCache.Load(v.initializer); ok {
 		return _Value{
 			typeInfo:    v.typeInfo,
 			initializer: cached.(*_Initializer),
 		}
 	}
-	actual, _ := s.ResetCache.LoadOrStore(v.initializer.ID, v.initializer.reset())
+	actual, _ := s.ResetCache.LoadOrStore(v.initializer, v.initializer.reset())
 	return _Value{
 		typeInfo:    v.typeInfo,
 		initializer: actual.(*_Initializer),
@@ -142,37 +181,27 @@ func (s *_StackedMap) IterValues() iter.Seq[_Value] {
 	}
 }
 
-// Append creates a new _StackedMap layer on top of the current one.
-// The provided values must be pre-sorted by TypeID.
+// Append creates a new _StackedMap layer on top of the current one. The provided
+// values must be pre-sorted by TypeID; they are copied into the layer.
 //
 // If the receiver is a lazy reset layer it is first materialised into a flat
 // sorted stack so that subsequent binary searches remain correct.
 func (s *_StackedMap) Append(values []_Value) *_StackedMap {
 	if s != nil && s.ResetBase != nil {
-		return s.flatten().Append(values)
+		s = s.flatten()
 	}
-	var height int = 1
-	if s != nil {
-		height = s.Height + 1
-	}
-	return &_StackedMap{
-		Values: values,
-		Next:   s,
-		Height: height,
-	}
+	layer := newStackedMapLayer(s, len(values))
+	copy(layer.Values, values)
+	return layer
 }
 
 // AppendRefresh appends the layer of a partial reset: it holds the values a Fork
-// adds and marks the inherited types in ids for re-evaluation. The layer keeps no
-// initializer for a marked type, so a fresh initializer comes into existence in
-// the layer's cache only when the type is actually resolved: a Fork pays for the
-// values its scope touches and no more. values must be sorted by TypeID; ids must
-// be sorted, belong to the scope below, and be disjoint from the types of values.
+// adds and marks the inherited types in ids for re-evaluation. values must be
+// sorted by TypeID; ids must be sorted, belong to the scope below, and be
+// disjoint from the types of values.
 func (s *_StackedMap) AppendRefresh(values []_Value, ids []_TypeID) *_StackedMap {
 	layer := s.Append(values)
-	layer.Refresh = true
-	layer.RefreshIDs = ids
-	layer.ResetCache = new(sync.Map)
+	layer.markRefresh(ids)
 	return layer
 }
 
@@ -203,8 +232,7 @@ func (s *_StackedMap) flatten() *_StackedMap {
 	slices.SortFunc(flatValues, func(a, b _Value) int {
 		return cmp.Compare(a.typeInfo.TypeID, b.typeInfo.TypeID)
 	})
-	return &_StackedMap{
-		Values: flatValues,
-		Height: 1,
-	}
+	layer := newStackedMapLayer(nil, len(flatValues))
+	copy(layer.Values, flatValues)
+	return layer
 }

@@ -1,10 +1,10 @@
 package dscope
 
 import (
-	"encoding/binary"
-	"hash/maphash"
+	"math/rand/v2"
 	"reflect"
 	"sync"
+	"sync/atomic"
 )
 
 type _Value struct {
@@ -25,61 +25,77 @@ type _TypeID int
 // _Hash is used for scope signatures and cache keys. A scope's identity is its
 // sorted set of definition type IDs; a collision would bind a scope to another
 // scope's forker and silently hand out wrong values, so the digest stays 128
-// bits wide, produced by two independent seeds of the runtime's fast hash.
+// bits wide and process-local: two independent streams, each started from a
+// random 64-bit seed and advanced by one bijective step per hashed word. An
+// adversary cannot compute a colliding definition set without the seeds, and the
+// seeds never leave the process.
 type _Hash [2]uint64
 
-// hashSeeds seeds the two halves of every _Hash. The seeds are random per
-// process and never leave it: signatures and fork keys are process-local.
-var hashSeeds = [2]maphash.Seed{
-	maphash.MakeSeed(),
-	maphash.MakeSeed(),
+// hashSeeds seeds the two halves of every _Hash. The values come from the
+// process-wide generator of math/rand/v2, which the runtime seeds from the
+// operating system, so they are unpredictable for the lifetime of the process.
+// The seeds never leave it: signatures and fork keys are process-local.
+var hashSeeds = [2]uint64{rand.Uint64(), rand.Uint64()}
+
+// hashStep is the per-word advance of the hash mixer. Adding a fixed odd
+// constant before each mixing step is the splitmix64 state advance: every word
+// of a stream changes the state.
+const hashStep = 0x9e3779b97f4a7c15
+
+// hashWord folds one word into a hash stream. It advances the state by the word
+// and the step constant, then scrambles the state. Every operation is
+// bijective — shifts and xors are invertible, the multipliers are odd — so a
+// word sequence maps to a state one to one.
+func hashWord(state, word uint64) uint64 {
+	x := state + word + hashStep
+	x ^= x >> 30
+	x *= 0xbf58476d1ce4e5b9
+	x ^= x >> 27
+	x *= 0x94d049bb133111eb
+	return x ^ (x >> 31)
 }
 
-// hashTypeIDs hashes a seed followed by the given type IDs, each encoded as one
-// native-endian uint64. A scope's identity is its sorted set of definition type
-// IDs, so every signature and cache key must use this encoding. Each half of the
-// digest gets a Hash value of its own, seeded before its only use, so the halves
-// come from two independent seeds. The IDs stream into the hashers one at a
-// time, so the digest needs no intermediate buffer.
+// hashTypeIDs hashes a seed and the given type IDs into a digest. A scope's
+// identity is its sorted set of definition type IDs, so every signature and cache
+// key must use this digest. Each half is an independent stream: its own seed,
+// and one bijective folding step per hashed word. The length of the ID list is
+// folded in as well, so lists of different lengths stay apart. The digest needs
+// no buffer and allocates nothing.
 func hashTypeIDs(seed []byte, ids []_TypeID) (ret _Hash) {
-	var h0, h1 maphash.Hash
-	h0.SetSeed(hashSeeds[0])
-	h1.SetSeed(hashSeeds[1])
-	_, _ = h0.Write(seed)
-	_, _ = h1.Write(seed)
-	var idBuf [8]byte
-	for _, id := range ids {
-		binary.NativeEndian.PutUint64(idBuf[:], uint64(id))
-		_, _ = h0.Write(idBuf[:])
-		_, _ = h1.Write(idBuf[:])
+	h0, h1 := hashSeeds[0], hashSeeds[1]
+	for _, b := range seed {
+		h0 = hashWord(h0, uint64(b))
+		h1 = hashWord(h1, uint64(b))
 	}
-	ret[0] = h0.Sum64()
-	ret[1] = h1.Sum64()
+	h0 = hashWord(h0, uint64(len(ids)))
+	h1 = hashWord(h1, uint64(len(ids)))
+	for _, id := range ids {
+		h0 = hashWord(h0, uint64(id))
+		h1 = hashWord(h1, uint64(id))
+	}
+	ret[0] = h0
+	ret[1] = h1
 	return
 }
 
 // forkKey derives the forker cache key of a Fork call: the base scope's
-// signature followed by the type IDs of the new definitions, in the encoding
-// hashTypeIDs uses. It streams the signature and each ID into the hashers, so
-// the key needs no intermediate buffer and a cache lookup of a small Fork call
-// allocates nothing.
+// signature followed by the type IDs of the new definitions, in the digest
+// encoding hashTypeIDs uses. The signature starts the two streams as their
+// initial state: a different signature starts a different state, and every
+// following step is bijective, so two different keys never share a digest. The
+// key folds its words directly, so a lookup of a small Fork call allocates
+// nothing.
 func forkKey(signature _Hash, defs []any) (ret _Hash) {
-	var h0, h1 maphash.Hash
-	h0.SetSeed(hashSeeds[0])
-	h1.SetSeed(hashSeeds[1])
-	var idBuf [8]byte
-	for _, word := range signature {
-		binary.NativeEndian.PutUint64(idBuf[:], word)
-		_, _ = h0.Write(idBuf[:])
-		_, _ = h1.Write(idBuf[:])
-	}
+	h0, h1 := hashSeeds[0]^signature[0], hashSeeds[1]^signature[1]
+	h0 = hashWord(h0, uint64(len(defs)))
+	h1 = hashWord(h1, uint64(len(defs)))
 	for _, def := range defs {
-		binary.NativeEndian.PutUint64(idBuf[:], uint64(getTypeID(reflect.TypeOf(def))))
-		_, _ = h0.Write(idBuf[:])
-		_, _ = h1.Write(idBuf[:])
+		id := uint64(getTypeID(reflect.TypeOf(def)))
+		h0 = hashWord(h0, id)
+		h1 = hashWord(h1, id)
 	}
-	ret[0] = h0.Sum64()
-	ret[1] = h1.Sum64()
+	ret[0] = h0
+	ret[1] = h1
 	return
 }
 
@@ -149,9 +165,58 @@ func New(
 // _Hash -> *_Forker
 var forkers sync.Map
 
+// forkerCacheSize is the number of slots of the direct-mapped cache in front of
+// the forker table.
+const forkerCacheSize = 256
+
+// _ForkerCacheEntry is one confirmed fork-key-to-forker mapping.
+type _ForkerCacheEntry struct {
+	key    _Hash
+	forker *_Forker
+}
+
+// forkerCache accelerates the forker lookup of the shapes a program forks over
+// and over. A hit takes one atomic read and a comparison of the full key, the
+// same comparison the forker table performs, so the cache never decides which
+// forker a key maps to: a slot collision costs a table lookup and nothing more.
+var forkerCache [forkerCacheSize]atomic.Pointer[_ForkerCacheEntry]
+
+// lookupForker returns the forker of a fork key, using the direct-mapped cache
+// before the forker table, and returns nil when no forker is known.
+func lookupForker(key _Hash) *_Forker {
+	slot := &forkerCache[(key[0]^key[1])&(forkerCacheSize-1)]
+	if entry := slot.Load(); entry != nil && entry.key == key {
+		return entry.forker
+	}
+	v, ok := forkers.Load(key)
+	if !ok {
+		return nil
+	}
+	forker := v.(*_Forker)
+	publishForker(key, forker)
+	return forker
+}
+
+// publishForker stores a forker in an empty slot of the direct-mapped cache. A
+// slot that already answers for another key stays as it is: a colliding key
+// keeps using the forker table, so no Fork allocates a cache entry.
+func publishForker(key _Hash, forker *_Forker) {
+	slot := &forkerCache[(key[0]^key[1])&(forkerCacheSize-1)]
+	if slot.Load() == nil {
+		slot.CompareAndSwap(nil, &_ForkerCacheEntry{key: key, forker: forker})
+	}
+}
+
 func (scope Scope) Fork(
 	defs ...any,
 ) Scope {
+
+	if len(defs) == 0 {
+		// A Fork with no definitions adds nothing to the scope: every effective
+		// definition, and every value, is the one the base scope already holds.
+		// Return the base scope itself instead of rebuilding an identical one.
+		return scope
+	}
 
 	// handle modules
 	var moduleObjects []any
@@ -190,16 +255,18 @@ func (scope Scope) Fork(
 	// Hashing types is sufficient as only one definition instance per type is effectively used.
 	key := forkKey(scope.signature, defs)
 
-	// Check cache
-	if v, ok := forkers.Load(key); ok {
-		return v.(*_Forker).Fork(scope, defs)
+	// Check the caches: the direct-mapped slot first, the forker table behind it.
+	if forker := lookupForker(key); forker != nil {
+		return forker.Fork(scope, defs)
 	}
 
 	// Cache miss, create and cache forker
 	forker := newForker(scope, defs)
 	v, _ := forkers.LoadOrStore(key, forker)
+	forker = v.(*_Forker)
+	publishForker(key, forker)
 
-	return v.(*_Forker).Fork(scope, defs)
+	return forker.Fork(scope, defs)
 }
 
 // TheoryOfScopeReset documents the semantics and typical use of Reset.

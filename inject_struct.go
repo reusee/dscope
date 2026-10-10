@@ -3,6 +3,7 @@ package dscope
 import (
 	"reflect"
 	"sync"
+	"sync/atomic"
 )
 
 // TheoryOfScopeInjectStruct documents struct field injection: how fields are
@@ -35,6 +36,26 @@ type _InjectStructFunc = func(scope Scope, value reflect.Value, depth int)
 // reflect.Type -> _InjectStructFunc
 var injectStructFuncs sync.Map
 
+// _InjectStructFuncCacheEntry is one confirmed target-type-to-injection-function
+// mapping.
+type _InjectStructFuncCacheEntry struct {
+	typ reflect.Type
+	fn  _InjectStructFunc
+}
+
+// injectStructFuncCache accelerates the injection-function lookup for the target
+// types a program injects into repeatedly. It shares the slot mapping of the type
+// ID cache: the descriptor address of the type spreads types over the slots. A
+// hit is confirmed by comparing the type itself, so a slot collision costs a
+// table lookup and nothing more.
+var injectStructFuncCache [typeIDCacheSize]atomic.Pointer[_InjectStructFuncCacheEntry]
+
+// injectStructLastEntry remembers the injection-function mapping confirmed most
+// recently, so a program that injects into the same target type over and over
+// needs neither a slot computation nor a table walk. Like every cache entry it
+// is confirmed by comparing the type itself.
+var injectStructLastEntry atomic.Pointer[_InjectStructFuncCacheEntry]
+
 func injectStruct(scope Scope, target any, depth int) {
 	v := reflect.ValueOf(target)
 	if !v.IsValid() {
@@ -44,13 +65,33 @@ func injectStruct(scope Scope, target any, depth int) {
 		panic(errWith(ErrBadArgument, "target must be a pointer to a struct, got %v", v.Type()))
 	}
 	targetType := v.Type()
-	if fn, ok := injectStructFuncs.Load(targetType); ok {
-		fn.(_InjectStructFunc)(scope, v, depth)
+	if entry := injectStructLastEntry.Load(); entry != nil && entry.typ == targetType {
+		entry.fn(scope, v, depth)
 		return
 	}
-	injectFunc := makeInjectStructFunc(targetType)
-	fn, _ := injectStructFuncs.LoadOrStore(targetType, injectFunc)
-	fn.(_InjectStructFunc)(scope, v, depth)
+	slot, cacheable := typeIDCacheSlot(targetType)
+	if cacheable {
+		if entry := injectStructFuncCache[slot].Load(); entry != nil && entry.typ == targetType {
+			injectStructLastEntry.Store(entry)
+			entry.fn(scope, v, depth)
+			return
+		}
+	}
+	loaded, ok := injectStructFuncs.Load(targetType)
+	if !ok {
+		// makeInjectStructFunc rejects a target that is not a pointer to a
+		// struct, and nothing is cached for it.
+		created := makeInjectStructFunc(targetType)
+		actual, _ := injectStructFuncs.LoadOrStore(targetType, created)
+		loaded = actual
+	}
+	fn := loaded.(_InjectStructFunc)
+	entry := &_InjectStructFuncCacheEntry{typ: targetType, fn: fn}
+	if cacheable {
+		injectStructFuncCache[slot].Store(entry)
+	}
+	injectStructLastEntry.Store(entry)
+	fn(scope, v, depth)
 }
 
 func makeInjectStructFunc(t reflect.Type) _InjectStructFunc {

@@ -382,3 +382,74 @@ func BenchmarkForkNewType(b *testing.B) {
 		})
 	}
 }
+
+// BenchmarkTypeIDSlot isolates the slot computation of the type ID cache, the
+// part the most-recent-entry cache skips on a hit.
+func BenchmarkTypeIDSlot(b *testing.B) {
+	t := reflect.TypeFor[Scope]()
+	for b.Loop() {
+		if _, ok := typeIDCacheSlot(t); !ok {
+			b.Fatal("type is not pointer shaped")
+		}
+	}
+}
+
+// benchSink keeps a benchmark result reachable, so the compiler cannot drop the
+// work a micro benchmark measures.
+var benchSink any
+
+// BenchmarkNewStackedMapLayer isolates the allocation of one fork layer.
+func BenchmarkNewStackedMapLayer(b *testing.B) {
+	for b.Loop() {
+		benchSink = newStackedMapLayer(nil, 1)
+	}
+}
+
+// BenchmarkNewInitializerFunc isolates the creation of an initializer for a
+// function definition.
+func BenchmarkNewInitializerFunc(b *testing.B) {
+	def := func() int { return 42 }
+	for b.Loop() {
+		benchSink = newInitializer(def, false)
+	}
+}
+
+// BenchmarkForkApply isolates applying a prebuilt forker to a base scope.
+func BenchmarkForkApply(b *testing.B) {
+	scope := New()
+	forker := newForker(scope, forkBenchDefs)
+	for b.Loop() {
+		_ = forker.Fork(scope, forkBenchDefs)
+	}
+}
+
+// BenchmarkNewForker isolates the per-shape analysis of a fork, the part the
+// forker cache skips on a hit.
+func BenchmarkNewForker(b *testing.B) {
+	scope := New()
+	for b.Loop() {
+		_ = newForker(scope, forkBenchDefs)
+	}
+}
+
+// BenchmarkForkLookup isolates the lookup of a cached forker.
+func BenchmarkForkLookup(b *testing.B) {
+	scope := New()
+	key := forkKey(scope.signature, forkBenchDefs)
+	for b.Loop() {
+		if _, ok := forkers.Load(key); !ok {
+			b.Fatal("forker is not cached")
+		}
+	}
+}
+
+// BenchmarkForkKey isolates the derivation of the fork cache key.
+func BenchmarkForkKey(b *testing.B) {
+	scope := New()
+	for b.Loop() {
+		_ = forkKey(scope.signature, forkBenchDefs)
+	}
+}
+
+// forkBenchDefs is the single definition the fork cost microbenchmarks use.
+var forkBenchDefs = []any{func() int { return 42 }}

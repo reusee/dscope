@@ -33,6 +33,23 @@ dscope fork theory:
   common base.
 `
 
+// TheoryOfScopeIdentity documents how a scope gets its identity, and why that
+// identity must resist collisions.
+const TheoryOfScopeIdentity = `
+dscope scope identity theory:
+- A scope's identity is the sorted set of the types its definitions produce,
+  summarized as a 128-bit digest. Definition instances do not enter the
+  identity: two scopes built from the same types have the same shape, so they
+  share analysis results.
+- The identity is a cache key. Two different shapes with one digest would share
+  a forker and hand out wrong values, so the digest is 128 bits wide, seeded per
+  process, and folds every hashed word through a bijective mixer. An adversary
+  cannot compute a colliding shape without the seeds, and the seeds never leave
+  the process.
+- Signatures and fork keys are process-local. They are never persisted, so a
+  digest does not survive a restart and must never be compared across processes.
+`
+
 const TheoryOfScopeForkFlatten = `
 dscope fork flatten theory:
 - Fork can be called any number of times. Repeated forking never grows the
@@ -41,7 +58,9 @@ dscope fork flatten theory:
   layering would degrade lookups, because every lookup binary-searches each
   layer.
 - A Fork whose definitions change no effective value adds no layer at all: the
-  new scope shares the value stack of its base.
+  new scope shares the value stack of its base. A Fork with no definitions
+  returns its base scope as it is, because there is nothing to analyze and
+  nothing to add.
 - Appending flattens the stack first when it is deeper than an internal
   threshold, and always when the base layer is a lazy reset layer, because
   binary search needs a single sorted stack.
@@ -387,51 +406,50 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 		// its base share every value and its initializer.
 		return scope
 	}
-	if scope.values != nil && scope.values.Height > stackHeightLimit {
-		scope.values = scope.values.flatten()
+	base := scope.values
+	if base != nil && (base.ResetBase != nil || base.Height > stackHeightLimit) {
+		// A lazy reset layer, and a stack above the height limit, are
+		// materialised first: lookups need one sorted stack to search.
+		base = base.flatten()
 	}
 
-	// 2. Create the values of this fork: Instantiate initializers and values.
-	newValues := make([]_Value, len(f.NewValuesTemplate))
+	// 2. Create the single layer of this fork: it carries the overrides and the
+	//    new definitions together with the inherited types whose recomputation
+	//    they affect. A marked type holds no value in the layer and gets a fresh
+	//    initializer on first access, so the cost of a Fork does not grow with
+	//    the dependent set.
+	layer := newStackedMapLayer(base, len(f.NewValuesTemplate))
+
+	// 3. Instantiate the definitions: every output of one definition shares its
+	//    initializer, so a multi-value provider evaluates once.
 	valueIdx := 0
 	for defIdx, def := range defs {
-		kind := f.DefKinds[defIdx]
-
-		switch kind {
+		switch f.DefKinds[defIdx] {
 		case reflect.Func:
 			initializer := newInitializer(def, false)
-			numValues := f.DefNumValues[defIdx]
-			for range numValues {
+			for range f.DefNumValues[defIdx] {
 				template := f.NewValuesTemplate[valueIdx]
-				sortedIdx := f.PosesAtSorted[valueIdx]
-				newValues[sortedIdx] = _Value{
+				layer.Values[f.PosesAtSorted[valueIdx]] = _Value{
 					typeInfo:    template.typeInfo,
 					initializer: initializer, // Share initializer for multi-return
 				}
 				valueIdx++
 			}
 		case reflect.Pointer:
-			initializer := newInitializer(def, true)
-			template := f.NewValuesTemplate[valueIdx]
-			sortedIdx := f.PosesAtSorted[valueIdx]
-			newValues[sortedIdx] = _Value{
-				typeInfo:    template.typeInfo,
-				initializer: initializer,
+			layer.Values[f.PosesAtSorted[valueIdx]] = _Value{
+				typeInfo:    f.NewValuesTemplate[valueIdx].typeInfo,
+				initializer: newInitializer(def, true),
 			}
 			valueIdx++
 		}
 	}
 
-	// 3. Add the single layer of this fork: it carries the overrides and the new
-	//    definitions together with the inherited types whose recomputation they
-	//    affect. A marked type holds no value in the layer and gets a fresh
-	//    initializer on first access, so the cost of a Fork does not grow with
-	//    the dependent set.
+	// 4. A fork that overrides or adds definitions also marks the inherited
+	//    types whose recomputation the change affects.
 	if len(f.ResetIDs) > 0 {
-		scope.values = scope.values.AppendRefresh(newValues, f.ResetIDs)
-	} else {
-		scope.values = scope.values.Append(newValues)
+		layer.markRefresh(f.ResetIDs)
 	}
 
+	scope.values = layer
 	return scope
 }
