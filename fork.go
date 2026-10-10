@@ -26,8 +26,7 @@ dscope fork theory:
 - Fine-grained recomputation is sound only when providers are pure functions
   of their declared dependencies. Providers that reach into the scope
   dynamically through InjectStruct, Fork, or Reset are re-evaluated
-  pessimistically whenever a Fork adds definitions; providers that read
-  external state must be re-run with Reset instead.
+  pessimistically whenever a Fork adds definitions.
 - Typical uses: add definitions as an application boots, override a dependency
   with a mock or stub in tests, and layer environment-specific variants on a
   common base.
@@ -54,17 +53,9 @@ const TheoryOfScopeForkFlatten = `
 dscope fork flatten theory:
 - Fork can be called any number of times. Repeated forking never grows the
   value stack without bound, so lookups never slow down over time.
-- Each Fork appends one sorted layer onto the scope's value stack. Unbounded
-  layering would degrade lookups, because every lookup searches each layer.
-- A layer with many values indexes them, so a lookup costs one probe; a shorter
-  layer keeps its binary search and pays no memory. A layer also remembers the
-  entry it resolved most recently, so a program that asks for the same type over
-  and over pays one comparison. The index is built while the layer is created and
-  never changes, so a lookup reads it without locking.
-- A Fork whose definitions change no effective value adds no layer at all: the
-  new scope shares the value stack of its base. A Fork with no definitions
-  returns its base scope as it is, because there is nothing to analyze and
-  nothing to add.
+- Each Fork appends one sorted layer onto the scope's value stack.
+- A Fork whose definitions change no effective value adds no layer: the new
+  scope shares the value stack of its base.
 - Appending flattens the stack first when it is deeper than an internal
   threshold, and always when the base layer is a lazy reset layer, because a
   search needs a single sorted stack.
@@ -395,7 +386,7 @@ func newForker(
 	defTypeIDs = slices.Compact(defTypeIDs)
 
 	// 5. Calculate the New Scope Signature: Hash sorted definition type IDs.
-	signature := hashTypeIDs(nil, defTypeIDs)
+	signature := hashTypeIDs(defTypeIDs)
 
 	// 6. Identify Values Requiring Reset: Collect TypeIDs that need reset AND existed in the base scope.
 	resetIDs := make([]_TypeID, 0, len(states))

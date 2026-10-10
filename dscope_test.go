@@ -367,6 +367,9 @@ func TestInterfaceDef(t *testing.T) {
 	if f != 42 {
 		t.Fatal()
 	}
+	if v := scope.Get[Foo](); v != 42 {
+		t.Fatal()
+	}
 	type Bar any
 	s := scope.Fork(
 		func() Bar {
@@ -1014,17 +1017,6 @@ func TestVariadicFuncDef(t *testing.T) {
 	}
 }
 
-func TestGetInterface(t *testing.T) {
-	type I any
-	scope := New(func() I {
-		return 42
-	})
-	v := scope.Get[I]()
-	if v != 42 {
-		t.Fatal()
-	}
-}
-
 func TestNilInterfacePointerDefinition(t *testing.T) {
 	var provided any
 	scope := New(&provided)
@@ -1043,6 +1035,18 @@ func TestNilInterfacePointerDefinition(t *testing.T) {
 
 	if resolved := scope.Get[any](); resolved != nil {
 		t.Fatalf("generic Get returned %v, want nil", resolved)
+	}
+
+	if resolved, ok := scope.TryGet[any](); !ok || resolved != nil {
+		t.Fatalf("TryGet returned (%v, %v), want (nil, true)", resolved, ok)
+	}
+
+	reflected, ok := scope.TryGetType(reflect.TypeFor[any]())
+	if !ok {
+		t.Fatal("TryGetType did not find the nil interface definition")
+	}
+	if !reflected.IsValid() || !reflected.IsNil() {
+		t.Fatalf("TryGetType returned %v, want a nil interface value", reflected)
 	}
 
 	var assigned any = 42
@@ -1093,15 +1097,6 @@ func TestTryGet(t *testing.T) {
 		v, ok := scope.TryGet[float64]()
 		if ok || v != 0 {
 			t.Fatalf("got (%v, %v), want (0, false)", v, ok)
-		}
-	})
-
-	t.Run("nil interface", func(t *testing.T) {
-		var provided any
-		s := New(&provided)
-		v, ok := s.TryGet[any]()
-		if !ok || v != nil {
-			t.Fatalf("got (%v, %v), want (nil, true)", v, ok)
 		}
 	})
 
@@ -1165,26 +1160,6 @@ func TestGetType(t *testing.T) {
 		}()
 		scope.GetType(reflect.TypeFor[float64]())
 	})
-
-	t.Run("nil type", func(t *testing.T) {
-		defer func() {
-			p := recover()
-			if p == nil {
-				t.Fatal("should panic")
-			}
-			err, ok := p.(error)
-			if !ok {
-				t.Fatalf("panic value not an error: %v", p)
-			}
-			if !errors.Is(err, ErrBadArgument) {
-				t.Fatalf("expected ErrBadArgument, got %T: %v", err, err)
-			}
-			if !strings.Contains(err.Error(), "nil reflect.Type provided") {
-				t.Fatalf("unexpected error message: %s", err.Error())
-			}
-		}()
-		scope.GetType(nil)
-	})
 }
 
 func TestTryGetType(t *testing.T) {
@@ -1220,18 +1195,8 @@ func TestTryGetType(t *testing.T) {
 		}
 	})
 
-	t.Run("nil interface", func(t *testing.T) {
-		var provided any
-		s := New(&provided)
-		value, ok := s.TryGetType(reflect.TypeFor[any]())
-		if !ok {
-			t.Fatal("any not found")
-		}
-		if !value.IsValid() || !value.IsNil() {
-			t.Fatalf("got %v, want a nil interface value", value)
-		}
-	})
-
+	// GetType panics through this same check, so the nil-type rule is asserted
+	// once, on the function that decides it.
 	t.Run("nil type", func(t *testing.T) {
 		defer func() {
 			p := recover()
@@ -1244,6 +1209,9 @@ func TestTryGetType(t *testing.T) {
 			}
 			if !errors.Is(err, ErrBadArgument) {
 				t.Fatalf("expected ErrBadArgument, got %T: %v", err, err)
+			}
+			if !strings.Contains(err.Error(), "nil reflect.Type provided") {
+				t.Fatalf("unexpected error message: %s", err.Error())
 			}
 		}()
 		scope.TryGetType(nil)

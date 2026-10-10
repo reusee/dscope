@@ -29,19 +29,15 @@ func TestGetResetValue(t *testing.T) {
 	if v := scope.Get[int](); v != 1 {
 		t.Fatalf("expected 1 from original scope, got %d", v)
 	}
-}
 
-func TestAssignReset(t *testing.T) {
-	scope := New()
-	var r Reset
-	scope.Assign(&r)
-	if r == nil {
+	// Assign reaches the same built-in binding.
+	var assigned Reset
+	scope.Assign(&assigned)
+	if assigned == nil {
 		t.Fatal("Assign got nil Reset")
 	}
-	resetScope := r()
-	resetScope.Assign(&r) // Assigning from a reset scope also binds to it
-	if r == nil {
-		t.Fatal("Assign from reset scope got nil Reset")
+	if v := assigned().Get[int](); v != 3 {
+		t.Fatalf("expected 3 from assigned reset scope, got %d", v)
 	}
 }
 

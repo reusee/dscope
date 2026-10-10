@@ -8,9 +8,6 @@ import (
 // into provider functions and which inputs are rejected.
 const TheoryOfModuleMethodDiscovery = `
 dscope module method discovery theory:
-- Method discovery expands a module object into provider functions: the
-  exported methods of the object, of its pointer-chain targets, and of its
-  module-typed fields are collected recursively.
 - A method promoted into an enclosing type by an embedded module is collected
   once: discovery descends into the embedded module only for the module-typed
   fields it holds, skipping every method already collected with the same name

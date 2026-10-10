@@ -26,10 +26,3 @@ func TestInitializerPanicRetry(t *testing.T) {
 		}()
 	}
 }
-
-func BenchmarkNewInitializerPointer(b *testing.B) {
-	i := 42
-	for b.Loop() {
-		newInitializer(&i, true)
-	}
-}

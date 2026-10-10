@@ -18,8 +18,6 @@ dscope lazy initialization theory:
   including zero and nil interface values.
 - A provider panic must NOT be cached as a permanent failure state.
   Subsequent accesses re-invoke the provider to reproduce the original error.
-- Reset initializers (created on Fork when dependencies change) inherit
-  this contract: a fresh initializer always re-evaluates on first access.
 `
 
 // _Initializer holds the values of one definition in one scope and evaluates
@@ -37,12 +35,6 @@ type _Initializer struct {
 	// _values backs Values for a pointer definition, so copying such a
 	// definition needs no separate slice.
 	_values [1]reflect.Value
-}
-
-func newInitializer(def any, isPointer bool) *_Initializer {
-	ret := new(_Initializer)
-	initInitializer(ret, def, isPointer)
-	return ret
 }
 
 // initInitializer fills an initializer from def. The caller owns the storage of

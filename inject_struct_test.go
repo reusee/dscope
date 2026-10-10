@@ -62,23 +62,6 @@ func BenchmarkInjectStruct(b *testing.B) {
 	}
 }
 
-func TestInjectStructBadType(t *testing.T) {
-	inject := New().Get[InjectStruct]()
-	func() {
-		defer func() {
-			p := recover()
-			if p == nil {
-				t.Fatal("should panic")
-			}
-			msg := fmt.Sprintf("%v", p)
-			if !strings.Contains(msg, "target type int is not a struct or pointer to struct") {
-				t.Fatalf("got %v", msg)
-			}
-		}()
-		inject(Provide(Provide(Provide(42))))
-	}()
-}
-
 func TestInjectStructNotFound(t *testing.T) {
 	t.Run("wrapped", func(t *testing.T) {
 		inject := New().Get[InjectStruct]()
@@ -122,12 +105,12 @@ func TestInjectStructNotFound(t *testing.T) {
 	})
 }
 
-// TestInjectStructBadTarget verifies that a nil or non-pointer injection
-// target panics with a structured bad-argument error.
+// TestInjectStructBadTarget verifies that a nil, non-pointer, or non-struct
+// injection target panics with a structured bad-argument error.
 func TestInjectStructBadTarget(t *testing.T) {
 	scope := New(Provide(42))
 
-	checkPanic := func(t *testing.T, target any) {
+	checkPanic := func(t *testing.T, target any, message string) {
 		defer func() {
 			p := recover()
 			if p == nil {
@@ -140,7 +123,7 @@ func TestInjectStructBadTarget(t *testing.T) {
 			if !errors.Is(err, ErrBadArgument) {
 				t.Fatalf("expected ErrBadArgument, got %T: %v", err, err)
 			}
-			if !strings.Contains(err.Error(), "target must be a pointer") {
+			if !strings.Contains(err.Error(), message) {
 				t.Fatalf("unexpected error message: %s", err.Error())
 			}
 		}()
@@ -148,13 +131,17 @@ func TestInjectStructBadTarget(t *testing.T) {
 	}
 
 	t.Run("nil target", func(t *testing.T) {
-		checkPanic(t, nil)
+		checkPanic(t, nil, "target must be a pointer")
 	})
 
 	t.Run("non-pointer target", func(t *testing.T) {
 		checkPanic(t, struct {
 			I int `dscope:"."`
-		}{})
+		}{}, "target must be a pointer")
+	})
+
+	t.Run("non-struct target type", func(t *testing.T) {
+		checkPanic(t, Provide(Provide(Provide(42))), "is not a struct or pointer to struct")
 	})
 }
 

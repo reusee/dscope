@@ -21,17 +21,15 @@ func TestGetForkValue(t *testing.T) {
 	if child.Get[string]() != "hello" {
 		t.Fatal("child scope did not add new definitions")
 	}
-}
 
-func TestAssignFork(t *testing.T) {
-	scope := New()
-	var f Fork
-	scope.Assign(&f)
-	if f == nil {
+	// Assign reaches the same built-in binding.
+	var assigned Fork
+	scope.Assign(&assigned)
+	if assigned == nil {
 		t.Fatal("Assign got nil Fork")
 	}
-	child := f(func() string { return "assigned" })
-	if child.Get[string]() != "assigned" {
+	assignedChild := assigned(func() string { return "assigned" })
+	if assignedChild.Get[string]() != "assigned" {
 		t.Fatal("assigned Fork did not create child correctly")
 	}
 }

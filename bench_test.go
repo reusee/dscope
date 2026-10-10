@@ -405,15 +405,6 @@ func BenchmarkNewStackedMapLayer(b *testing.B) {
 	}
 }
 
-// BenchmarkNewInitializerFunc isolates the creation of an initializer for a
-// function definition.
-func BenchmarkNewInitializerFunc(b *testing.B) {
-	def := func() int { return 42 }
-	for b.Loop() {
-		benchSink = newInitializer(def, false)
-	}
-}
-
 // BenchmarkForkApply isolates applying a prebuilt forker to a base scope.
 func BenchmarkForkApply(b *testing.B) {
 	scope := New()

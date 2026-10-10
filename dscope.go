@@ -28,19 +28,14 @@ type _TypeInfo struct {
 // _TypeID is a unique identifier for a reflect.Type.
 type _TypeID int
 
-// _Hash is used for scope signatures and cache keys. A scope's identity is its
-// sorted set of definition type IDs; a collision would bind a scope to another
-// scope's forker and silently hand out wrong values, so the digest stays 128
-// bits wide and process-local: two independent streams, each started from a
-// random 64-bit seed and advanced by one bijective step per hashed word. An
-// adversary cannot compute a colliding definition set without the seeds, and the
-// seeds never leave the process.
+// _Hash is used for scope signatures and cache keys: two digest streams, each
+// started from one hashSeeds half and advanced by one hashWord step per hashed
+// word. TheoryOfScopeIdentity carries the identity and collision rules.
 type _Hash [2]uint64
 
 // hashSeeds seeds the two halves of every _Hash. The values come from the
 // process-wide generator of math/rand/v2, which the runtime seeds from the
 // operating system, so they are unpredictable for the lifetime of the process.
-// The seeds never leave it: signatures and fork keys are process-local.
 var hashSeeds = [2]uint64{rand.Uint64(), rand.Uint64()}
 
 // hashStep is the per-word advance of the hash mixer. Adding a fixed odd
@@ -61,18 +56,14 @@ func hashWord(state, word uint64) uint64 {
 	return x ^ (x >> 31)
 }
 
-// hashTypeIDs hashes a seed and the given type IDs into a digest. A scope's
-// identity is its sorted set of definition type IDs, so every signature and cache
-// key must use this digest. Each half is an independent stream: its own seed,
-// and one bijective folding step per hashed word. The length of the ID list is
-// folded in as well, so lists of different lengths stay apart. The digest needs
-// no buffer and allocates nothing.
-func hashTypeIDs(seed []byte, ids []_TypeID) (ret _Hash) {
+// hashTypeIDs hashes the given type IDs into a digest. A scope's identity is its
+// sorted set of definition type IDs, so every signature and cache key must use
+// this digest. Each half is an independent stream: its own seed, and one
+// bijective folding step per hashed word. The length of the ID list is folded in
+// as well, so lists of different lengths stay apart. The digest needs no buffer
+// and allocates nothing.
+func hashTypeIDs(ids []_TypeID) (ret _Hash) {
 	h0, h1 := hashSeeds[0], hashSeeds[1]
-	for _, b := range seed {
-		h0 = hashWord(h0, uint64(b))
-		h1 = hashWord(h1, uint64(b))
-	}
 	h0 = hashWord(h0, uint64(len(ids)))
 	h1 = hashWord(h1, uint64(len(ids)))
 	for _, id := range ids {
@@ -116,9 +107,7 @@ dscope core theory:
   satisfies requests for that interface, not requests for the concrete value
   it holds; no implicit conversions are performed.
 - A computation is a provider: fork the computing function, then get its
-  result type. The parameters are the dependencies and the results are the
-  computed values, so one declaration carries both, and no separate
-  invocation entry point is needed.
+  result type. There is no separate invocation entry point.
 - Three built-in dependencies — InjectStruct, Fork, Reset — are always
   available, bound to the current scope, and cannot be overridden: they are
   the escape hatches through which providers interact with the scope
@@ -140,7 +129,6 @@ dscope definition theory:
   values are rejected.
 - Two definitions in the same Fork call must not produce the same type; a
   duplicate is rejected with an error naming both conflicting definitions.
-  Redefining an inherited type is the override mechanism of a later Fork layer.
 - Invalid definitions produce structured dscope errors rather than leaking
   reflection, hashing, or storage implementation panics.
 `
@@ -281,8 +269,6 @@ dscope reset theory:
 - Reset returns a new scope in which every cached provider result is
   invalidated; the original scope is unaffected.
 - Reset is O(1): it installs a lazy reset layer over the existing value stack.
-  Fresh initializers are created on demand, only for types that are actually
-  accessed; untouched types incur zero overhead.
 - Typical use: keep the definitions but drop every cached result, either to
   observe fresh provider evaluation in tests, or to re-run the graph after
   external state (files, clocks, globals) has changed.

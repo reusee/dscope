@@ -42,17 +42,29 @@ func TestMethodsNil(t *testing.T) {
 	})
 
 	t.Run("nil pointer to interface", func(t *testing.T) {
-		defer func() {
-			p := recover()
-			if p == nil {
-				t.Fatal("should panic")
-			}
-			msg := fmt.Sprintf("%v", p)
-			if !strings.Contains(msg, "nil pointer to interface *io.Reader") {
-				t.Fatalf("got %s", msg)
-			}
-		}()
-		Methods((*io.Reader)(nil))
+		for _, tc := range []struct {
+			name   string
+			object any
+			typ    string
+		}{
+			{"single", (*io.Reader)(nil), "*io.Reader"},
+			{"double", (**io.Reader)(nil), "**io.Reader"},
+			{"triple", (***io.Reader)(nil), "***io.Reader"},
+		} {
+			func() {
+				defer func() {
+					p := recover()
+					if p == nil {
+						t.Fatalf("%s: should panic", tc.name)
+					}
+					msg := fmt.Sprintf("%v", p)
+					if !strings.Contains(msg, "nil pointer to interface "+tc.typ) {
+						t.Fatalf("%s: got %s", tc.name, msg)
+					}
+				}()
+				Methods(tc.object)
+			}()
+		}
 	})
 
 	t.Run("nil interface", func(t *testing.T) {
@@ -82,23 +94,6 @@ func (*testMethodsValueMod) Pointer() int32 { return 2 }
 type testMethodsContainer struct {
 	Module
 	V testMethodsValueMod
-}
-
-func TestMethodsEmbeddedValue(t *testing.T) {
-	// This test ensures that we can discover methods on the pointer receiver
-	// of a module embedded by value.
-	scope := New(Methods(&testMethodsContainer{})...)
-
-	// Should find Value() (int64)
-	if v := scope.Get[int64](); v != 1 {
-		t.Fatalf("expected 1, got %d", v)
-	}
-
-	// Should find Pointer() (int32)
-	// Before fix, this fails because we only visit testMethodsValueMod as a value
-	if v := scope.Get[int32](); v != 2 {
-		t.Fatalf("expected 2, got %d", v)
-	}
 }
 
 func TestMethodsNilChainProviderCallable(t *testing.T) {
@@ -134,88 +129,12 @@ func TestMethodsNilChainProviderCallable(t *testing.T) {
 	})
 }
 
-func TestMethodsEmbeddedValuePassedByValue(t *testing.T) {
-	// This test verifies that we can capture methods on pointer receivers
-	// of embedded modules even when the parent struct is passed by value (non-addressable).
-	m := testMethodsContainer{
-		V: testMethodsValueMod{},
-	}
-	// Pass by value
-	scope := New(Methods(m)...)
-
-	// Should find Pointer() (int32) from *testMethodsValueMod
-	// This would fail if we didn't create an addressable copy of the embedded field
-	if v := scope.Get[int32](); v != 2 {
-		t.Fatalf("expected 2, got %d", v)
-	}
-
-	// Should find Value() (int64) from testMethodsValueMod
-	if v := scope.Get[int64](); v != 1 {
-		t.Fatalf("expected 1, got %d", v)
-	}
-}
-
 type testMethodsRootValue struct {
 	Module
 }
 
 func (testMethodsRootValue) Value() int64    { return 1 }
 func (*testMethodsRootValue) Pointer() int32 { return 2 }
-
-func TestMethodsRootValueAddressability(t *testing.T) {
-	m := testMethodsRootValue{}
-	// Passing by value
-	scope := New(Methods(m)...)
-
-	// Should find Value() -> int64
-	if v := scope.Get[int64](); v != 1 {
-		t.Fatalf("expected 1, got %d", v)
-	}
-
-	// Should find Pointer() -> int32
-	// Without fix, this fails to find the provider for int32
-	if v := scope.Get[int32](); v != 2 {
-		t.Fatalf("expected 2, got %d", v)
-	}
-}
-
-func TestMethodsMultiLevelNilInterface(t *testing.T) {
-	t.Run("nil double pointer to interface", func(t *testing.T) {
-		defer func() {
-			p := recover()
-			if p == nil {
-				t.Fatal("should panic")
-			}
-			err, ok := p.(error)
-			if !ok {
-				t.Fatalf("panic value not an error: %v", p)
-			}
-			msg := err.Error()
-			if !strings.Contains(msg, "nil pointer to interface **io.Reader") {
-				t.Fatalf("got %s", msg)
-			}
-		}()
-		Methods((**io.Reader)(nil))
-	})
-
-	t.Run("nil triple pointer to interface", func(t *testing.T) {
-		defer func() {
-			p := recover()
-			if p == nil {
-				t.Fatal("should panic")
-			}
-			err, ok := p.(error)
-			if !ok {
-				t.Fatalf("panic value not an error: %v", p)
-			}
-			msg := err.Error()
-			if !strings.Contains(msg, "nil pointer to interface ***io.Reader") {
-				t.Fatalf("got %s", msg)
-			}
-		}()
-		Methods((***io.Reader)(nil))
-	})
-}
 
 func TestMethodsRecursivePointer(t *testing.T) {
 	type RecursivePointer *RecursivePointer
@@ -281,5 +200,29 @@ func TestMethodsEmbeddedModulePromotion(t *testing.T) {
 	}
 	if v := scope.Get[int32](); v != 2 {
 		t.Fatalf("method of a named module field inside an embedded module not provided: got %d", v)
+	}
+}
+
+// TestMethodsAddressability verifies that method discovery finds the methods of
+// pointer receivers on values that are not addressable: a module held in a
+// field, a module passed by value, and a root struct passed by value.
+func TestMethodsAddressability(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		object any
+	}{
+		{"container pointer", &testMethodsContainer{}},
+		{"container value", testMethodsContainer{}},
+		{"root value", testMethodsRootValue{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			scope := New(Methods(tc.object)...)
+			if v := scope.Get[int64](); v != 1 {
+				t.Fatalf("expected 1, got %d", v)
+			}
+			if v := scope.Get[int32](); v != 2 {
+				t.Fatalf("expected 2, got %d", v)
+			}
+		})
 	}
 }

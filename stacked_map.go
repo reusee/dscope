@@ -348,16 +348,6 @@ func (s *_StackedMap) Append(values []_Value) *_StackedMap {
 	return layer
 }
 
-// AppendRefresh appends the layer of a partial reset: it holds the values a Fork
-// adds and marks the inherited types in ids for re-evaluation. values must be
-// sorted by TypeID; ids must be sorted, belong to the scope below, and be
-// disjoint from the types of values.
-func (s *_StackedMap) AppendRefresh(values []_Value, ids []_TypeID) *_StackedMap {
-	layer := s.Append(values)
-	layer.markRefresh(ids)
-	return layer
-}
-
 // Len returns the number of value entries the stack tracks: the values of each
 // layer plus the inherited types a partial reset layer marks for refresh.
 func (s *_StackedMap) Len() int {

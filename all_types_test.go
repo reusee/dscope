@@ -53,45 +53,30 @@ func TestAllTypes(t *testing.T) {
 // TestAllTypesBuiltins verifies that each built-in dependency appears exactly
 // once in AllTypes, also when a user definition for the same type is present.
 func TestAllTypesBuiltins(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		defs []any
-	}{
-		{
-			name: "empty scope",
+	scope := New(
+		func() InjectStruct {
+			return func(target any) {}
 		},
-		{
-			name: "user definitions",
-			defs: []any{
-				func() InjectStruct {
-					return func(target any) {}
-				},
-				func() Fork {
-					return func(defs ...any) Scope { return New() }
-				},
-				func() Reset {
-					return func() Scope { return New() }
-				},
-			},
+		func() Fork {
+			return func(defs ...any) Scope { return New() }
 		},
+		func() Reset {
+			return func() Scope { return New() }
+		},
+	)
+	for _, typ := range []reflect.Type{
+		reflect.TypeFor[InjectStruct](),
+		reflect.TypeFor[Fork](),
+		reflect.TypeFor[Reset](),
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			scope := New(tc.defs...)
-			for _, typ := range []reflect.Type{
-				reflect.TypeFor[InjectStruct](),
-				reflect.TypeFor[Fork](),
-				reflect.TypeFor[Reset](),
-			} {
-				var count int
-				for got := range scope.AllTypes() {
-					if got == typ {
-						count++
-					}
-				}
-				if count != 1 {
-					t.Fatalf("%v should appear exactly once in AllTypes, got %d", typ, count)
-				}
+		var count int
+		for got := range scope.AllTypes() {
+			if got == typ {
+				count++
 			}
-		})
+		}
+		if count != 1 {
+			t.Fatalf("%v should appear exactly once in AllTypes, got %d", typ, count)
+		}
 	}
 }

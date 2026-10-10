@@ -8,13 +8,6 @@ Managing dependencies in larger Go applications can become complex. `dscope` off
 
 *   **Type-Safe Dependencies**: Leverages Go's type system to ensure that dependencies are resolved correctly at compile time or with clear runtime panics if a type is missing. Generic functions like `Get[T](scope)` provide compile-time type checking for retrievals.
 *   **Define and Depend on Interfaces (or Concrete Types)**: While you can register and request concrete types directly, `dscope` fully supports defining providers that return interfaces and requesting dependencies via those interfaces, promoting loose coupling.
-*   **Cleaner Function Signatures**: A provider function declares its dependencies as parameters, and `Fork` resolves them from the scope. Computing a value needs no extra API: fork the computing function and get its result type. The function declares exactly what it needs and nothing more.
-*   **Enhanced Testability**:
-    *   **Easy Overriding**: You can easily `Fork` a scope and provide alternative (mock or stub) implementations for specific types, making unit and integration testing more straightforward.
-*   **Immutable and Predictable Scopes**: Each scope is an immutable container. Modifying a scope (e.g., adding new definitions or overriding existing ones) results in a new scope instance. This makes the state of dependencies predictable and easier to reason about.
-*   **Lazy Initialization**: Values within a scope are initialized lazily. A provider function is only called when the value it provides (or a dependant value) is actually requested for the first time. This can improve application startup time and resource usage.
-*   **Fine-Grained Recomputation**: `Fork` recomputes only the overridden type and its transitive dependents. Prefer single-value types over composites with multiple mutable fields: overriding one value then recomputes only the providers that depend on it, not every consumer of the composite.
-
 ## Core Concepts
 
 ### Scope
