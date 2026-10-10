@@ -186,3 +186,62 @@ func (s *_StackedMap) flatten() *_StackedMap {
 		Height: 1,
 	}
 }
+
+// LoadMany resolves the innermost value of every given TypeID. The IDs must be
+// sorted and free of duplicates, which is the order a dependency analysis
+// produces. One merge pass per layer finds all of them, so a caller holding a
+// sorted ID set pays for the layers, not for the ID count.
+//
+// The returned slice follows the order of the IDs. A nil result means at least
+// one ID has no value in the stack.
+func (s *_StackedMap) LoadMany(ids []_TypeID) []_Value {
+	if len(ids) == 0 {
+		return nil
+	}
+	if s != nil && s.ResetBase != nil {
+		values := s.ResetBase.LoadMany(ids)
+		if values == nil {
+			return nil
+		}
+		for i := range values {
+			values[i] = s.refreshValue(values[i])
+		}
+		return values
+	}
+	// ret is indexed by position in ids, so values found in different layers
+	// land in the caller's order. A filled typeInfo marks a resolved position.
+	ret := make([]_Value, len(ids))
+	found := 0
+	for cur := s; cur != nil && found < len(ids); cur = cur.Next {
+		values := cur.Values
+		j := 0
+		for i := range ids {
+			if ret[i].typeInfo != nil {
+				continue
+			}
+			id := ids[i]
+			for j < len(values) && values[j].typeInfo.TypeID < id {
+				j++
+			}
+			if j == len(values) {
+				break
+			}
+			if values[j].typeInfo.TypeID > id {
+				continue
+			}
+			v := values[j]
+			if cur.Refresh {
+				// A partial reset layer hands out a fresh initializer for the
+				// value, so the provider re-evaluates in this scope.
+				v = cur.refreshValue(v)
+			}
+			ret[i] = v
+			found++
+			j++
+		}
+	}
+	if found != len(ids) {
+		return nil
+	}
+	return ret
+}

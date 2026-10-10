@@ -1,8 +1,8 @@
 package dscope
 
 import (
-	"crypto/sha256"
 	"encoding/binary"
+	"hash/maphash"
 	"reflect"
 	"sync"
 )
@@ -22,39 +22,64 @@ type _TypeInfo struct {
 // _TypeID is a unique identifier for a reflect.Type.
 type _TypeID int
 
-// _Hash is used for scope signatures and cache keys.
-type _Hash [sha256.Size]byte
+// _Hash is used for scope signatures and cache keys. A scope's identity is its
+// sorted set of definition type IDs; a collision would bind a scope to another
+// scope's forker and silently hand out wrong values, so the digest stays 128
+// bits wide, produced by two independent seeds of the runtime's fast hash.
+type _Hash [2]uint64
+
+// hashSeeds seeds the two halves of every _Hash. The seeds are random per
+// process and never leave it: signatures and fork keys are process-local.
+var hashSeeds = [2]maphash.Seed{
+	maphash.MakeSeed(),
+	maphash.MakeSeed(),
+}
 
 // hashTypeIDs hashes a seed followed by the given type IDs, each encoded as one
 // native-endian uint64. A scope's identity is its sorted set of definition type
-// IDs, so every signature and cache key must use this encoding. The IDs stream
-// into the hasher one at a time, so the digest needs no intermediate buffer.
+// IDs, so every signature and cache key must use this encoding. Each half of the
+// digest gets a Hash value of its own, seeded before its only use, so the halves
+// come from two independent seeds. The IDs stream into the hashers one at a
+// time, so the digest needs no intermediate buffer.
 func hashTypeIDs(seed []byte, ids []_TypeID) (ret _Hash) {
-	h := sha256.New() // use cryptographic hash to avoid collision
-	_, _ = h.Write(seed)
+	var h0, h1 maphash.Hash
+	h0.SetSeed(hashSeeds[0])
+	h1.SetSeed(hashSeeds[1])
+	_, _ = h0.Write(seed)
+	_, _ = h1.Write(seed)
 	var idBuf [8]byte
 	for _, id := range ids {
 		binary.NativeEndian.PutUint64(idBuf[:], uint64(id))
-		_, _ = h.Write(idBuf[:])
+		_, _ = h0.Write(idBuf[:])
+		_, _ = h1.Write(idBuf[:])
 	}
-	h.Sum(ret[:0])
+	ret[0] = h0.Sum64()
+	ret[1] = h1.Sum64()
 	return
 }
 
 // forkKey derives the forker cache key of a Fork call: the base scope's
 // signature followed by the type IDs of the new definitions, in the encoding
-// hashTypeIDs uses. It streams the signature and each ID into the hasher, so the
-// key needs no intermediate buffer and a cache lookup of a small Fork call
+// hashTypeIDs uses. It streams the signature and each ID into the hashers, so
+// the key needs no intermediate buffer and a cache lookup of a small Fork call
 // allocates nothing.
 func forkKey(signature _Hash, defs []any) (ret _Hash) {
-	h := sha256.New() // use cryptographic hash to avoid collision
-	_, _ = h.Write(signature[:])
+	var h0, h1 maphash.Hash
+	h0.SetSeed(hashSeeds[0])
+	h1.SetSeed(hashSeeds[1])
 	var idBuf [8]byte
+	for _, word := range signature {
+		binary.NativeEndian.PutUint64(idBuf[:], word)
+		_, _ = h0.Write(idBuf[:])
+		_, _ = h1.Write(idBuf[:])
+	}
 	for _, def := range defs {
 		binary.NativeEndian.PutUint64(idBuf[:], uint64(getTypeID(reflect.TypeOf(def))))
-		_, _ = h.Write(idBuf[:])
+		_, _ = h0.Write(idBuf[:])
+		_, _ = h1.Write(idBuf[:])
 	}
-	h.Sum(ret[:0])
+	ret[0] = h0.Sum64()
+	ret[1] = h1.Sum64()
 	return
 }
 
@@ -358,11 +383,16 @@ var reflectValuesPool = sync.Pool{
 
 // call resolves the parameters of fnValue from the scope, invokes fnValue, and
 // returns its results. fnValue is a definition that already passed
-// validateDefinition — a valid, non-nil function returning at least one value —
-// so the invocation itself cannot fail on malformed input.
+// validateDefinition — a valid, non-nil function returning at least one value
+// — so the invocation itself cannot fail on malformed input.
 func (scope Scope) call(fnValue reflect.Value) []reflect.Value {
 	fnType := fnValue.Type()
 	nArgs := fnType.NumIn()
+	if nArgs == 0 {
+		// A provider without parameters takes the direct path: reflect accepts
+		// a nil argument slice, so no pooled buffer is involved.
+		return fnValue.Call(nil)
+	}
 	// Use pool for small number of arguments
 	if nArgs <= reflectValuesPoolMaxLen {
 		ptr := reflectValuesPool.Get().(*[reflectValuesPoolMaxLen]reflect.Value)

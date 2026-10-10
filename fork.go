@@ -38,7 +38,8 @@ dscope fork flatten theory:
 - Fork can be called any number of times. Repeated forking never grows the
   value stack without bound, so lookups never slow down over time.
 - Each Fork appends new sorted layers onto the scope's value stack. Unbounded
-  layering would degrade lookups, because Load binary-searches each layer.
+  layering would degrade lookups, because every lookup binary-searches each
+  layer.
 - A Fork whose definitions change no effective value adds no layer at all: the
   new scope shares the value stack of its base.
 - Appending flattens the stack first when it is deeper than an internal
@@ -421,15 +422,12 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 	//    a value's initializer on first access, so a Fork creates fresh
 	//    initializers only for the values the new scope actually resolves.
 	if len(f.ResetIDs) > 0 {
-		resetValues := make([]_Value, 0, len(f.ResetIDs))
-		for _, id := range f.ResetIDs {
-			currentDef, ok := scope.values.Load(id) // Load definitions from current stack
-			if !ok {
-				panic("impossible: reset ID not found in scope")
-			}
-			resetValues = append(resetValues, currentDef)
+		// ResetIDs is sorted, so a single merge pass over the stack collects
+		// every inherited value at once instead of searching once per ID.
+		resetValues := scope.values.LoadMany(f.ResetIDs)
+		if resetValues == nil {
+			panic("impossible: reset ID not found in scope")
 		}
-		// resetValues are implicitly sorted by type ID.
 		scope.values = scope.values.AppendRefresh(resetValues)
 	}
 
