@@ -37,7 +37,7 @@ const TheoryOfScopeForkFlatten = `
 dscope fork flatten theory:
 - Fork can be called any number of times. Repeated forking never grows the
   value stack without bound, so lookups never slow down over time.
-- Each Fork appends new sorted layers onto the scope's value stack. Unbounded
+- Each Fork appends one sorted layer onto the scope's value stack. Unbounded
   layering would degrade lookups, because every lookup binary-searches each
   layer.
 - A Fork whose definitions change no effective value adds no layer at all: the
@@ -45,9 +45,11 @@ dscope fork flatten theory:
 - Appending flattens the stack first when it is deeper than an internal
   threshold, and always when the base layer is a lazy reset layer, because
   binary search needs a single sorted stack.
-- The reset layer of a Fork keeps the inherited initializers and refreshes them
-  on first access, so a Fork creates fresh initializers only for the values the
-  new scope actually resolves.
+- The layer of a Fork holds the definitions the fork adds and the inherited
+  types whose recomputation those definitions affect. It marks an affected type
+  instead of copying it and refreshes the type on first access, so a Fork pays
+  neither for the size of the affected set nor for the values the new scope
+  never resolves.
 - Flattening is transparent: effective values and override semantics are
   preserved. Users never need to compact scopes manually.
 `
@@ -242,11 +244,16 @@ func newForker(
 
 	// 3. Build Conceptual Next Scope & Analyze Dependencies via DFS:
 	//    - `valuesTemplate`: Temporary _StackedMap representing the potential new scope.
-	//    - Detect loops (`colors`: 0=White, 1=Gray, 2=Black).
-	//    - Determine which types need reset (`needsReset`).
+	//    - Detect loops (`color`: 0=White, 1=Gray, 2=Black).
+	//    - Determine which types need reset (`reset`).
+	type traversalState struct {
+		color int
+		reset bool
+	}
 	valuesTemplate := scope.values.Append(sortedNewValuesTemplate)
-	colors := make(map[_TypeID]int, len(newValuesTemplate))      // For cycle detection
-	needsReset := make(map[_TypeID]bool, len(newValuesTemplate)) // Memoization for reset status
+	// One map memoizes the colour and the reset requirement of every type, so a
+	// step of the analysis pays one lookup instead of two.
+	states := make(map[_TypeID]traversalState, len(newValuesTemplate))
 
 	// path is the ancestor chain of the node being traversed, held in one stack
 	// that grows and shrinks with the recursion. It is read only when a loop is
@@ -257,8 +264,8 @@ func newForker(
 		id := value.typeInfo.TypeID
 
 		// Cycle Detection & Memoization
-		color := colors[id]
-		switch color {
+		state := states[id]
+		switch state.color {
 
 		case 1: // Gray: Loop detected
 			// The reported path must close the loop: the gray node is
@@ -276,10 +283,10 @@ func newForker(
 			)
 
 		case 2: // Black: Already processed
-			return needsReset[id], nil
+			return state.reset, nil
 		}
 
-		colors[id] = 1 // Mark as visiting (Gray)
+		states[id] = traversalState{color: 1} // Mark as visiting (Gray)
 
 		// Base Case: Check if directly redefined in this fork
 		if _, ok := redefinedIDs[id]; ok {
@@ -316,13 +323,12 @@ func newForker(
 		}
 		path = path[:len(path)-1]
 
-		colors[id] = 2
-		needsReset[id] = reset
+		states[id] = traversalState{color: 2, reset: reset}
 		return
 	}
 
 	// 4. Analyze All Types in Conceptual Scope:
-	//    - Populate `needsReset` and detect loops globally via `traverse`.
+	//    - Populate `states` and detect loops globally via `traverse`.
 	//    - Collect `defTypeIDs` for signature.
 	defTypeIDs := make([]_TypeID, 0, valuesTemplate.Len()) // For signature
 
@@ -343,9 +349,9 @@ func newForker(
 	signature := hashTypeIDs(nil, defTypeIDs)
 
 	// 6. Identify Values Requiring Reset: Collect TypeIDs that need reset AND existed in the base scope.
-	resetIDs := make([]_TypeID, 0, len(needsReset))
-	for id, reset := range needsReset {
-		if !reset {
+	resetIDs := make([]_TypeID, 0, len(states))
+	for id, state := range states {
+		if !state.reset {
 			continue
 		}
 		if _, ok := redefinedIDs[id]; ok {
@@ -385,7 +391,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 		scope.values = scope.values.flatten()
 	}
 
-	// 2. Create and Add New Values Layer: Instantiate initializers and values.
+	// 2. Create the values of this fork: Instantiate initializers and values.
 	newValues := make([]_Value, len(f.NewValuesTemplate))
 	valueIdx := 0
 	for defIdx, def := range defs {
@@ -415,20 +421,16 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 			valueIdx++
 		}
 	}
-	scope.values = scope.values.Append(newValues)
 
-	// 3. Create and Add Reset Values Layer: Contains the inherited values that
-	//    the overrides or the newly added definitions affect. The layer refreshes
-	//    a value's initializer on first access, so a Fork creates fresh
-	//    initializers only for the values the new scope actually resolves.
+	// 3. Add the single layer of this fork: it carries the overrides and the new
+	//    definitions together with the inherited types whose recomputation they
+	//    affect. A marked type holds no value in the layer and gets a fresh
+	//    initializer on first access, so the cost of a Fork does not grow with
+	//    the dependent set.
 	if len(f.ResetIDs) > 0 {
-		// ResetIDs is sorted, so a single merge pass over the stack collects
-		// every inherited value at once instead of searching once per ID.
-		resetValues := scope.values.LoadMany(f.ResetIDs)
-		if resetValues == nil {
-			panic("impossible: reset ID not found in scope")
-		}
-		scope.values = scope.values.AppendRefresh(resetValues)
+		scope.values = scope.values.AppendRefresh(newValues, f.ResetIDs)
+	} else {
+		scope.values = scope.values.Append(newValues)
 	}
 
 	return scope

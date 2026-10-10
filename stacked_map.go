@@ -16,17 +16,19 @@ import (
 // that providers are re-evaluated on first access. Fresh initializers are cached
 // in ResetCache, preserving the at-most-once evaluation guarantee per scope.
 //
-// When Refresh is set the node acts as a partial reset layer: its values carry
-// the initializers inherited from lower layers, and only a value that is
-// actually resolved is replaced with a fresh copy from ResetCache. Fork uses
-// this mode so that a new scope re-evaluates the overridden types and their
-// dependents, and only those values the scope touches.
+// When Refresh is set the node acts as a partial reset layer: RefreshIDs lists
+// the sorted inherited types whose recomputation the node invalidates, and the
+// node also holds the values a Fork adds. Resolving a marked type searches below
+// the node and replaces the initializer with a fresh copy from ResetCache, so a
+// Fork re-evaluates the affected types on first access and only those. A type
+// the node provides itself is never marked.
 type _StackedMap struct {
 	Next       *_StackedMap // Previous layer in the stack.
 	Values     []_Value     // Values in this layer, sorted by TypeID.
 	Height     int          // Height of the stack from this node downwards.
 	ResetBase  *_StackedMap // Non-nil for lazy reset layers; delegates to this base.
-	Refresh    bool         // Set for a partial reset layer; refresh values on access.
+	Refresh    bool         // Set for a partial reset layer; the types in RefreshIDs are refreshed on access.
+	RefreshIDs []_TypeID    // Sorted TypeIDs a partial reset layer refreshes; the slice belongs to the _Forker.
 	ResetCache *sync.Map    // Caches fresh initializers (initializer ID -> *_Initializer).
 }
 
@@ -40,11 +42,21 @@ func (s *_StackedMap) Load(id _TypeID) (ret _Value, ok bool) {
 		return s.refreshValue(v), true
 	}
 
-	for s != nil {
-		values := s.Values
+	for cur := s; cur != nil; cur = cur.Next {
+		if cur.Refresh && containsID(cur.RefreshIDs, id) {
+			// A partial reset layer resolves the inherited value below itself
+			// and hands out a fresh initializer, so the provider re-evaluates
+			// in this scope.
+			v, found := cur.Next.Load(id)
+			if !found {
+				panic("impossible: refreshed type not found below its layer")
+			}
+			return cur.refreshValue(v), true
+		}
+
+		values := cur.Values
 		l := uint(len(values))
 		if l == 0 {
-			s = s.Next
 			continue
 		}
 
@@ -58,17 +70,17 @@ func (s *_StackedMap) Load(id _TypeID) (ret _Value, ok bool) {
 			} else if midID < id {
 				left = mid + 1
 			} else {
-				if s.Refresh {
-					// A partial reset layer hands out a fresh initializer for
-					// the value, so the provider re-evaluates in this scope.
-					return s.refreshValue(values[mid]), true
-				}
 				return values[mid], true // Found
 			}
 		}
-		s = s.Next
 	}
 	return // Not found
+}
+
+// containsID reports whether the sorted ID slice holds id.
+func containsID(ids []_TypeID, id _TypeID) bool {
+	_, ok := slices.BinarySearch(ids, id)
+	return ok
 }
 
 // refreshValue returns v with a fresh initializer, cached per reset layer.
@@ -103,20 +115,28 @@ func (s *_StackedMap) IterValues() iter.Seq[_Value] {
 	}
 	return func(yield func(_Value) bool) {
 		keys := make(map[_TypeID]struct{})
+		// refreshers collects the partial reset layers above the current layer,
+		// from the top of the stack downwards. A value found below them is
+		// refreshed by each of them, the way Load replaces initializers.
+		var refreshers []*_StackedMap
 		for cur := s; cur != nil; cur = cur.Next {
 			for _, d := range cur.Values {
-				if _, ok := keys[d.typeInfo.TypeID]; ok {
+				id := d.typeInfo.TypeID
+				if _, ok := keys[id]; ok {
 					continue
 				}
-				keys[d.typeInfo.TypeID] = struct{}{}
-				if cur.Refresh {
-					// A partial reset layer yields the refreshed value, so
-					// flattening keeps the reset semantics.
-					d = cur.refreshValue(d)
+				keys[id] = struct{}{}
+				for i := len(refreshers) - 1; i >= 0; i-- {
+					if r := refreshers[i]; containsID(r.RefreshIDs, id) {
+						d = r.refreshValue(d)
+					}
 				}
 				if !yield(d) {
 					return
 				}
+			}
+			if cur.Refresh {
+				refreshers = append(refreshers, cur)
 			}
 		}
 	}
@@ -142,20 +162,22 @@ func (s *_StackedMap) Append(values []_Value) *_StackedMap {
 	}
 }
 
-// AppendRefresh appends a layer that replaces the initializers of inherited
-// values with fresh ones. The values in the layer keep their inherited
-// initializers: the fresh initializer of a value comes into existence in the
-// layer's cache only when the value is actually resolved, so a Fork pays for the
-// values its scope touches and no more. The provided values must be pre-sorted
-// by TypeID.
-func (s *_StackedMap) AppendRefresh(values []_Value) *_StackedMap {
-	ret := s.Append(values)
-	ret.Refresh = true
-	ret.ResetCache = new(sync.Map)
-	return ret
+// AppendRefresh appends the layer of a partial reset: it holds the values a Fork
+// adds and marks the inherited types in ids for re-evaluation. The layer keeps no
+// initializer for a marked type, so a fresh initializer comes into existence in
+// the layer's cache only when the type is actually resolved: a Fork pays for the
+// values its scope touches and no more. values must be sorted by TypeID; ids must
+// be sorted, belong to the scope below, and be disjoint from the types of values.
+func (s *_StackedMap) AppendRefresh(values []_Value, ids []_TypeID) *_StackedMap {
+	layer := s.Append(values)
+	layer.Refresh = true
+	layer.RefreshIDs = ids
+	layer.ResetCache = new(sync.Map)
+	return layer
 }
 
-// Len returns the total number of individual _Value entries across all layers.
+// Len returns the number of value entries the stack tracks: the values of each
+// layer plus the inherited types a partial reset layer marks for refresh.
 func (s *_StackedMap) Len() int {
 	if s == nil {
 		return 0
@@ -165,7 +187,7 @@ func (s *_StackedMap) Len() int {
 	}
 	ret := 0
 	for s != nil {
-		ret += len(s.Values)
+		ret += len(s.Values) + len(s.RefreshIDs)
 		s = s.Next
 	}
 	return ret
@@ -185,63 +207,4 @@ func (s *_StackedMap) flatten() *_StackedMap {
 		Values: flatValues,
 		Height: 1,
 	}
-}
-
-// LoadMany resolves the innermost value of every given TypeID. The IDs must be
-// sorted and free of duplicates, which is the order a dependency analysis
-// produces. One merge pass per layer finds all of them, so a caller holding a
-// sorted ID set pays for the layers, not for the ID count.
-//
-// The returned slice follows the order of the IDs. A nil result means at least
-// one ID has no value in the stack.
-func (s *_StackedMap) LoadMany(ids []_TypeID) []_Value {
-	if len(ids) == 0 {
-		return nil
-	}
-	if s != nil && s.ResetBase != nil {
-		values := s.ResetBase.LoadMany(ids)
-		if values == nil {
-			return nil
-		}
-		for i := range values {
-			values[i] = s.refreshValue(values[i])
-		}
-		return values
-	}
-	// ret is indexed by position in ids, so values found in different layers
-	// land in the caller's order. A filled typeInfo marks a resolved position.
-	ret := make([]_Value, len(ids))
-	found := 0
-	for cur := s; cur != nil && found < len(ids); cur = cur.Next {
-		values := cur.Values
-		j := 0
-		for i := range ids {
-			if ret[i].typeInfo != nil {
-				continue
-			}
-			id := ids[i]
-			for j < len(values) && values[j].typeInfo.TypeID < id {
-				j++
-			}
-			if j == len(values) {
-				break
-			}
-			if values[j].typeInfo.TypeID > id {
-				continue
-			}
-			v := values[j]
-			if cur.Refresh {
-				// A partial reset layer hands out a fresh initializer for the
-				// value, so the provider re-evaluates in this scope.
-				v = cur.refreshValue(v)
-			}
-			ret[i] = v
-			found++
-			j++
-		}
-	}
-	if found != len(ids) {
-		return nil
-	}
-	return ret
 }

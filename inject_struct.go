@@ -79,6 +79,7 @@ l:
 		IsInject   bool
 		IsEmbedded bool
 		Type       reflect.Type
+		TypeID     _TypeID
 	}
 	var infos []FieldInfo
 	for i := range t.NumField() {
@@ -94,16 +95,19 @@ l:
 			// Only treat as Inject[T] if it is a function.
 			// Pointers to Inject[T] also implement the interface but cannot be
 			// processed by reflect.MakeFunc or Out(0).
+			injectedType := field.Type.Out(0)
 			infos = append(infos, FieldInfo{
 				Field:    field,
 				IsInject: true,
-				Type:     field.Type.Out(0),
+				Type:     injectedType,
+				TypeID:   getTypeID(injectedType),
 			})
 
 		} else if directive == "." || directive == "inject" {
 			infos = append(infos, FieldInfo{
-				Field: field,
-				Type:  field.Type,
+				Field:  field,
+				Type:   field.Type,
+				TypeID: getTypeID(field.Type),
 			})
 
 		} else if field.Anonymous {
@@ -143,15 +147,22 @@ l:
 		for _, info := range infos {
 
 			if info.IsInject {
-				value.FieldByIndex(info.Field.Index).Set(
+				// The lazy function reads the field data from plain locals: a
+				// closure over the loop variable would push a copy of every
+				// FieldInfo to the heap on each call.
+				fieldType := info.Field.Type
+				fieldIndex := info.Field.Index
+				injectedType := info.Type
+				typeID := info.TypeID
+				value.FieldByIndex(fieldIndex).Set(
 					reflect.MakeFunc(
-						info.Field.Type,
+						fieldType,
 						func(_ []reflect.Value) []reflect.Value {
-							value, ok := scope.get(getTypeID(info.Type))
+							v, ok := scope.get(typeID)
 							if !ok {
-								throwErrDependencyNotFound(info.Type)
+								throwErrDependencyNotFound(injectedType)
 							}
-							return []reflect.Value{value}
+							return []reflect.Value{v}
 						},
 					),
 				)
@@ -174,7 +185,7 @@ l:
 				}
 
 			} else {
-				v, ok := scope.get(getTypeID(info.Type))
+				v, ok := scope.get(info.TypeID)
 				if !ok {
 					throwErrDependencyNotFound(info.Type)
 				}
