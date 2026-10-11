@@ -96,6 +96,24 @@ func forkKey(signature _Hash, defs []any) (ret _Hash) {
 	return
 }
 
+// forkKeyFromTypes derives the forker cache key from pre-computed definition
+// types. It is forkKey with the reflect.TypeOf calls hoisted out, so a Fork
+// that already holds the types pays for hashing only. The digest encoding and
+// the bijective property are identical to forkKey.
+func forkKeyFromTypes(signature _Hash, defTypes []reflect.Type) (ret _Hash) {
+	h0, h1 := hashSeeds[0]^signature[0], hashSeeds[1]^signature[1]
+	h0 = hashWord(h0, uint64(len(defTypes)))
+	h1 = hashWord(h1, uint64(len(defTypes)))
+	for _, t := range defTypes {
+		id := uint64(getTypeID(t))
+		h0 = hashWord(h0, id)
+		h1 = hashWord(h1, id)
+	}
+	ret[0] = h0
+	ret[1] = h1
+	return
+}
+
 // TheoryOfScopeCore documents the fundamental model of dscope: an immutable,
 // type-keyed container of lazily evaluated definitions.
 const TheoryOfScopeCore = `
@@ -232,13 +250,22 @@ func (scope Scope) Fork(
 		defs = append(newDefs, Methods(moduleObjects...)...)
 	}
 
-	// Validate every (possibly module-expanded) definition before reflection
-	// and cache-key generation. The forker cache is keyed by definition types
-	// only, so on a cache hit newForker never runs; validation must therefore
-	// happen here on every call, or malformed definitions would reach value
-	// construction and leak reflection panics at first access.
-	for _, def := range defs {
-		validateDefinition(def)
+	// Validate every (possibly module-expanded) definition and collect its
+	// reflect.Type once, so the validation, the cache key, and the forker
+	// analysis reuse the same types instead of each calling reflect.TypeOf on
+	// the same definition again. An untyped nil definition is rejected before
+	// reflect.TypeOf, which would return a nil type for it. The forker cache
+	// is keyed by definition types only, so on a cache hit newForker never
+	// runs; validation must therefore happen here on every call, or malformed
+	// definitions would reach value construction and leak reflection panics
+	// at first access.
+	defTypes := make([]reflect.Type, len(defs))
+	for i, def := range defs {
+		if def == nil {
+			panic(errWith(ErrBadArgument, "nil definition"))
+		}
+		defTypes[i] = reflect.TypeOf(def)
+		validateDefinitionWithType(def, defTypes[i])
 	}
 
 	// sorting defs may reduce memory consumption if there're calls with same defs but different order
@@ -247,7 +274,7 @@ func (scope Scope) Fork(
 	// Calculate cache key for this Fork operation.
 	// Key is based on the base scope signature and the types of new definitions.
 	// Hashing types is sufficient as only one definition instance per type is effectively used.
-	key := forkKey(scope.signature, defs)
+	key := forkKeyFromTypes(scope.signature, defTypes)
 
 	// Check the caches: the direct-mapped slot first, the forker table behind it.
 	if forker := lookupForker(key); forker != nil {
@@ -255,7 +282,7 @@ func (scope Scope) Fork(
 	}
 
 	// Cache miss, create and cache forker
-	forker := newForker(scope, defs)
+	forker := newForkerWithTypes(scope, defs, defTypes)
 	v, _ := forkers.LoadOrStore(key, forker)
 	forker = v.(*_Forker)
 	publishForker(key, forker)
@@ -404,11 +431,47 @@ func (scope Scope) TryGetType(typ reflect.Type) (reflect.Value, bool) {
 // reflect.Type -> func(Scope, []reflect.Value) int
 var getArgsFunc sync.Map
 
+// _GetArgsFuncCacheEntry is one confirmed function-type-to-argument-fetcher
+// mapping.
+type _GetArgsFuncCacheEntry struct {
+	typ reflect.Type
+	fn  func(Scope, []reflect.Value) int
+}
+
+// getArgsFuncCache accelerates the argument-fetcher lookup for the function
+// types a program calls repeatedly. It shares the slot mapping of the type ID
+// cache: the descriptor address of the type spreads function types over the
+// slots. A hit is confirmed by comparing the type itself, so a slot collision
+// costs a sync.Map lookup and nothing more.
+var getArgsFuncCache [typeIDCacheSize]atomic.Pointer[_GetArgsFuncCacheEntry]
+
+// getArgsFuncLastEntry remembers the argument-fetcher mapping confirmed most
+// recently, so a program that resolves the arguments of one provider function
+// over and over needs neither a slot computation nor a map walk. Like every
+// cache entry it is confirmed by comparing the type itself.
+var getArgsFuncLastEntry atomic.Pointer[_GetArgsFuncCacheEntry]
+
 // getArgs resolves the arguments for a function of type `fnType` from the scope
 // and places them into the `args` slice. It returns the number of arguments resolved.
 func (scope Scope) getArgs(fnType reflect.Type, args []reflect.Value) int {
+	if entry := getArgsFuncLastEntry.Load(); entry != nil && entry.typ == fnType {
+		return entry.fn(scope, args)
+	}
+	slot, cacheable := typeIDCacheSlot(fnType)
+	if cacheable {
+		if entry := getArgsFuncCache[slot].Load(); entry != nil && entry.typ == fnType {
+			getArgsFuncLastEntry.Store(entry)
+			return entry.fn(scope, args)
+		}
+	}
 	if v, ok := getArgsFunc.Load(fnType); ok {
-		return v.(func(Scope, []reflect.Value) int)(scope, args)
+		fn := v.(func(Scope, []reflect.Value) int)
+		entry := &_GetArgsFuncCacheEntry{typ: fnType, fn: fn}
+		if cacheable {
+			getArgsFuncCache[slot].Store(entry)
+		}
+		getArgsFuncLastEntry.Store(entry)
+		return fn(scope, args)
 	}
 	return scope.getArgsSlow(fnType, args)
 }
@@ -432,7 +495,13 @@ func (scope Scope) getArgsSlow(fnType reflect.Type, args []reflect.Value) int {
 		return numIn
 	}
 	v, _ := getArgsFunc.LoadOrStore(fnType, getArgs)
-	return v.(func(Scope, []reflect.Value) int)(scope, args)
+	fn := v.(func(Scope, []reflect.Value) int)
+	entry := &_GetArgsFuncCacheEntry{typ: fnType, fn: fn}
+	if slot, cacheable := typeIDCacheSlot(fnType); cacheable {
+		getArgsFuncCache[slot].Store(entry)
+	}
+	getArgsFuncLastEntry.Store(entry)
+	return fn(scope, args)
 }
 
 const reflectValuesPoolMaxLen = 64

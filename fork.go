@@ -141,11 +141,21 @@ func validateDefinition(def any) {
 	if def == nil {
 		panic(errWith(ErrBadArgument, "nil definition"))
 	}
-	defValue := reflect.ValueOf(def)
-	defType := defValue.Type()
+	validateDefinitionWithType(def, reflect.TypeOf(def))
+}
+
+// validateDefinitionWithType is validateDefinition with a pre-computed
+// reflect.Type, so a caller that already holds the type does not pay for
+// another reflect.TypeOf. A nil type means the definition was an untyped nil:
+// reflect.TypeOf returns a nil type for it. The nil-value checks still need
+// reflect.ValueOf because they test the value, not the type.
+func validateDefinitionWithType(def any, defType reflect.Type) {
+	if defType == nil {
+		panic(errWith(ErrBadArgument, "nil definition"))
+	}
 	switch defType.Kind() {
 	case reflect.Func:
-		if defValue.IsNil() {
+		if reflect.ValueOf(def).IsNil() {
 			panic(errWith(ErrBadArgument, "%T nil function provided", def))
 		}
 		if defType.NumOut() == 0 {
@@ -155,7 +165,7 @@ func validateDefinition(def any) {
 			panic(errWith(ErrBadArgument, "%T is variadic, variadic provider functions are not supported", def))
 		}
 	case reflect.Pointer:
-		if defValue.IsNil() {
+		if reflect.ValueOf(def).IsNil() {
 			panic(errWith(ErrBadArgument, "%T nil pointer provided", def))
 		}
 	default:
@@ -172,6 +182,19 @@ func checkDuplicateOutput(origins map[_TypeID]_DefOrigin, t reflect.Type, id _Ty
 	}
 }
 
+// checkDuplicateOutputSlice is checkDuplicateOutput with a linear scan over
+// parallel slices instead of a map lookup. A Fork usually adds few definitions,
+// so the scan is cheaper than hashing and bucket allocation: no map, no hash
+// computation. The ids and origins slices grow together, one entry per output
+// type of the definitions processed so far.
+func checkDuplicateOutputSlice(ids []_TypeID, origins []_DefOrigin, t reflect.Type, id _TypeID, origin _DefOrigin) {
+	for i, existing := range ids {
+		if existing == id {
+			panic(errWith(ErrBadDefinition, "%v has multiple definitions in the same Fork call: %s and %s", t, origins[i], origin))
+		}
+	}
+}
+
 // newForkBundle allocates the layer of a Fork and the initializer of its first
 // definition together. base is the layer the new layer sits on and numValues the
 // number of values the fork adds.
@@ -185,18 +208,44 @@ func newForker(
 	scope Scope,
 	defs []any,
 ) *_Forker {
+	return newForkerWithTypes(scope, defs, nil)
+}
+
+// newForkerWithTypes is newForker with pre-computed definition types, so a
+// Fork that already collected the types of its definitions does not pay for
+// reflect.TypeOf a second time. A nil defTypes makes it collect the types
+// itself, preserving the newForker call contract.
+func newForkerWithTypes(
+	scope Scope,
+	defs []any,
+	defTypes []reflect.Type,
+) *_Forker {
 
 	// Scope.Fork validates every definition before this function runs, so each
 	// def here is a non-nil function or pointer.
 
+	if defTypes == nil {
+		defTypes = make([]reflect.Type, len(defs))
+		for i, def := range defs {
+			defTypes[i] = reflect.TypeOf(def)
+		}
+	}
+
 	// 1. Process Definitions: Create templates, store metadata, identify overrides.
+	// newDefOrigins tracks the origin of each output type within this Fork call
+	// for duplicate detection. A Fork usually adds few definitions, so a linear
+	// scan over the accumulated origins is cheaper than a map: no hashing, no
+	// bucket allocation. redefinedIDs collects the IDs of types this Fork
+	// overrides in the base scope; it is kept sorted for binary search in the
+	// DFS and the reset collection.
 	newValuesTemplate := make([]_Value, 0, len(defs))
-	redefinedIDs := make(map[_TypeID]struct{}, len(defs))      // Set of overridden TypeIDs
-	newDefOutputIDs := make(map[_TypeID]_DefOrigin, len(defs)) // TypeID -> origin of the first definition producing it
+	var redefinedIDs []_TypeID                     // Sorted set of overridden TypeIDs
+	newDefOrigins := make([]_TypeID, 0, len(defs)) // Parallel to origins for linear scan
+	var origins []_DefOrigin                       // Origin of each new output type, for error messages
 	defNumValues := make([]int, 0, len(defs))
 	defKinds := make([]reflect.Kind, 0, len(defs))
-	for defIdx, def := range defs {
-		defType := reflect.TypeOf(def)
+	for defIdx := range defs {
+		defType := defTypes[defIdx]
 		defKinds = append(defKinds, defType.Kind())
 
 		switch defType.Kind() {
@@ -217,7 +266,7 @@ func newForker(
 				t := defType.Out(i)
 				id := getTypeID(t)
 				origin := _DefOrigin{defIndex: defIdx, defType: defType, outputIndex: i}
-				checkDuplicateOutput(newDefOutputIDs, t, id, origin)
+				checkDuplicateOutputSlice(newDefOrigins, origins, t, id, origin)
 
 				newValuesTemplate = append(newValuesTemplate, _Value{
 					id: id,
@@ -228,9 +277,10 @@ func newForker(
 					},
 				})
 				numValues++
-				newDefOutputIDs[id] = origin
+				newDefOrigins = append(newDefOrigins, id)
+				origins = append(origins, origin)
 				if _, ok := scope.values.Load(id); ok {
-					redefinedIDs[id] = struct{}{} // Mark override
+					redefinedIDs = append(redefinedIDs, id) // Mark override
 				}
 			}
 			defNumValues = append(defNumValues, numValues)
@@ -241,7 +291,7 @@ func newForker(
 			t := defType.Elem()
 			id := getTypeID(t)
 			origin := _DefOrigin{defIndex: defIdx, defType: defType, outputIndex: -1}
-			checkDuplicateOutput(newDefOutputIDs, t, id, origin)
+			checkDuplicateOutputSlice(newDefOrigins, origins, t, id, origin)
 
 			newValuesTemplate = append(newValuesTemplate, _Value{
 				id: id,
@@ -249,9 +299,10 @@ func newForker(
 					DefType: defType,
 				},
 			})
-			newDefOutputIDs[id] = origin
+			newDefOrigins = append(newDefOrigins, id)
+			origins = append(origins, origin)
 			if _, ok := scope.values.Load(id); ok {
-				redefinedIDs[id] = struct{}{} // Mark override
+				redefinedIDs = append(redefinedIDs, id) // Mark override
 			}
 			defNumValues = append(defNumValues, 1)
 
@@ -259,6 +310,8 @@ func newForker(
 			panic("impossible")
 		}
 	}
+	// redefinedIDs is sorted for binary search in the DFS and reset collection.
+	slices.Sort(redefinedIDs)
 
 	// 2. Sort New Values & Create Index Mapping:
 	type posAtTemplate int
@@ -329,7 +382,7 @@ func newForker(
 		states[id] = traversalState{color: 1} // Mark as visiting (Gray)
 
 		// Base Case: Check if directly redefined in this fork
-		if _, ok := redefinedIDs[id]; ok {
+		if containsID(redefinedIDs, id) {
 			reset = true
 		}
 
@@ -394,7 +447,7 @@ func newForker(
 		if !state.reset {
 			continue
 		}
-		if _, ok := redefinedIDs[id]; ok {
+		if containsID(redefinedIDs, id) {
 			continue
 		}
 		if _, ok := scope.values.Load(id); ok { // Only reset inherited values
