@@ -25,7 +25,7 @@ dscope inject theory:
 
 type InjectStruct func(target any)
 
-var injectStructTypeID = getTypeID(reflect.TypeFor[InjectStruct]())
+const injectStructTypeID _TypeID = 2
 
 func (scope Scope) InjectStruct(target any) {
 	injectStruct(scope, target, 0)
@@ -57,17 +57,17 @@ var injectStructFuncCache [typeIDCacheSize]atomic.Pointer[_InjectStructFuncCache
 var injectStructLastEntry atomic.Pointer[_InjectStructFuncCacheEntry]
 
 func injectStruct(scope Scope, target any, depth int) {
-	v := reflect.ValueOf(target)
-	if !v.IsValid() {
+	if target == nil {
 		panic(errWith(ErrBadArgument, "target must be a pointer to a struct, got nil"))
 	}
-	if v.Kind() != reflect.Pointer {
-		panic(errWith(ErrBadArgument, "target must be a pointer to a struct, got %v", v.Type()))
-	}
-	targetType := v.Type()
+	targetType := reflect.TypeOf(target)
 	if entry := injectStructLastEntry.Load(); entry != nil && entry.typ == targetType {
-		entry.fn(scope, v, depth)
+		entry.fn(scope, reflect.ValueOf(target), depth)
 		return
+	}
+	v := reflect.ValueOf(target)
+	if v.Kind() != reflect.Pointer {
+		panic(errWith(ErrBadArgument, "target must be a pointer to a struct, got %v", targetType))
 	}
 	slot, cacheable := typeIDCacheSlot(targetType)
 	if cacheable {
@@ -94,6 +94,11 @@ func injectStruct(scope Scope, target any, depth int) {
 	fn(scope, v, depth)
 }
 
+type _InjectFieldCache struct {
+	scope Scope
+	rv    reflect.Value
+}
+
 func makeInjectStructFunc(t reflect.Type) _InjectStructFunc {
 	numDeref := 0
 l:
@@ -116,11 +121,13 @@ l:
 	}
 
 	type FieldInfo struct {
-		Field      reflect.StructField
+		Index      int
 		IsInject   bool
 		IsEmbedded bool
+		Maker      isInjectMaker
 		Type       reflect.Type
 		TypeID     _TypeID
+		cache      atomic.Pointer[_InjectFieldCache]
 	}
 	var infos []FieldInfo
 	for i := range t.NumField() {
@@ -137,16 +144,18 @@ l:
 			// Pointers to Inject[T] also implement the interface but cannot be
 			// processed by reflect.MakeFunc or Out(0).
 			injectedType := field.Type.Out(0)
+			maker, _ := reflect.Zero(field.Type).Interface().(isInjectMaker)
 			infos = append(infos, FieldInfo{
-				Field:    field,
+				Index:    i,
 				IsInject: true,
+				Maker:    maker,
 				Type:     injectedType,
 				TypeID:   getTypeID(injectedType),
 			})
 
 		} else if directive == "." || directive == "inject" {
 			infos = append(infos, FieldInfo{
-				Field:  field,
+				Index:  i,
 				Type:   field.Type,
 				TypeID: getTypeID(field.Type),
 			})
@@ -161,7 +170,7 @@ l:
 				continue
 			}
 			infos = append(infos, FieldInfo{
-				Field:      field,
+				Index:      i,
 				IsEmbedded: true,
 				Type:       field.Type,
 			})
@@ -185,31 +194,20 @@ l:
 			}
 			value = value.Elem()
 		}
-		for _, info := range infos {
+		for i := range infos {
+			info := &infos[i]
 
 			if info.IsInject {
-				// The lazy function reads the field data from plain locals: a
-				// closure over the loop variable would push a copy of every
-				// FieldInfo to the heap on each call.
-				fieldType := info.Field.Type
-				fieldIndex := info.Field.Index
-				injectedType := info.Type
-				typeID := info.TypeID
-				value.FieldByIndex(fieldIndex).Set(
-					reflect.MakeFunc(
-						fieldType,
-						func(_ []reflect.Value) []reflect.Value {
-							v, ok := scope.get(typeID)
-							if !ok {
-								throwErrDependencyNotFound(injectedType)
-							}
-							return []reflect.Value{v}
-						},
-					),
-				)
+				if c := info.cache.Load(); c != nil && c.scope == scope {
+					value.Field(info.Index).Set(c.rv)
+					continue
+				}
+				rv := info.Maker.makeInject(scope)
+				info.cache.Store(&_InjectFieldCache{scope: scope, rv: rv})
+				value.Field(info.Index).Set(rv)
 
 			} else if info.IsEmbedded {
-				fieldValue := value.FieldByIndex(info.Field.Index)
+				fieldValue := value.Field(info.Index)
 				if fieldValue.Type().Kind() == reflect.Pointer {
 					if fieldValue.IsNil() {
 						if fieldValue.CanSet() {
@@ -226,11 +224,16 @@ l:
 				}
 
 			} else {
+				if c := info.cache.Load(); c != nil && c.scope == scope {
+					value.Field(info.Index).Set(c.rv)
+					continue
+				}
 				v, ok := scope.get(info.TypeID)
 				if !ok {
 					throwErrDependencyNotFound(info.Type)
 				}
-				value.FieldByIndex(info.Field.Index).Set(v)
+				info.cache.Store(&_InjectFieldCache{scope: scope, rv: v})
+				value.Field(info.Index).Set(v)
 			}
 
 		}

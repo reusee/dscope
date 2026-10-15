@@ -8,21 +8,6 @@ import (
 	"sync/atomic"
 )
 
-// _StackedMap implements an immutable, singly-linked list acting as a stack of
-// key-value maps. Each node holds a batch of sorted _Value entries. Searches
-// start from the head.
-//
-// A layer that hands out fresh values carries a _ResetState: a lazy reset layer
-// delegates every lookup to its base but replaces each initializer with a fresh
-// copy, so providers re-evaluate on first access; a partial reset layer, the one
-// a Fork installs, refreshes the inherited types whose recomputation the fork
-// affects. A plain layer leaves the reset state nil.
-//
-// A layer with few values keeps them in itself instead of a separate value
-// slice, and a layer with many values indexes them, so a lookup costs one probe.
-// A layer also remembers the entry it resolved most recently, so a program that
-// asks for the same type over and over pays one load. The layer of a typical
-// Fork therefore costs one allocation.
 type _StackedMap struct {
 	Next   *_StackedMap // Previous layer in the stack.
 	Values []_Value     // Values in this layer, sorted by TypeID.
@@ -74,6 +59,8 @@ type _ResetState struct {
 type _initPair struct {
 	key   *_Initializer
 	fresh *_Initializer
+	id    _TypeID
+	val   _Value
 }
 
 // resetCache returns the cache of the fresh initializers of the layer and creates
@@ -90,8 +77,8 @@ func (r *_ResetState) resetCache() *sync.Map {
 }
 
 // stackedMapInlineValues is the number of values a layer holds in itself. A Fork
-// usually adds a few definitions, and most layers never grow.
-const stackedMapInlineValues = 2
+// usually adds a single definition, and most layers never grow.
+const stackedMapInlineValues = 1
 
 // stackedMapIndexThreshold is the number of values from which a layer builds an
 // index. A shorter layer answers with a binary search over its sorted values,
@@ -177,17 +164,20 @@ func (s *_StackedMap) Load(id _TypeID) (ret _Value, ok bool) {
 	if s == nil {
 		return ret, false
 	}
-	// The entry resolved most recently answers without a search. The memo is a
-	// hint: the entry itself confirms it, and a memo that names a position the
-	// layer does not hold costs a search and nothing more.
-	if word := s.hit.Load(); word != 0 && _TypeID(word>>stackedMapHitBits) == id {
-		if position := int(word&stackedMapHitPosMask) - 1; uint(position) < uint(len(s.Values)) {
-			if v := &s.Values[position]; v.id == id {
-				return *v, true
-			}
+	word := s.hit.Load()
+	if _TypeID(word>>stackedMapHitBits) == id {
+		if position := uint(word&stackedMapHitPosMask) - 1; position < uint(len(s.Values)) {
+			return s.Values[position], true
 		}
 	}
-	if s.isLazyReset() {
+	return s.loadSlow(id, word)
+}
+
+func (s *_StackedMap) loadSlow(id _TypeID, word uint64) (ret _Value, ok bool) {
+	if s.reset != nil && s.reset.base != nil {
+		if pair := s.reset.last.Load(); pair != nil && pair.id == id {
+			return pair.val, true
+		}
 		v, found := s.reset.base.Load(id)
 		if !found {
 			return ret, false
@@ -197,9 +187,6 @@ func (s *_StackedMap) Load(id _TypeID) (ret _Value, ok bool) {
 
 	for cur := s; cur != nil; cur = cur.Next {
 		if rs := cur.reset; rs != nil && rs.base == nil && containsID(rs.ids, id) {
-			// A partial reset layer resolves the inherited value below itself
-			// and hands out a fresh initializer, so the provider re-evaluates
-			// in this scope.
 			v, found := cur.Next.Load(id)
 			if !found {
 				panic("impossible: refreshed type not found below its layer")
@@ -208,8 +195,18 @@ func (s *_StackedMap) Load(id _TypeID) (ret _Value, ok bool) {
 		}
 
 		values := cur.Values
+		if len(values) == 1 {
+			if values[0].id == id {
+				if cur == s && word == 0 {
+					s.storeHit(id, 0)
+				} else if cur != s && cur.hit.Load() == 0 {
+					cur.storeHit(id, 0)
+				}
+				return values[0], true
+			}
+			continue
+		}
 		if positions := cur.index; positions != nil {
-			// One probe answers for a layer with many values.
 			mask := uint64(len(positions) - 1)
 			for slot := uint64(id) & mask; ; slot = (slot + 1) & mask {
 				position := positions[slot]
@@ -217,14 +214,15 @@ func (s *_StackedMap) Load(id _TypeID) (ret _Value, ok bool) {
 					break
 				}
 				if v := &values[position-1]; v.id == id {
-					s.storeHit(id, int(position)-1)
-					return *v, true // Found
+					if cur == s && word == 0 {
+						s.storeHit(id, int(position)-1)
+					}
+					return *v, true
 				}
 			}
 			continue
 		}
 
-		// Binary search
 		left, right := uint(0), uint(len(values))
 		for left < right {
 			mid := (left + right) >> 1
@@ -234,12 +232,14 @@ func (s *_StackedMap) Load(id _TypeID) (ret _Value, ok bool) {
 			} else if midID < id {
 				left = mid + 1
 			} else {
-				s.storeHit(id, int(mid))
-				return values[mid], true // Found
+				if cur == s && word == 0 {
+					s.storeHit(id, int(mid))
+				}
+				return values[mid], true
 			}
 		}
 	}
-	return // Not found
+	return
 }
 
 // containsID reports whether the sorted ID slice holds id.
@@ -258,38 +258,46 @@ func (s *_StackedMap) refreshValue(v _Value) _Value {
 		return v
 	}
 	state := s.reset
-	// The mapping resolved most recently answers without touching the cache,
-	// which is what a program that resolves one refreshed type over and over
-	// needs.
-	if pair := state.last.Load(); pair != nil && pair.key == v.initializer {
-		v.initializer = pair.fresh
+	prevPair := state.last.Load()
+	if prevPair != nil && prevPair.key == v.initializer {
+		v.initializer = prevPair.fresh
 		return v
 	}
 	cache := state.resetCache()
-	loaded, ok := cache.Load(v.initializer)
+	origInit := v.initializer
+	loaded, ok := cache.Load(origInit)
 	if !ok {
-		actual, _ := cache.LoadOrStore(v.initializer, &_initPair{
-			key:   v.initializer,
-			fresh: v.initializer.reset(),
+		fresh := origInit.reset()
+		refreshed := v
+		refreshed.initializer = fresh
+		actual, _ := cache.LoadOrStore(origInit, &_initPair{
+			key:   origInit,
+			fresh: fresh,
+			id:    v.id,
+			val:   refreshed,
 		})
 		loaded = actual
 	}
 	pair := loaded.(*_initPair)
 	state.last.Store(pair)
+	if prevPair == nil {
+		promoteTypeID(v.id)
+	}
 	v.initializer = pair.fresh
 	return v
 }
 
-// storeHit records a resolved entry in the memo of the layer the search started
-// at. A layer keeps the entry it remembers first, so a hot layer pays one load
-// per lookup and never a write. A position too large for a memo word is not
-// recorded; the search answers such a type as it does any other.
+// storeHit records a resolved entry in the memo of the layer that holds the
+// entry. A layer keeps the entry it remembers first, so a hot layer pays one
+// load per lookup and never a write. A position too large for a memo word is
+// not recorded; the search answers such a type as it does any other.
 func (s *_StackedMap) storeHit(id _TypeID, position int) {
 	if position >= stackedMapHitPosMask {
 		return
 	}
 	if s.hit.Load() == 0 {
 		s.hit.Store(uint64(id)<<stackedMapHitBits | uint64(position+1))
+		promoteTypeID(id)
 	}
 }
 
@@ -368,16 +376,73 @@ func (s *_StackedMap) Len() int {
 	return ret
 }
 
+type _FlatLayer2 struct {
+	layer _StackedMap
+	vals  [2]_Value
+}
+
 // flatten materialises the effective values of the stack into a single sorted
 // layer. Effective values and override semantics are preserved.
 func (s *_StackedMap) flatten() *_StackedMap {
-	var flatValues []_Value
-	for value := range s.IterValues() {
-		flatValues = append(flatValues, value)
+	if s == nil {
+		return nil
 	}
-	slices.SortFunc(flatValues, func(a, b _Value) int {
-		return cmp.Compare(a.id, b.id)
-	})
+	if s.isLazyReset() {
+		baseFlat := s.reset.base.flatten()
+		if baseFlat == nil {
+			return newStackedMapLayer(nil, 0)
+		}
+		n := len(baseFlat.Values)
+		layer := newStackedMapLayer(nil, n)
+		for i, v := range baseFlat.Values {
+			layer.Values[i] = s.refreshValue(v)
+		}
+		layer.buildIndex()
+		return layer
+	}
+
+	var buf [32]_Value
+	flatValues := buf[:0]
+	var refreshersBuf [stackHeightLimit + 2]*_StackedMap
+	refreshers := refreshersBuf[:0]
+
+	for cur := s; cur != nil; cur = cur.Next {
+	valLoop:
+		for _, d := range cur.Values {
+			id := d.id
+			for i := range flatValues {
+				if flatValues[i].id == id {
+					continue valLoop
+				}
+			}
+			for i := len(refreshers) - 1; i >= 0; i-- {
+				if r := refreshers[i]; containsID(r.reset.ids, id) {
+					d = r.refreshValue(d)
+				}
+			}
+			flatValues = append(flatValues, d)
+		}
+		if cur.reset != nil && cur.reset.base == nil {
+			refreshers = append(refreshers, cur)
+		}
+	}
+
+	if len(flatValues) == 2 {
+		if flatValues[0].id > flatValues[1].id {
+			flatValues[0], flatValues[1] = flatValues[1], flatValues[0]
+		}
+		b := new(_FlatLayer2)
+		b.layer.Height = 1
+		b.vals[0] = flatValues[0]
+		b.vals[1] = flatValues[1]
+		b.layer.Values = b.vals[:]
+		return &b.layer
+	}
+	if len(flatValues) > 2 {
+		slices.SortFunc(flatValues, func(a, b _Value) int {
+			return cmp.Compare(a.id, b.id)
+		})
+	}
 	layer := newStackedMapLayer(nil, len(flatValues))
 	copy(layer.Values, flatValues)
 	layer.buildIndex()

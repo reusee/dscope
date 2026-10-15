@@ -21,6 +21,7 @@ type _Value struct {
 // definition that produced it.
 type _TypeInfo struct {
 	DefType      reflect.Type
+	DefTypeID    _TypeID
 	Position     int
 	Dependencies []_TypeID
 }
@@ -83,6 +84,19 @@ func hashTypeIDs(ids []_TypeID) (ret _Hash) {
 // key folds its words directly, so a lookup of a small Fork call allocates
 // nothing.
 func forkKey(signature _Hash, defs []any) (ret _Hash) {
+	if len(defs) == 1 {
+		t0 := reflect.TypeOf(defs[0])
+		if entry := forkKeyLastEntry.Load(); entry != nil && entry.sig == signature && entry.t0 == t0 {
+			return entry.key
+		}
+		h0, h1 := hashSeeds[0]^signature[0], hashSeeds[1]^signature[1]
+		id := uint64(getTypeID(t0))
+		h0 = hashWord(hashWord(h0, 1), id)
+		h1 = hashWord(hashWord(h1, 1), id)
+		ret = _Hash{h0, h1}
+		forkKeyLastEntry.Store(&_ForkKeyCacheEntry{sig: signature, t0: t0, key: ret})
+		return ret
+	}
 	h0, h1 := hashSeeds[0]^signature[0], hashSeeds[1]^signature[1]
 	h0 = hashWord(h0, uint64(len(defs)))
 	h1 = hashWord(h1, uint64(len(defs)))
@@ -95,6 +109,14 @@ func forkKey(signature _Hash, defs []any) (ret _Hash) {
 	ret[1] = h1
 	return
 }
+
+type _ForkKeyCacheEntry struct {
+	sig _Hash
+	t0  reflect.Type
+	key _Hash
+}
+
+var forkKeyLastEntry atomic.Pointer[_ForkKeyCacheEntry]
 
 // forkKeyFromTypes derives the forker cache key from pre-computed definition
 // types. It is forkKey with the reflect.TypeOf calls hoisted out, so a Fork
@@ -219,6 +241,24 @@ func publishForker(key _Hash, forker *_Forker) {
 	}
 }
 
+type _Forker1CacheEntry struct {
+	sig    _Hash
+	t0     reflect.Type
+	forker *_Forker
+}
+
+type _Forker2CacheEntry struct {
+	sig    _Hash
+	t0     reflect.Type
+	t1     reflect.Type
+	forker *_Forker
+}
+
+var (
+	forker1LastEntry atomic.Pointer[_Forker1CacheEntry]
+	forker2LastEntry atomic.Pointer[_Forker2CacheEntry]
+)
+
 func (scope Scope) Fork(
 	defs ...any,
 ) Scope {
@@ -228,6 +268,49 @@ func (scope Scope) Fork(
 		// definition, and every value, is the one the base scope already holds.
 		// Return the base scope itself instead of rebuilding an identical one.
 		return scope
+	}
+
+	if len(defs) == 1 {
+		def := defs[0]
+		if def != nil {
+			t0 := reflect.TypeOf(def)
+			if entry := forker1LastEntry.Load(); entry != nil && entry.sig == scope.signature && entry.t0 == t0 {
+				if reflect.ValueOf(def).IsNil() {
+					validateDefinitionWithType(def, t0)
+				}
+				return entry.forker.Fork(scope, defs)
+			}
+			if _, ok := def.(isModule); !ok {
+				validateDefinitionWithType(def, t0)
+				id0 := uint64(getTypeID(t0))
+				h0 := hashWord(hashWord(hashSeeds[0]^scope.signature[0], 1), id0)
+				h1 := hashWord(hashWord(hashSeeds[1]^scope.signature[1], 1), id0)
+				key := _Hash{h0, h1}
+				forker := lookupForker(key)
+				if forker == nil {
+					forker = newForkerWithTypes(scope, defs, []reflect.Type{t0})
+					v, _ := forkers.LoadOrStore(key, forker)
+					forker = v.(*_Forker)
+					publishForker(key, forker)
+				}
+				forker1LastEntry.Store(&_Forker1CacheEntry{sig: scope.signature, t0: t0, forker: forker})
+				return forker.Fork(scope, defs)
+			}
+		}
+	} else if len(defs) == 2 {
+		d0, d1 := defs[0], defs[1]
+		if d0 != nil && d1 != nil {
+			t0, t1 := reflect.TypeOf(d0), reflect.TypeOf(d1)
+			if entry := forker2LastEntry.Load(); entry != nil && entry.sig == scope.signature && entry.t0 == t0 && entry.t1 == t1 {
+				if reflect.ValueOf(d0).IsNil() {
+					validateDefinitionWithType(d0, t0)
+				}
+				if reflect.ValueOf(d1).IsNil() {
+					validateDefinitionWithType(d1, t1)
+				}
+				return entry.forker.Fork(scope, defs)
+			}
+		}
 	}
 
 	// handle modules
@@ -250,15 +333,6 @@ func (scope Scope) Fork(
 		defs = append(newDefs, Methods(moduleObjects...)...)
 	}
 
-	// Validate every (possibly module-expanded) definition and collect its
-	// reflect.Type once, so the validation, the cache key, and the forker
-	// analysis reuse the same types instead of each calling reflect.TypeOf on
-	// the same definition again. An untyped nil definition is rejected before
-	// reflect.TypeOf, which would return a nil type for it. The forker cache
-	// is keyed by definition types only, so on a cache hit newForker never
-	// runs; validation must therefore happen here on every call, or malformed
-	// definitions would reach value construction and leak reflection panics
-	// at first access.
 	defTypes := make([]reflect.Type, len(defs))
 	for i, def := range defs {
 		if def == nil {
@@ -268,24 +342,22 @@ func (scope Scope) Fork(
 		validateDefinitionWithType(def, defTypes[i])
 	}
 
-	// sorting defs may reduce memory consumption if there're calls with same defs but different order
-	// but sorting will increase heap allocations, causing performance drop
-
-	// Calculate cache key for this Fork operation.
-	// Key is based on the base scope signature and the types of new definitions.
-	// Hashing types is sufficient as only one definition instance per type is effectively used.
 	key := forkKeyFromTypes(scope.signature, defTypes)
 
-	// Check the caches: the direct-mapped slot first, the forker table behind it.
 	if forker := lookupForker(key); forker != nil {
+		if len(defs) == 2 {
+			forker2LastEntry.Store(&_Forker2CacheEntry{sig: scope.signature, t0: defTypes[0], t1: defTypes[1], forker: forker})
+		}
 		return forker.Fork(scope, defs)
 	}
 
-	// Cache miss, create and cache forker
 	forker := newForkerWithTypes(scope, defs, defTypes)
 	v, _ := forkers.LoadOrStore(key, forker)
 	forker = v.(*_Forker)
 	publishForker(key, forker)
+	if len(defs) == 2 {
+		forker2LastEntry.Store(&_Forker2CacheEntry{sig: scope.signature, t0: defTypes[0], t1: defTypes[1], forker: forker})
+	}
 
 	return forker.Fork(scope, defs)
 }
@@ -353,11 +425,11 @@ func (scope Scope) get(id _TypeID) (
 	// has an unnamed function type, which is not identical to the named type.
 	switch id {
 	case injectStructTypeID:
-		return reflect.ValueOf(scope.InjectStruct).Convert(reflect.TypeFor[InjectStruct]()), true
+		return reflect.ValueOf(InjectStruct(scope.InjectStruct)), true
 	case forkTypeID:
-		return reflect.ValueOf(scope.Fork).Convert(reflect.TypeFor[Fork]()), true
+		return reflect.ValueOf(Fork(scope.Fork)), true
 	case resetTypeID:
-		return reflect.ValueOf(scope.Reset).Convert(reflect.TypeFor[Reset]()), true
+		return reflect.ValueOf(Reset(scope.Reset)), true
 	}
 
 	value, ok := scope.values.Load(id)
@@ -365,17 +437,73 @@ func (scope Scope) get(id _TypeID) (
 		return ret, false
 	}
 
-	return value.initializer.get(scope, value.typeInfo.Position), true
+	return value.initializer.get(scope, value), true
+}
+
+func (scope Scope) getBuiltinIface(id _TypeID) any {
+	switch id {
+	case injectStructTypeID:
+		return InjectStruct(scope.InjectStruct)
+	case forkTypeID:
+		return Fork(scope.Fork)
+	default:
+		return Reset(scope.Reset)
+	}
+}
+
+func (scope Scope) getIface(id _TypeID) (any, bool) {
+	if uint(id-1) < 3 {
+		return scope.getBuiltinIface(id), true
+	}
+	s := scope.values
+	if s == nil {
+		return nil, false
+	}
+	word := s.hit.Load()
+	if _TypeID(word>>stackedMapHitBits) == id {
+		if pos := uint(word&stackedMapHitPosMask) - 1; pos < uint(len(s.Values)) {
+			init := s.Values[pos].initializer
+			if init.done.Load() && !init.multi {
+				return init.result, true
+			}
+			return init.getIface(scope, s.Values[pos]), true
+		}
+	}
+	if s.reset == nil {
+		if positions := s.index; positions != nil {
+			if pos := positions[uint64(id)&uint64(len(positions)-1)]; pos != 0 {
+				if v := &s.Values[pos-1]; v.id == id {
+					if word == 0 {
+						s.storeHit(id, int(pos)-1)
+					}
+					init := v.initializer
+					if init.done.Load() && !init.multi {
+						return init.result, true
+					}
+					return init.getIface(scope, *v), true
+				}
+			}
+		}
+	}
+	value, ok := s.loadSlow(id, word)
+	if !ok {
+		return nil, false
+	}
+	return value.initializer.getIface(scope, value), true
 }
 
 // Get is a type-safe generic method to retrieve a single value of type T.
 // It panics if the type is not found or if an error occurs during resolution.
-func (scope Scope) Get[T any]() T {
-	value, ok := scope.TryGet[T]()
+func (scope Scope) Get[T any]() (o T) {
+	typ := reflect.TypeFor[T]()
+	iface, ok := scope.getIface(getTypeIDForGet(typ))
 	if !ok {
-		throwErrDependencyNotFound(reflect.TypeFor[T]())
+		throwErrDependencyNotFound(typ)
 	}
-	return value
+	if iface != nil {
+		o = iface.(T)
+	}
+	return o
 }
 
 // TryGet is a type-safe generic method to retrieve a single value of type T.
@@ -383,19 +511,14 @@ func (scope Scope) Get[T any]() T {
 // it returns (zero, false) instead. Panics raised by provider evaluation
 // still propagate.
 func (scope Scope) TryGet[T any]() (o T, ok bool) {
-	typ := reflect.TypeFor[T]()
-	value, found := scope.get(getTypeID(typ))
+	iface, found := scope.getIface(getTypeIDForGet(reflect.TypeFor[T]()))
 	if !found {
 		return o, false
 	}
-	// A nil interface value carries no concrete type to assert, so it comes back
-	// as the zero T. The kind of a stored value is the kind of the type it was
-	// defined with, so reading it here keeps the check off the common path: only
-	// a value of interface kind reaches IsNil.
-	if value.Kind() == reflect.Interface && value.IsNil() {
-		return o, true
+	if iface != nil {
+		o = iface.(T)
 	}
-	return value.Interface().(T), true
+	return o, true
 }
 
 // GetType retrieves the value of the given type from the scope and returns

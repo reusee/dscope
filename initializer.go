@@ -25,16 +25,17 @@ dscope lazy initialization theory:
 // initializer it hands out by the inherited initializer itself, so two
 // initializers of the same definition in different scopes stay apart.
 type _Initializer struct {
-	Def    any
-	Values []reflect.Value
-	mu     sync.Mutex
-	done   atomic.Bool
-	// DefIsPointer marks a pointer definition. Its value is copied when the
-	// initializer is built and never re-evaluated.
+	Def          any
+	result       any
+	mu           sync.Mutex
+	done         atomic.Bool
 	DefIsPointer bool
-	// _values backs Values for a pointer definition, so copying such a
-	// definition needs no separate slice.
-	_values [1]reflect.Value
+	multi        bool
+}
+
+type _MultiResult struct {
+	vals   []reflect.Value
+	ifaces []any
 }
 
 // initInitializer fills an initializer from def. The caller owns the storage of
@@ -45,10 +46,22 @@ func initInitializer(i *_Initializer, def any, isPointer bool) {
 	i.DefIsPointer = isPointer
 	if isPointer {
 		definitionValue := reflect.ValueOf(def).Elem()
-		copiedValue := reflect.New(definitionValue.Type()).Elem()
-		copiedValue.Set(definitionValue)
-		i._values[0] = copiedValue
-		i.Values = i._values[:1]
+		if definitionValue.Kind() == reflect.Interface {
+			copiedValue := reflect.New(definitionValue.Type()).Elem()
+			copiedValue.Set(definitionValue)
+			var iface any
+			if !copiedValue.IsNil() {
+				iface = copiedValue.Interface()
+			}
+			i.multi = true
+			i.result = &_MultiResult{
+				vals:   []reflect.Value{copiedValue},
+				ifaces: []any{iface},
+			}
+		} else {
+			i.result = definitionValue.Interface()
+		}
+		i.done.Store(true)
 	}
 }
 
@@ -74,16 +87,46 @@ func (i *_Initializer) evaluate(scope Scope) {
 	if i.done.Load() {
 		return
 	}
-	i.Values = scope.call(reflect.ValueOf(i.Def))
+	vals := scope.call(reflect.ValueOf(i.Def))
+	if len(vals) == 1 && vals[0].Kind() != reflect.Interface {
+		i.result = vals[0].Interface()
+	} else {
+		ifaces := make([]any, len(vals))
+		for j, vj := range vals {
+			if vj.Kind() != reflect.Interface || !vj.IsNil() {
+				ifaces[j] = vj.Interface()
+			}
+		}
+		i.multi = true
+		i.result = &_MultiResult{
+			vals:   vals,
+			ifaces: ifaces,
+		}
+	}
 	i.done.Store(true)
 }
 
 // get returns the value of one output and evaluates the definition on first
 // access. The check of the cached state stays small, so the compiler inlines the
 // function into its callers.
-func (i *_Initializer) get(scope Scope, position int) (ret reflect.Value) {
-	if !i.DefIsPointer && !i.done.Load() {
+func (i *_Initializer) get(scope Scope, v _Value) reflect.Value {
+	if !i.done.Load() {
 		i.evaluate(scope)
 	}
-	return i.Values[position]
+	if !i.multi {
+		return reflect.ValueOf(i.result)
+	}
+	return i.result.(*_MultiResult).vals[v.typeInfo.Position]
+}
+
+// getIface returns the interface value of one output and evaluates the
+// definition on first access.
+func (i *_Initializer) getIface(scope Scope, v _Value) any {
+	if !i.done.Load() {
+		i.evaluate(scope)
+	}
+	if !i.multi {
+		return i.result
+	}
+	return i.result.(*_MultiResult).ifaces[v.typeInfo.Position]
 }

@@ -106,7 +106,9 @@ type _Forker struct {
 	// ResetIDs lists TypeIDs (sorted) of values inherited from the base scope that need invalidation due to overrides or dependency changes.
 	ResetIDs []_TypeID // sorted
 	// Signature is a hash representing the structural identity of the scope *after* this fork.
-	Signature _Hash
+	Signature   _Hash
+	singleFunc1 bool
+	singleFunc2 bool
 }
 
 // posAtSorted represents the index of a value within the sorted slice of new values.
@@ -122,6 +124,37 @@ type _ForkBundle struct {
 	layer _StackedMap
 	inits [forkInlineInitializers]_Initializer
 }
+
+type _ForkBundleReset struct {
+	layer _StackedMap
+	inits [forkInlineInitializers]_Initializer
+	reset _ResetState
+}
+
+type _ForkBundle2 struct {
+	layer _StackedMap
+	vals  [2]_Value
+	inits [2]_Initializer
+}
+
+type _ForkBundle2Reset struct {
+	layer _StackedMap
+	vals  [2]_Value
+	inits [2]_Initializer
+	reset _ResetState
+}
+
+type _SingleForkerAlloc struct {
+	forker   _Forker
+	val      [1]_Value
+	typeInfo _TypeInfo
+}
+
+var (
+	singleFuncDefKinds      = []reflect.Kind{reflect.Func}
+	singleFuncDefNumValues  = []int{1}
+	singleFuncPosesAtSorted = []posAtSorted{0}
+)
 
 type _DefOrigin struct {
 	defIndex    int
@@ -221,8 +254,36 @@ func newForkerWithTypes(
 	defTypes []reflect.Type,
 ) *_Forker {
 
-	// Scope.Fork validates every definition before this function runs, so each
-	// def here is a non-nil function or pointer.
+	// Fast path for a single 0-arg, 1-output function definition on an empty base scope.
+	if scope.values == nil && len(defs) == 1 {
+		var defType reflect.Type
+		if defTypes != nil {
+			defType = defTypes[0]
+		} else {
+			defType = reflect.TypeOf(defs[0])
+		}
+		if defType.Kind() == reflect.Func && defType.NumIn() == 0 && defType.NumOut() == 1 {
+			defID := getTypeID(defType)
+			outID := getTypeID(defType.Out(0))
+			h0 := hashWord(hashWord(hashSeeds[0], 1), uint64(defID))
+			h1 := hashWord(hashWord(hashSeeds[1], 1), uint64(defID))
+			alloc := new(_SingleForkerAlloc)
+			alloc.typeInfo.DefType = defType
+			alloc.typeInfo.DefTypeID = defID
+			alloc.val[0] = _Value{
+				id:       outID,
+				typeInfo: &alloc.typeInfo,
+			}
+			f := &alloc.forker
+			f.Signature = _Hash{h0, h1}
+			f.NewValuesTemplate = alloc.val[:]
+			f.DefKinds = singleFuncDefKinds
+			f.DefNumValues = singleFuncDefNumValues
+			f.PosesAtSorted = singleFuncPosesAtSorted
+			f.singleFunc1 = true
+			return f
+		}
+	}
 
 	if defTypes == nil {
 		defTypes = make([]reflect.Type, len(defs))
@@ -232,20 +293,17 @@ func newForkerWithTypes(
 	}
 
 	// 1. Process Definitions: Create templates, store metadata, identify overrides.
-	// newDefOrigins tracks the origin of each output type within this Fork call
-	// for duplicate detection. A Fork usually adds few definitions, so a linear
-	// scan over the accumulated origins is cheaper than a map: no hashing, no
-	// bucket allocation. redefinedIDs collects the IDs of types this Fork
-	// overrides in the base scope; it is kept sorted for binary search in the
-	// DFS and the reset collection.
 	newValuesTemplate := make([]_Value, 0, len(defs))
-	var redefinedIDs []_TypeID                     // Sorted set of overridden TypeIDs
-	newDefOrigins := make([]_TypeID, 0, len(defs)) // Parallel to origins for linear scan
-	var origins []_DefOrigin                       // Origin of each new output type, for error messages
+	var redefinedIDs []_TypeID // Sorted set of overridden TypeIDs
+	var originIDsBuf [8]_TypeID
+	var originsBuf [8]_DefOrigin
+	newDefOrigins := originIDsBuf[:0]
+	origins := originsBuf[:0]
 	defNumValues := make([]int, 0, len(defs))
 	defKinds := make([]reflect.Kind, 0, len(defs))
 	for defIdx := range defs {
 		defType := defTypes[defIdx]
+		defTypeID := getTypeID(defType)
 		defKinds = append(defKinds, defType.Kind())
 
 		switch defType.Kind() {
@@ -253,10 +311,12 @@ func newForkerWithTypes(
 
 			// Extract Dependencies
 			numIn := defType.NumIn()
-			dependencies := make([]_TypeID, 0, numIn)
-			for i := range numIn {
-				inType := defType.In(i)
-				dependencies = append(dependencies, getTypeID(inType))
+			var dependencies []_TypeID
+			if numIn > 0 {
+				dependencies = make([]_TypeID, numIn)
+				for i := range numIn {
+					dependencies[i] = getTypeID(defType.In(i))
+				}
 			}
 
 			// Create Value Templates for Outputs
@@ -272,6 +332,7 @@ func newForkerWithTypes(
 					id: id,
 					typeInfo: &_TypeInfo{
 						DefType:      defType,
+						DefTypeID:    defTypeID,
 						Position:     i,
 						Dependencies: dependencies,
 					},
@@ -296,7 +357,8 @@ func newForkerWithTypes(
 			newValuesTemplate = append(newValuesTemplate, _Value{
 				id: id,
 				typeInfo: &_TypeInfo{
-					DefType: defType,
+					DefType:   defType,
+					DefTypeID: defTypeID,
 				},
 			})
 			newDefOrigins = append(newDefOrigins, id)
@@ -310,59 +372,51 @@ func newForkerWithTypes(
 			panic("impossible")
 		}
 	}
-	// redefinedIDs is sorted for binary search in the DFS and reset collection.
-	slices.Sort(redefinedIDs)
+	if len(redefinedIDs) > 1 {
+		slices.Sort(redefinedIDs)
+	}
 
 	// 2. Sort New Values & Create Index Mapping:
-	type posAtTemplate int
-	posesAtTemplate := make([]posAtTemplate, 0, len(newValuesTemplate))
-	for i := range newValuesTemplate {
-		posesAtTemplate = append(posesAtTemplate, posAtTemplate(i))
-	}
-	slices.SortFunc(posesAtTemplate, func(a, b posAtTemplate) int {
-		return cmp.Compare(
-			newValuesTemplate[a].id,
-			newValuesTemplate[b].id,
-		)
-	})
-	// Type IDs are unique within a Fork call, so the sorted index order is
-	// unambiguous: the sorted template is built from it directly instead of
-	// sorting a second copy.
-	posesAtSorted := make([]posAtSorted, len(posesAtTemplate))
-	sortedNewValuesTemplate := make([]_Value, len(posesAtTemplate))
-	for i, j := range posesAtTemplate {
-		posesAtSorted[j] = posAtSorted(i) // posesAtSorted[original_index] = sorted_index
-		sortedNewValuesTemplate[i] = newValuesTemplate[j]
+	posesAtSorted := make([]posAtSorted, len(newValuesTemplate))
+	var sortedNewValuesTemplate []_Value
+	if len(newValuesTemplate) <= 1 {
+		sortedNewValuesTemplate = newValuesTemplate
+	} else {
+		type posAtTemplate int
+		posesAtTemplate := make([]posAtTemplate, len(newValuesTemplate))
+		for i := range newValuesTemplate {
+			posesAtTemplate[i] = posAtTemplate(i)
+		}
+		slices.SortFunc(posesAtTemplate, func(a, b posAtTemplate) int {
+			return cmp.Compare(
+				newValuesTemplate[a].id,
+				newValuesTemplate[b].id,
+			)
+		})
+		sortedNewValuesTemplate = make([]_Value, len(posesAtTemplate))
+		for i, j := range posesAtTemplate {
+			posesAtSorted[j] = posAtSorted(i)
+			sortedNewValuesTemplate[i] = newValuesTemplate[j]
+		}
 	}
 
 	// 3. Build Conceptual Next Scope & Analyze Dependencies via DFS:
-	//    - `valuesTemplate`: Temporary _StackedMap representing the potential new scope.
-	//    - Detect loops (`color`: 0=White, 1=Gray, 2=Black).
-	//    - Determine which types need reset (`reset`).
 	type traversalState struct {
 		color int
 		reset bool
 	}
 	valuesTemplate := scope.values.Append(sortedNewValuesTemplate)
-	// One map memoizes the colour and the reset requirement of every type, so a
-	// step of the analysis pays one lookup instead of two.
 	states := make(map[_TypeID]traversalState, len(newValuesTemplate))
 
-	// path is the ancestor chain of the node being traversed, held in one stack
-	// that grows and shrinks with the recursion. It is read only when a loop is
-	// reported, so a traversal without loops allocates nothing for it.
 	var path []_TypeID
 	var traverse func(value _Value) (reset bool, err error)
 	traverse = func(value _Value) (reset bool, err error) {
 		id := value.id
 
-		// Cycle Detection & Memoization
 		state := states[id]
 		switch state.color {
 
 		case 1: // Gray: Loop detected
-			// The reported path must close the loop: the gray node is
-			// revisited here, so repeat it after the ancestor chain.
 			buf := new(strings.Builder)
 			for _, pathID := range path {
 				buf.WriteString(typeIDToType(pathID).String())
@@ -381,22 +435,13 @@ func newForkerWithTypes(
 
 		states[id] = traversalState{color: 1} // Mark as visiting (Gray)
 
-		// Base Case: Check if directly redefined in this fork
 		if containsID(redefinedIDs, id) {
 			reset = true
 		}
 
-		// Recursive Step: Check Dependencies
 		path = append(path, id)
 		for _, depID := range value.typeInfo.Dependencies {
 			if isAlwaysProvided(depID) {
-				// InjectStruct, Fork, and Reset are opaque dependencies: a
-				// provider receiving one of them can dynamically pull any type
-				// from the scope (InjectStruct injects struct fields, Fork
-				// creates new scopes, Reset creates reset scopes). When new
-				// definitions are added we must pessimistically assume the
-				// opaque dependency depends on them and force a reset so the
-				// provider is re-evaluated against the new scope.
 				if len(newValuesTemplate) > 0 {
 					reset = true
 				}
@@ -412,7 +457,7 @@ func newForkerWithTypes(
 				path = path[:len(path)-1]
 				return false, err
 			}
-			reset = reset || depResets // Propagate reset requirement
+			reset = reset || depResets
 		}
 		path = path[:len(path)-1]
 
@@ -421,20 +466,18 @@ func newForkerWithTypes(
 	}
 
 	// 4. Analyze All Types in Conceptual Scope:
-	//    - Populate `states` and detect loops globally via `traverse`.
-	//    - Collect `defTypeIDs` for signature.
-	defTypeIDs := make([]_TypeID, 0, valuesTemplate.Len()) // For signature
+	defTypeIDs := make([]_TypeID, 0, valuesTemplate.Len())
 
 	for value := range valuesTemplate.IterValues() {
 		if _, err := traverse(value); err != nil {
 			panic(err)
 		}
-
-		// Collect definition type IDs
-		defTypeIDs = append(defTypeIDs, getTypeID(value.typeInfo.DefType))
+		defID := value.typeInfo.DefTypeID
+		if defID == 0 {
+			defID = getTypeID(value.typeInfo.DefType)
+		}
+		defTypeIDs = append(defTypeIDs, defID)
 	}
-	// A type ID repeats when several outputs of one definition share the type,
-	// so the collected IDs are sorted and deduplicated in one pass.
 	slices.Sort(defTypeIDs)
 	defTypeIDs = slices.Compact(defTypeIDs)
 
@@ -442,19 +485,24 @@ func newForkerWithTypes(
 	signature := hashTypeIDs(defTypeIDs)
 
 	// 6. Identify Values Requiring Reset: Collect TypeIDs that need reset AND existed in the base scope.
-	resetIDs := make([]_TypeID, 0, len(states))
-	for id, state := range states {
-		if !state.reset {
-			continue
+	var resetIDs []_TypeID
+	if scope.values != nil {
+		for id, state := range states {
+			if !state.reset {
+				continue
+			}
+			if containsID(redefinedIDs, id) {
+				continue
+			}
+			if _, ok := scope.values.Load(id); ok {
+				resetIDs = append(resetIDs, id)
+			}
 		}
-		if containsID(redefinedIDs, id) {
-			continue
-		}
-		if _, ok := scope.values.Load(id); ok { // Only reset inherited values
-			resetIDs = append(resetIDs, id)
-		}
+		slices.Sort(resetIDs)
 	}
-	slices.Sort(resetIDs)
+
+	singleFunc1 := len(defKinds) == 1 && len(newValuesTemplate) == 1 && defKinds[0] == reflect.Func
+	singleFunc2 := len(defKinds) == 2 && len(newValuesTemplate) == 2 && defKinds[0] == reflect.Func && defKinds[1] == reflect.Func
 
 	// 7. Return the completed _Forker.
 	return &_Forker{
@@ -464,6 +512,8 @@ func newForkerWithTypes(
 		DefNumValues:      defNumValues,
 		PosesAtSorted:     posesAtSorted,
 		ResetIDs:          resetIDs,
+		singleFunc1:       singleFunc1,
+		singleFunc2:       singleFunc2,
 	}
 }
 
@@ -476,24 +526,105 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 		values:    s.values,
 	}
 	if len(f.NewValuesTemplate) == 0 && len(f.ResetIDs) == 0 {
-		// A fork that changes no effective value adds no layer: the fork and
-		// its base share every value and its initializer.
 		return scope
 	}
 	base := scope.values
 	if base != nil && (base.isLazyReset() || base.Height > stackHeightLimit) {
-		// A lazy reset layer, and a stack above the height limit, are
-		// materialised first: lookups need one sorted stack to search.
 		base = base.flatten()
 	}
 
-	// 2. Create the single layer of this fork: it carries the overrides and the
-	//    new definitions together with the inherited types whose recomputation
-	//    they affect. A marked type holds no value in the layer and gets a fresh
-	//    initializer on first access, so the cost of a Fork does not grow with
-	//    the dependent set. A fork that adds as many definitions as the bundle
-	//    holds pays one allocation for its layer and its initializer together;
-	//    a fork with more definitions keeps them in one slice of their own.
+	if f.singleFunc1 {
+		if len(f.ResetIDs) == 0 {
+			bundle := new(_ForkBundle)
+			layer := &bundle.layer
+			if base != nil {
+				layer.Next = base
+				layer.Height = base.Height + 1
+			} else {
+				layer.Height = 1
+			}
+			bundle.inits[0].Def = defs[0]
+			v := f.NewValuesTemplate[0]
+			v.initializer = &bundle.inits[0]
+			layer.inline[0] = v
+			layer.Values = layer.inline[:1]
+			scope.values = layer
+			return scope
+		}
+		bundle := new(_ForkBundleReset)
+		layer := &bundle.layer
+		if base != nil {
+			layer.Next = base
+			layer.Height = base.Height + 1
+		} else {
+			layer.Height = 1
+		}
+		bundle.inits[0].Def = defs[0]
+		v := f.NewValuesTemplate[0]
+		v.initializer = &bundle.inits[0]
+		layer.inline[0] = v
+		layer.Values = layer.inline[:1]
+		bundle.reset.ids = f.ResetIDs
+		layer.reset = &bundle.reset
+		scope.values = layer
+		return scope
+	}
+
+	if f.singleFunc2 {
+		if len(f.ResetIDs) == 0 {
+			bundle := new(_ForkBundle2)
+			layer := &bundle.layer
+			if base != nil {
+				layer.Next = base
+				layer.Height = base.Height + 1
+			} else {
+				layer.Height = 1
+			}
+			bundle.inits[0].Def = defs[0]
+			bundle.inits[1].Def = defs[1]
+			v0 := f.NewValuesTemplate[0]
+			v0.initializer = &bundle.inits[0]
+			v1 := f.NewValuesTemplate[1]
+			v1.initializer = &bundle.inits[1]
+			if f.PosesAtSorted[0] == 0 {
+				bundle.vals[0] = v0
+				bundle.vals[1] = v1
+			} else {
+				bundle.vals[0] = v1
+				bundle.vals[1] = v0
+			}
+			layer.Values = bundle.vals[:]
+			scope.values = layer
+			return scope
+		}
+		bundle := new(_ForkBundle2Reset)
+		layer := &bundle.layer
+		if base != nil {
+			layer.Next = base
+			layer.Height = base.Height + 1
+		} else {
+			layer.Height = 1
+		}
+		bundle.inits[0].Def = defs[0]
+		bundle.inits[1].Def = defs[1]
+		v0 := f.NewValuesTemplate[0]
+		v0.initializer = &bundle.inits[0]
+		v1 := f.NewValuesTemplate[1]
+		v1.initializer = &bundle.inits[1]
+		if f.PosesAtSorted[0] == 0 {
+			bundle.vals[0] = v0
+			bundle.vals[1] = v1
+		} else {
+			bundle.vals[0] = v1
+			bundle.vals[1] = v0
+		}
+		layer.Values = bundle.vals[:]
+		bundle.reset.ids = f.ResetIDs
+		layer.reset = &bundle.reset
+		scope.values = layer
+		return scope
+	}
+
 	var layer *_StackedMap
 	var initializers []_Initializer
 	if len(f.DefKinds) <= forkInlineInitializers {
@@ -505,8 +636,6 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 		initializers = make([]_Initializer, len(f.DefKinds))
 	}
 
-	// 3. Instantiate the definitions: every output of one definition shares its
-	//    initializer, so a multi-value provider evaluates once.
 	valueIdx := 0
 	for defIdx, def := range defs {
 		initializer := &initializers[defIdx]
@@ -515,7 +644,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 			initInitializer(initializer, def, false)
 			for range f.DefNumValues[defIdx] {
 				template := f.NewValuesTemplate[valueIdx]
-				template.initializer = initializer // Share initializer for multi-return
+				template.initializer = initializer
 				layer.Values[f.PosesAtSorted[valueIdx]] = template
 				valueIdx++
 			}
@@ -528,12 +657,8 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 		}
 	}
 
-	// 4. A layer with many values answers a lookup with one probe instead of a
-	//    search. The index is built here, while the layer is still being built.
 	layer.buildIndex()
 
-	// 5. A fork that overrides or adds definitions also marks the inherited
-	//    types whose recomputation the change affects.
 	if len(f.ResetIDs) > 0 {
 		layer.markRefresh(f.ResetIDs)
 	}
