@@ -183,6 +183,14 @@ type Scope struct {
 	signature _Hash
 }
 
+// _LazyResetBundle keeps a lazy reset layer, its optional metadata, and its
+// reset state in one allocation.
+type _LazyResetBundle struct {
+	layer _StackedMap
+	extra _StackedMapExtra
+	reset _ResetState
+}
+
 // Universe is the empty root scope.
 var Universe = Scope{}
 
@@ -206,6 +214,19 @@ const forkerCacheSize = 256
 // _ForkerCacheEntry is one confirmed fork-key-to-forker mapping.
 type _ForkerCacheEntry struct {
 	key    _Hash
+	forker *_Forker
+}
+
+type _Forker1CacheEntry struct {
+	sig    _Hash
+	t0     reflect.Type
+	forker *_Forker
+}
+
+type _Forker2CacheEntry struct {
+	sig    _Hash
+	t0     reflect.Type
+	t1     reflect.Type
 	forker *_Forker
 }
 
@@ -239,19 +260,6 @@ func publishForker(key _Hash, forker *_Forker) {
 	if slot.Load() == nil {
 		slot.CompareAndSwap(nil, &_ForkerCacheEntry{key: key, forker: forker})
 	}
-}
-
-type _Forker1CacheEntry struct {
-	sig    _Hash
-	t0     reflect.Type
-	forker *_Forker
-}
-
-type _Forker2CacheEntry struct {
-	sig    _Hash
-	t0     reflect.Type
-	t1     reflect.Type
-	forker *_Forker
 }
 
 var (
@@ -373,17 +381,17 @@ dscope reset theory:
   external state (files, clocks, globals) has changed.
 `
 
-// Reset returns a new Scope in which every value will be recomputed the next
-// time it is requested. The original scope is unaffected.
 func (scope Scope) Reset() Scope {
 	if scope.values == nil {
 		return scope
 	}
+	var bundle _LazyResetBundle
+	bundle.layer.extra = &bundle.extra
+	bundle.extra.reset = &bundle.reset
+	bundle.reset.base = scope.values
+	bundle.layer.Height = 1
 	return Scope{
-		values: &_StackedMap{
-			reset:  &_ResetState{base: scope.values},
-			Height: 1,
-		},
+		values:    &bundle.layer,
 		signature: scope.signature,
 	}
 }
@@ -463,26 +471,45 @@ func (scope Scope) getIface(id _TypeID) (any, bool) {
 	if _TypeID(word>>stackedMapHitBits) == id {
 		if pos := uint(word&stackedMapHitPosMask) - 1; pos < uint(len(s.Values)) {
 			init := s.Values[pos].initializer
-			if init.done.Load() && !init.multi {
-				return init.result, true
+			state := init.state.Load()
+			if state&initializerStateDone != 0 {
+				if state&initializerStateMulti == 0 {
+					return init.result, true
+				}
+				return init.result.(*_MultiResult).ifaces[s.Values[pos].typeInfo.Position], true
 			}
 			return init.getIface(scope, s.Values[pos]), true
 		}
 	}
-	if s.reset == nil {
-		if positions := s.index; positions != nil {
-			if pos := positions[uint64(id)&uint64(len(positions)-1)]; pos != 0 {
-				if v := &s.Values[pos-1]; v.id == id {
+	if s.extra != nil && s.extra.reset == nil {
+		if positions := s.extra.index; positions != nil {
+			mask := uint64(len(positions) - 1)
+			for slot := uint64(id) & mask; ; slot = (slot + 1) & mask {
+				position := positions[slot]
+				if position == 0 {
+					break
+				}
+				v := &s.Values[position-1]
+				if v.id == id {
 					if word == 0 {
-						s.storeHit(id, int(pos)-1)
+						s.storeHit(id, int(position)-1)
 					}
 					init := v.initializer
-					if init.done.Load() && !init.multi {
-						return init.result, true
+					state := init.state.Load()
+					if state&initializerStateDone != 0 {
+						if state&initializerStateMulti == 0 {
+							return init.result, true
+						}
+						return init.result.(*_MultiResult).ifaces[v.typeInfo.Position], true
 					}
 					return init.getIface(scope, *v), true
 				}
 			}
+			value, ok := s.Next.Load(id)
+			if !ok {
+				return nil, false
+			}
+			return value.initializer.getIface(scope, value), true
 		}
 	}
 	value, ok := s.loadSlow(id, word)

@@ -70,6 +70,27 @@ func BenchmarkStackedMapLoadOne(b *testing.B) {
 	}
 }
 
+func BenchmarkStackedMapLoadCollision(b *testing.B) {
+	initializer := &_Initializer{result: 42}
+	initializer.state.Store(initializerStateDone)
+	values := make([]_Value, 8)
+	for i := range values {
+		values[i] = _Value{
+			id:          _TypeID(101 + i*16),
+			initializer: initializer,
+			typeInfo:    &_TypeInfo{Position: i},
+		}
+	}
+	scope := Scope{values: (*_StackedMap)(nil).Append(values)}
+	b.ResetTimer()
+	for i := 0; b.Loop(); i++ {
+		value, ok := scope.getIface(_TypeID(101 + (i&7)*16))
+		if !ok || value != 42 {
+			b.Fatal("colliding type was not found")
+		}
+	}
+}
+
 // TestStackedMapLargeHeight verifies that Append accumulates the height of a
 // deep stack without overflow, so the flattening threshold stays reachable.
 func TestStackedMapLargeHeight(t *testing.T) {
@@ -155,6 +176,29 @@ func TestStackedMapIndexMissFallsThrough(t *testing.T) {
 		}
 		if v.typeInfo.Position != i {
 			t.Fatalf("type %d resolved to position %d, want %d", i*2+2, v.typeInfo.Position, i)
+		}
+	}
+}
+
+func TestStackedMapIndexCollision(t *testing.T) {
+	initializer := &_Initializer{result: 42}
+	initializer.state.Store(initializerStateDone)
+	values := make([]_Value, 8)
+	for i := range values {
+		values[i] = _Value{
+			id:          _TypeID(101 + i*16),
+			initializer: initializer,
+			typeInfo:    &_TypeInfo{Position: i},
+		}
+	}
+	scope := Scope{values: (*_StackedMap)(nil).Append(values)}
+	for i := range values {
+		value, ok := scope.getIface(_TypeID(101 + i*16))
+		if !ok {
+			t.Fatalf("colliding type %d was not found", i)
+		}
+		if value != 42 {
+			t.Fatalf("colliding type %d returned %v", i, value)
 		}
 	}
 }

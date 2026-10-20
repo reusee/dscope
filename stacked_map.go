@@ -11,15 +11,9 @@ import (
 type _StackedMap struct {
 	Next   *_StackedMap // Previous layer in the stack.
 	Values []_Value     // Values in this layer, sorted by TypeID.
-	// index maps the type ID of a value to its position in Values, one plus the
-	// position, so that 0 marks an empty slot. A layer whose binary search is
-	// short enough leaves it nil. The index is built while the layer is created,
-	// before the layer becomes visible to another goroutine, so a lookup reads
-	// it without synchronization.
-	index []uint16
-	// reset carries the state of a layer that hands out fresh values. A plain
-	// layer leaves it nil.
-	reset *_ResetState
+	// extra holds low-frequency lookup and reset metadata. A plain layer
+	// leaves it nil.
+	extra *_StackedMapExtra
 	// Height is the height of the stack from this node downwards. Fork flattens
 	// a stack above an internal limit, so the height stays small.
 	Height int
@@ -35,15 +29,17 @@ type _StackedMap struct {
 	inline [stackedMapInlineValues]_Value
 }
 
-// _ResetState carries what a layer needs to hand out fresh values, together with
-// the cache of the fresh initializers it created. A lazy reset layer sets base
-// and delegates every lookup to it; a partial reset layer lists in ids the sorted
-// inherited types it refreshes on access. The cache comes into existence on the
-// first access to a refreshed type, so a layer whose refreshed types are never
-// resolved never pays for it.
+// _StackedMapExtra holds low-frequency metadata for a value layer. Most
+// layers need neither an index nor reset state, so keeping this data outside
+// the hot layer makes the common Fork path smaller.
+type _StackedMapExtra struct {
+	index []uint16
+	reset *_ResetState
+}
+
 type _ResetState struct {
 	base  *_StackedMap // Non-nil for a lazy reset layer.
-	ids   []_TypeID    // Sorted types a partial reset layer refreshes; the slice belongs to the _Forker.
+	ids   *[]_TypeID   // Sorted types a partial reset layer refreshes; the pointer refers to an immutable slice.
 	cache atomic.Pointer[sync.Map]
 	// last remembers the mapping the layer used most recently, so a program that
 	// resolves one refreshed type over and over skips the cache. The mapping is
@@ -120,10 +116,6 @@ func newStackedMapLayer(base *_StackedMap, n int) *_StackedMap {
 	return layer
 }
 
-// buildIndex gives the layer an index over its values. It must run while the
-// layer is built, before another goroutine can reach it. A layer with few values
-// keeps its binary search, and so does a layer whose positions do not fit an
-// index entry.
 func (s *_StackedMap) buildIndex() {
 	n := len(s.Values)
 	if n < stackedMapIndexThreshold || n > stackedMapIndexLimit {
@@ -142,21 +134,21 @@ func (s *_StackedMap) buildIndex() {
 		}
 		positions[slot] = uint16(i + 1)
 	}
-	s.index = positions
+	if s.extra == nil {
+		s.extra = new(_StackedMapExtra)
+	}
+	s.extra.index = positions
 }
 
-// isLazyReset reports whether the layer delegates every lookup to its base.
 func (s *_StackedMap) isLazyReset() bool {
-	return s.reset != nil && s.reset.base != nil
+	return s.extra != nil && s.extra.reset != nil && s.extra.reset.base != nil
 }
 
-// markRefresh turns the layer into a partial reset layer: the inherited types in
-// ids are refreshed on access. The layer keeps no initializer for a marked type,
-// so a fresh initializer comes into existence in the layer's cache only when the
-// type is actually resolved. ids must be sorted, belong to the scope below the
-// layer, and be disjoint from the types of the layer's own values.
-func (s *_StackedMap) markRefresh(ids []_TypeID) {
-	s.reset = &_ResetState{ids: ids}
+func (s *_StackedMap) markRefresh(ids *[]_TypeID) {
+	if s.extra == nil {
+		s.extra = new(_StackedMapExtra)
+	}
+	s.extra.reset = &_ResetState{ids: ids}
 }
 
 // Load finds the value with the specified TypeID.
@@ -174,19 +166,25 @@ func (s *_StackedMap) Load(id _TypeID) (ret _Value, ok bool) {
 }
 
 func (s *_StackedMap) loadSlow(id _TypeID, word uint64) (ret _Value, ok bool) {
-	if s.reset != nil && s.reset.base != nil {
-		if pair := s.reset.last.Load(); pair != nil && pair.id == id {
-			return pair.val, true
+	if extra := s.extra; extra != nil {
+		if reset := extra.reset; reset != nil && reset.base != nil {
+			if pair := reset.last.Load(); pair != nil && pair.id == id {
+				return pair.val, true
+			}
+			v, found := reset.base.Load(id)
+			if !found {
+				return ret, false
+			}
+			return s.refreshValue(v), true
 		}
-		v, found := s.reset.base.Load(id)
-		if !found {
-			return ret, false
-		}
-		return s.refreshValue(v), true
 	}
 
 	for cur := s; cur != nil; cur = cur.Next {
-		if rs := cur.reset; rs != nil && rs.base == nil && containsID(rs.ids, id) {
+		var reset *_ResetState
+		if cur.extra != nil {
+			reset = cur.extra.reset
+		}
+		if reset != nil && reset.base == nil && containsID(*reset.ids, id) {
 			v, found := cur.Next.Load(id)
 			if !found {
 				panic("impossible: refreshed type not found below its layer")
@@ -206,21 +204,23 @@ func (s *_StackedMap) loadSlow(id _TypeID, word uint64) (ret _Value, ok bool) {
 			}
 			continue
 		}
-		if positions := cur.index; positions != nil {
-			mask := uint64(len(positions) - 1)
-			for slot := uint64(id) & mask; ; slot = (slot + 1) & mask {
-				position := positions[slot]
-				if position == 0 {
-					break
-				}
-				if v := &values[position-1]; v.id == id {
-					if cur == s && word == 0 {
-						s.storeHit(id, int(position)-1)
+		if cur.extra != nil {
+			if positions := cur.extra.index; positions != nil {
+				mask := uint64(len(positions) - 1)
+				for slot := uint64(id) & mask; ; slot = (slot + 1) & mask {
+					position := positions[slot]
+					if position == 0 {
+						break
 					}
-					return *v, true
+					if v := &values[position-1]; v.id == id {
+						if cur == s && word == 0 {
+							s.storeHit(id, int(position)-1)
+						}
+						return *v, true
+					}
 				}
+				continue
 			}
-			continue
 		}
 
 		left, right := uint(0), uint(len(values))
@@ -248,16 +248,11 @@ func containsID(ids []_TypeID, id _TypeID) bool {
 	return ok
 }
 
-// refreshValue returns the value this layer hands out for v. A reset layer keys
-// the fresh initializer by the inherited initializer, so every output of one
-// definition shares one fresh provider: the provider still runs once, and each
-// output keeps its own identity and position. Pointer initializers are returned
-// as they are because they never need re-evaluation.
 func (s *_StackedMap) refreshValue(v _Value) _Value {
 	if v.initializer.DefIsPointer {
 		return v
 	}
-	state := s.reset
+	state := s.extra.reset
 	prevPair := state.last.Load()
 	if prevPair != nil && prevPair.key == v.initializer {
 		v.initializer = prevPair.fresh
@@ -305,7 +300,7 @@ func (s *_StackedMap) IterValues() iter.Seq[_Value] {
 	if s != nil && s.isLazyReset() {
 		resetLayer := s
 		return func(yield func(_Value) bool) {
-			for v := range resetLayer.reset.base.IterValues() {
+			for v := range resetLayer.extra.reset.base.IterValues() {
 				if !yield(resetLayer.refreshValue(v)) {
 					return
 				}
@@ -326,7 +321,7 @@ func (s *_StackedMap) IterValues() iter.Seq[_Value] {
 				}
 				keys[id] = struct{}{}
 				for i := len(refreshers) - 1; i >= 0; i-- {
-					if r := refreshers[i]; containsID(r.reset.ids, id) {
+					if r := refreshers[i]; containsID(*r.extra.reset.ids, id) {
 						d = r.refreshValue(d)
 					}
 				}
@@ -334,8 +329,10 @@ func (s *_StackedMap) IterValues() iter.Seq[_Value] {
 					return
 				}
 			}
-			if cur.reset != nil && cur.reset.base == nil {
-				refreshers = append(refreshers, cur)
+			if cur.extra != nil {
+				if reset := cur.extra.reset; reset != nil && reset.base == nil {
+					refreshers = append(refreshers, cur)
+				}
 			}
 		}
 	}
@@ -356,19 +353,17 @@ func (s *_StackedMap) Append(values []_Value) *_StackedMap {
 	return layer
 }
 
-// Len returns the number of value entries the stack tracks: the values of each
-// layer plus the inherited types a partial reset layer marks for refresh.
 func (s *_StackedMap) Len() int {
 	if s == nil {
 		return 0
 	}
 	if s.isLazyReset() {
-		return s.reset.base.Len()
+		return s.extra.reset.base.Len()
 	}
 	ret := 0
 	for s != nil {
-		if s.reset != nil {
-			ret += len(s.reset.ids)
+		if s.extra != nil && s.extra.reset != nil {
+			ret += len(*s.extra.reset.ids)
 		}
 		ret += len(s.Values)
 		s = s.Next
@@ -381,14 +376,12 @@ type _FlatLayer2 struct {
 	vals  [2]_Value
 }
 
-// flatten materialises the effective values of the stack into a single sorted
-// layer. Effective values and override semantics are preserved.
 func (s *_StackedMap) flatten() *_StackedMap {
 	if s == nil {
 		return nil
 	}
 	if s.isLazyReset() {
-		baseFlat := s.reset.base.flatten()
+		baseFlat := s.extra.reset.base.flatten()
 		if baseFlat == nil {
 			return newStackedMapLayer(nil, 0)
 		}
@@ -416,14 +409,16 @@ func (s *_StackedMap) flatten() *_StackedMap {
 				}
 			}
 			for i := len(refreshers) - 1; i >= 0; i-- {
-				if r := refreshers[i]; containsID(r.reset.ids, id) {
+				if r := refreshers[i]; containsID(*r.extra.reset.ids, id) {
 					d = r.refreshValue(d)
 				}
 			}
 			flatValues = append(flatValues, d)
 		}
-		if cur.reset != nil && cur.reset.base == nil {
-			refreshers = append(refreshers, cur)
+		if cur.extra != nil {
+			if reset := cur.extra.reset; reset != nil && reset.base == nil {
+				refreshers = append(refreshers, cur)
+			}
 		}
 	}
 

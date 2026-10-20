@@ -116,9 +116,6 @@ func TestResetFork(t *testing.T) {
 	}
 }
 
-// TestForkResetLayerIsLazy verifies that the reset layer a Fork installs keeps
-// the inherited initializers until a value is accessed: the fresh initializer
-// of a dependent comes into existence only when the new scope resolves it.
 func TestForkResetLayerIsLazy(t *testing.T) {
 	type (
 		Config  int
@@ -131,11 +128,11 @@ func TestForkResetLayerIsLazy(t *testing.T) {
 	child := scope.Fork(func() Config { return 2 })
 
 	layer := child.values
-	if layer == nil || layer.reset == nil || layer.reset.base != nil {
+	if layer == nil || layer.extra == nil || layer.extra.reset == nil || layer.extra.reset.base != nil {
 		t.Fatal("fork did not install a partial reset layer")
 	}
 	count := func() int {
-		cache := layer.reset.cache.Load()
+		cache := layer.extra.reset.cache.Load()
 		if cache == nil {
 			return 0
 		}
@@ -190,10 +187,6 @@ func TestRefreshKeepsOutputsApart(t *testing.T) {
 	}
 }
 
-// TestResetLayerKeepsMappingsApart verifies that a reset layer hands out one
-// fresh value for each inherited initializer, even when a program resolves
-// several refreshed types in turn: a type must never receive the fresh value of
-// another type.
 func TestResetLayerKeepsMappingsApart(t *testing.T) {
 	type (
 		Config int
@@ -217,7 +210,7 @@ func TestResetLayerKeepsMappingsApart(t *testing.T) {
 	}
 
 	// The layer holds one fresh value for each refreshed type, and no more.
-	cache := reset.values.reset.cache.Load()
+	cache := reset.values.extra.reset.cache.Load()
 	if cache == nil {
 		t.Fatal("reset layer created no cache")
 	}

@@ -91,9 +91,6 @@ const stackHeightLimit = 16
 // pays one allocation of exactly the size of its layer and its initializer.
 const forkInlineInitializers = 1
 
-// _Forker pre-calculates the information required to efficiently create a new
-// scope from a base scope and new definitions. Instances are cached based on
-// the base scope's signature and the types of the new definitions.
 type _Forker struct {
 	// NewValuesTemplate contains template _Value objects (without initializers) for the new definitions.
 	NewValuesTemplate []_Value
@@ -129,6 +126,7 @@ type _ForkBundleReset struct {
 	layer _StackedMap
 	inits [forkInlineInitializers]_Initializer
 	reset _ResetState
+	extra _StackedMapExtra
 }
 
 type _ForkBundle2 struct {
@@ -142,6 +140,7 @@ type _ForkBundle2Reset struct {
 	vals  [2]_Value
 	inits [2]_Initializer
 	reset _ResetState
+	extra _StackedMapExtra
 }
 
 type _SingleForkerAlloc struct {
@@ -517,7 +516,6 @@ func newForkerWithTypes(
 	}
 }
 
-// Fork applies the pre-calculated changes from the _Forker to a base scope, creating a new scope.
 func (f *_Forker) Fork(s Scope, defs []any) Scope {
 
 	// 1. Start from the base scope's value stack.
@@ -564,8 +562,9 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 		v.initializer = &bundle.inits[0]
 		layer.inline[0] = v
 		layer.Values = layer.inline[:1]
-		bundle.reset.ids = f.ResetIDs
-		layer.reset = &bundle.reset
+		bundle.reset.ids = &f.ResetIDs
+		bundle.extra.reset = &bundle.reset
+		layer.extra = &bundle.extra
 		scope.values = layer
 		return scope
 	}
@@ -619,8 +618,9 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 			bundle.vals[1] = v0
 		}
 		layer.Values = bundle.vals[:]
-		bundle.reset.ids = f.ResetIDs
-		layer.reset = &bundle.reset
+		bundle.reset.ids = &f.ResetIDs
+		bundle.extra.reset = &bundle.reset
+		layer.extra = &bundle.extra
 		scope.values = layer
 		return scope
 	}
@@ -660,7 +660,7 @@ func (f *_Forker) Fork(s Scope, defs []any) Scope {
 	layer.buildIndex()
 
 	if len(f.ResetIDs) > 0 {
-		layer.markRefresh(f.ResetIDs)
+		layer.markRefresh(&f.ResetIDs)
 	}
 
 	scope.values = layer

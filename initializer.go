@@ -20,27 +20,27 @@ dscope lazy initialization theory:
   Subsequent accesses re-invoke the provider to reproduce the original error.
 `
 
-// _Initializer holds the values of one definition in one scope and evaluates
-// them at most once. Its identity is its address: a reset layer keys the fresh
-// initializer it hands out by the inherited initializer itself, so two
-// initializers of the same definition in different scopes stay apart.
 type _Initializer struct {
-	Def          any
-	result       any
-	mu           sync.Mutex
-	done         atomic.Bool
+	Def    any
+	result any
+	mu     sync.Mutex
+	// state publishes the result and records whether it contains multiple
+	// outputs. A release store publishes result before a reader observes the
+	// completed state.
+	state        atomic.Uint32
 	DefIsPointer bool
-	multi        bool
 }
+
+const (
+	initializerStateDone uint32 = 1 << iota
+	initializerStateMulti
+)
 
 type _MultiResult struct {
 	vals   []reflect.Value
 	ifaces []any
 }
 
-// initInitializer fills an initializer from def. The caller owns the storage of
-// the initializer: a Fork keeps the initializers of its definitions in the
-// allocation of its layer.
 func initInitializer(i *_Initializer, def any, isPointer bool) {
 	i.Def = def
 	i.DefIsPointer = isPointer
@@ -53,15 +53,15 @@ func initInitializer(i *_Initializer, def any, isPointer bool) {
 			if !copiedValue.IsNil() {
 				iface = copiedValue.Interface()
 			}
-			i.multi = true
 			i.result = &_MultiResult{
 				vals:   []reflect.Value{copiedValue},
 				ifaces: []any{iface},
 			}
+			i.state.Store(initializerStateDone | initializerStateMulti)
 		} else {
 			i.result = definitionValue.Interface()
+			i.state.Store(initializerStateDone)
 		}
-		i.done.Store(true)
 	}
 }
 
@@ -78,16 +78,14 @@ func (s *_Initializer) reset() *_Initializer {
 	}
 }
 
-// evaluate runs the definition once and caches its values. A panic of the
-// definition leaves done unset, so the next access runs the definition again and
-// reproduces the panic.
 func (i *_Initializer) evaluate(scope Scope) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	if i.done.Load() {
+	if i.state.Load()&initializerStateDone != 0 {
 		return
 	}
 	vals := scope.call(reflect.ValueOf(i.Def))
+	state := initializerStateDone
 	if len(vals) == 1 && vals[0].Kind() != reflect.Interface {
 		i.result = vals[0].Interface()
 	} else {
@@ -97,35 +95,34 @@ func (i *_Initializer) evaluate(scope Scope) {
 				ifaces[j] = vj.Interface()
 			}
 		}
-		i.multi = true
+		state |= initializerStateMulti
 		i.result = &_MultiResult{
 			vals:   vals,
 			ifaces: ifaces,
 		}
 	}
-	i.done.Store(true)
+	i.state.Store(state)
 }
 
-// get returns the value of one output and evaluates the definition on first
-// access. The check of the cached state stays small, so the compiler inlines the
-// function into its callers.
 func (i *_Initializer) get(scope Scope, v _Value) reflect.Value {
-	if !i.done.Load() {
+	state := i.state.Load()
+	if state&initializerStateDone == 0 {
 		i.evaluate(scope)
+		state = i.state.Load()
 	}
-	if !i.multi {
+	if state&initializerStateMulti == 0 {
 		return reflect.ValueOf(i.result)
 	}
 	return i.result.(*_MultiResult).vals[v.typeInfo.Position]
 }
 
-// getIface returns the interface value of one output and evaluates the
-// definition on first access.
 func (i *_Initializer) getIface(scope Scope, v _Value) any {
-	if !i.done.Load() {
+	state := i.state.Load()
+	if state&initializerStateDone == 0 {
 		i.evaluate(scope)
+		state = i.state.Load()
 	}
-	if !i.multi {
+	if state&initializerStateMulti == 0 {
 		return i.result
 	}
 	return i.result.(*_MultiResult).ifaces[v.typeInfo.Position]
