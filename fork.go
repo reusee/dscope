@@ -243,8 +243,25 @@ func newForker(
 	return newForkerWithTypes(scope, defs, nil)
 }
 
-// newForkerWithTypes is newForker with pre-computed definition types, so a
-// Fork that already collected the types of its definitions does not pay for
+func dependencyLoopPath(path []_TypeID, id _TypeID) string {
+	start := 0
+	for i, pathID := range path {
+		if pathID == id {
+			start = i
+			break
+		}
+	}
+	buf := new(strings.Builder)
+	for _, pathID := range path[start:] {
+		buf.WriteString(typeIDToType(pathID).String())
+		buf.WriteString(" -> ")
+	}
+	buf.WriteString(typeIDToType(id).String())
+	return buf.String()
+}
+
+// newForkerWithTypes is newForker with pre-computed definition types, so a Fork
+// that already collected the types of its definitions does not pay for
 // reflect.TypeOf a second time. A nil defTypes makes it collect the types
 // itself, preserving the newForker call contract.
 func newForkerWithTypes(
@@ -416,16 +433,10 @@ func newForkerWithTypes(
 		switch state.color {
 
 		case 1: // Gray: Loop detected
-			buf := new(strings.Builder)
-			for _, pathID := range path {
-				buf.WriteString(typeIDToType(pathID).String())
-				buf.WriteString(" -> ")
-			}
-			buf.WriteString(typeIDToType(id).String())
 			return false, errors.Join(
 				fmt.Errorf("found dependency loop in definition %v", value.typeInfo.DefType),
 				ErrDependencyLoop,
-				fmt.Errorf("path: %s", buf.String()),
+				fmt.Errorf("path: %s", dependencyLoopPath(path, id)),
 			)
 
 		case 2: // Black: Already processed

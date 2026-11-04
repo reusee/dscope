@@ -339,6 +339,9 @@ func (scope Scope) Fork(
 			}
 		}
 		defs = append(newDefs, Methods(moduleObjects...)...)
+		if len(defs) == 0 {
+			return scope
+		}
 	}
 
 	defTypes := make([]reflect.Type, len(defs))

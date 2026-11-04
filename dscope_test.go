@@ -1480,6 +1480,53 @@ func TestDependencyLoopPathShowsCycle(t *testing.T) {
 	)
 }
 
+func TestDependencyLoopPathTrimsUnrelatedPrefix(t *testing.T) {
+	type loopPathPrefixTypeX int
+	type loopPathPrefixTypeA int
+	type loopPathPrefixTypeB int
+	type loopPathPrefixTypeC int
+
+	getTypeID(reflect.TypeFor[loopPathPrefixTypeX]())
+	getTypeID(reflect.TypeFor[loopPathPrefixTypeB]())
+	getTypeID(reflect.TypeFor[loopPathPrefixTypeC]())
+	getTypeID(reflect.TypeFor[loopPathPrefixTypeA]())
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected a dependency loop panic")
+		}
+		err, ok := r.(error)
+		if !ok {
+			t.Fatalf("panic is not an error: %v", r)
+		}
+		if !errors.Is(err, ErrDependencyLoop) {
+			t.Fatalf("expected ErrDependencyLoop, got %v", err)
+		}
+		message := err.Error()
+		const marker = "path: "
+		idx := strings.Index(message, marker)
+		if idx < 0 {
+			t.Fatalf("error message has no path: %s", message)
+		}
+		path := strings.TrimSpace(message[idx+len(marker):])
+		parts := strings.Split(path, " -> ")
+		if len(parts) < 3 {
+			t.Fatalf("path too short: %q", path)
+		}
+		if parts[0] != parts[len(parts)-1] {
+			t.Fatalf("path includes an unrelated prefix: %q", path)
+		}
+	}()
+
+	New(
+		func(loopPathPrefixTypeA) loopPathPrefixTypeX { return 0 },
+		func(loopPathPrefixTypeA) loopPathPrefixTypeB { return 0 },
+		func(loopPathPrefixTypeB) loopPathPrefixTypeC { return 0 },
+		func(loopPathPrefixTypeC) loopPathPrefixTypeA { return 0 },
+	)
+}
+
 // TestNilDefinitionOnCachedForker verifies that definition validation runs on
 // every Fork call, including calls served by a cached _Forker. The forker
 // cache is keyed by definition types only, so a cached path must still reject

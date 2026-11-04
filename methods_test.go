@@ -22,6 +22,13 @@ func (TestMethodsFoo) Foo() int {
 	return 42
 }
 
+type testMethodsRecursivePointerModule struct {
+	Module
+	Next *testMethodsRecursivePointerModule
+}
+
+func (*testMethodsRecursivePointerModule) Value() int { return 42 }
+
 func TestMethodFromFields(t *testing.T) {
 	type Foo struct {
 		Foo TestMethodsFoo
@@ -224,5 +231,81 @@ func TestMethodsAddressability(t *testing.T) {
 				t.Fatalf("expected 2, got %d", v)
 			}
 		})
+	}
+}
+
+func TestMethodsPointerToNilInterface(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		object any
+		typ    string
+	}{
+		{"single pointer", new(io.Reader), "*io.Reader"},
+		{"double pointer", new(*io.Reader), "**io.Reader"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				p := recover()
+				if p == nil {
+					t.Fatal("should panic")
+				}
+				err, ok := p.(error)
+				if !ok {
+					t.Fatalf("panic value not an error: %v", p)
+				}
+				msg := err.Error()
+				if !strings.Contains(msg, "bad argument") {
+					t.Fatalf("unexpected error: %s", msg)
+				}
+				if !strings.Contains(msg, "nil pointer to interface "+tc.typ) {
+					t.Fatalf("unexpected error: %s", msg)
+				}
+			}()
+			Methods(tc.object)
+		})
+	}
+}
+
+func TestMethodsPointerToInterfaceModule(t *testing.T) {
+	var holder any = new(TestMethodsFoo)
+	defs := Methods(&holder)
+	if len(defs) != 1 {
+		t.Fatalf("got %d definitions, want 1", len(defs))
+	}
+	scope := New(defs...)
+	if got := scope.Get[int](); got != 42 {
+		t.Fatalf("got %d, want 42", got)
+	}
+}
+
+func TestMethodsPointerChainVisitsIntermediateTypeOnce(t *testing.T) {
+	m := &testMethodsRecursivePointerModule{}
+	m.Next = m
+	defs := Methods(&m)
+	if len(defs) != 1 {
+		t.Fatalf("got %d definitions, want 1", len(defs))
+	}
+	fn, ok := defs[0].(func() int)
+	if !ok {
+		t.Fatalf("definition has type %T, want func() int", defs[0])
+	}
+	if got := fn(); got != 42 {
+		t.Fatalf("got %d, want 42", got)
+	}
+}
+
+func TestMethodsDistinctInstancesOfSameType(t *testing.T) {
+	defs := Methods(TestMethodsFoo{}, TestMethodsFoo{})
+	if len(defs) != 2 {
+		t.Fatalf("got %d definitions, want 2", len(defs))
+	}
+	for i, def := range defs {
+		fn, ok := def.(func() int)
+		if !ok {
+			t.Fatalf("definition %d has type %T, want func() int", i, def)
+		}
+		if got := fn(); got != 42 {
+			t.Fatalf("definition %d returned %d, want 42", i, got)
+		}
 	}
 }

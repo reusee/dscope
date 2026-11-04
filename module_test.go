@@ -28,6 +28,10 @@ func (mod3) Int16() int16 {
 	return 42
 }
 
+type noProviderModule struct {
+	Module
+}
+
 func TestModule(t *testing.T) {
 	scope := New(
 		Provide(float32(42)),
@@ -39,4 +43,28 @@ func TestModule(t *testing.T) {
 	scope.Get[int8]()
 	scope.Get[float64]()
 	scope.Get[int16]()
+}
+
+func TestForkNoProviderModuleAddsNoLayer(t *testing.T) {
+	scopes := map[string]Scope{
+		"value":   New(noProviderModule{}),
+		"pointer": New(new(noProviderModule)),
+	}
+	for name, scope := range scopes {
+		if scope.values != Universe.values {
+			t.Fatalf("%s: values changed", name)
+		}
+		if scope.signature != Universe.signature {
+			t.Fatalf("%s: signature changed", name)
+		}
+	}
+
+	base := New(func() int { return 42 })
+	forked := base.Fork(noProviderModule{})
+	if forked.values != base.values {
+		t.Fatal("fork values changed")
+	}
+	if forked.signature != base.signature {
+		t.Fatal("fork signature changed")
+	}
 }
