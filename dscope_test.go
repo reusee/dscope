@@ -884,6 +884,45 @@ func TestSignature(t *testing.T) {
 
 }
 
+func TestForkMultiOutputOwnershipRecomputation(t *testing.T) {
+	type (
+		X int
+		A int
+		B int
+		C int
+	)
+	provideAB := func(x X) (A, B) {
+		return A(x), B(x)
+	}
+	provideBC := func() (B, C) {
+		return 100, 0
+	}
+
+	first := New(Provide(X(1)), provideAB).Fork(provideBC)
+	second := New(Provide(X(1)), provideBC).Fork(provideAB)
+	if got := first.Get[B](); got != 100 {
+		t.Fatalf("first B: got %d, want 100", got)
+	}
+	if got := second.Get[B](); got != 1 {
+		t.Fatalf("second B: got %d, want 1", got)
+	}
+
+	first = first.Fork(Provide(X(2)))
+	second = second.Fork(Provide(X(2)))
+	if got := first.Get[A](); got != 2 {
+		t.Fatalf("first A: got %d, want 2", got)
+	}
+	if got := first.Get[B](); got != 100 {
+		t.Fatalf("first B after override: got %d, want 100", got)
+	}
+	if got := second.Get[A](); got != 2 {
+		t.Fatalf("second A: got %d, want 2", got)
+	}
+	if got := second.Get[B](); got != 2 {
+		t.Fatalf("second B after override: got %d, want 2", got)
+	}
+}
+
 func TestProviderManyArgs(t *testing.T) {
 	type Result int
 	base := New(func() int {

@@ -32,14 +32,14 @@ dscope fork theory:
   common base.
 `
 
-// TheoryOfScopeIdentity documents how a scope gets its identity, and why that
-// identity must resist collisions.
 const TheoryOfScopeIdentity = `
 dscope scope identity theory:
-- A scope's identity is the sorted set of the types its definitions produce,
-  summarized as a 128-bit digest. Definition instances do not enter the
-  identity: two scopes built from the same types have the same shape, so they
-  share analysis results.
+- A scope's identity is its sorted set of effective output mappings, each
+  containing the output type, its provider definition type, and the output
+  position, summarized as a 128-bit digest. Definition instances do not enter
+  the identity: two scopes with the same mappings have the same shape, so they
+  share analysis results. Partial overrides can leave different outputs of one
+  multi-output provider effective, so definition types alone are not a shape.
 - The identity is a cache key. Two different shapes with one digest would share
   a forker and hand out wrong values, so the digest is 128 bits wide, seeded per
   process, and folds every hashed word through a bijective mixer. An adversary
@@ -260,10 +260,29 @@ func dependencyLoopPath(path []_TypeID, id _TypeID) string {
 	return buf.String()
 }
 
-// newForkerWithTypes is newForker with pre-computed definition types, so a Fork
-// that already collected the types of its definitions does not pay for
-// reflect.TypeOf a second time. A nil defTypes makes it collect the types
-// itself, preserving the newForker call contract.
+// scopeSignature hashes the effective output mappings of a scope. The caller
+// supplies each effective output exactly once; sorting by output type makes the
+// signature independent of definition and layer order.
+func scopeSignature(values []_Value) _Hash {
+	slices.SortFunc(values, func(a, b _Value) int {
+		return cmp.Compare(a.id, b.id)
+	})
+	shapeIDs := make([]_TypeID, 0, 3*len(values))
+	for _, value := range values {
+		defID := value.typeInfo.DefTypeID
+		if defID == 0 {
+			defID = getTypeID(value.typeInfo.DefType)
+		}
+		shapeIDs = append(
+			shapeIDs,
+			value.id,
+			defID,
+			_TypeID(value.typeInfo.Position),
+		)
+	}
+	return hashTypeIDs(shapeIDs)
+}
+
 func newForkerWithTypes(
 	scope Scope,
 	defs []any,
@@ -281,8 +300,6 @@ func newForkerWithTypes(
 		if defType.Kind() == reflect.Func && defType.NumIn() == 0 && defType.NumOut() == 1 {
 			defID := getTypeID(defType)
 			outID := getTypeID(defType.Out(0))
-			h0 := hashWord(hashWord(hashSeeds[0], 1), uint64(defID))
-			h1 := hashWord(hashWord(hashSeeds[1], 1), uint64(defID))
 			alloc := new(_SingleForkerAlloc)
 			alloc.typeInfo.DefType = defType
 			alloc.typeInfo.DefTypeID = defID
@@ -291,7 +308,7 @@ func newForkerWithTypes(
 				typeInfo: &alloc.typeInfo,
 			}
 			f := &alloc.forker
-			f.Signature = _Hash{h0, h1}
+			f.Signature = scopeSignature(alloc.val[:])
 			f.NewValuesTemplate = alloc.val[:]
 			f.DefKinds = singleFuncDefKinds
 			f.DefNumValues = singleFuncDefNumValues
@@ -475,26 +492,15 @@ func newForkerWithTypes(
 		return
 	}
 
-	// 4. Analyze All Types in Conceptual Scope:
-	defTypeIDs := make([]_TypeID, 0, valuesTemplate.Len())
-
+	// 4. Analyze all effective values and derive the new scope identity.
 	for value := range valuesTemplate.IterValues() {
 		if _, err := traverse(value); err != nil {
 			panic(err)
 		}
-		defID := value.typeInfo.DefTypeID
-		if defID == 0 {
-			defID = getTypeID(value.typeInfo.DefType)
-		}
-		defTypeIDs = append(defTypeIDs, defID)
 	}
-	slices.Sort(defTypeIDs)
-	defTypeIDs = slices.Compact(defTypeIDs)
+	signature := scopeSignature(slices.Collect(valuesTemplate.IterValues()))
 
-	// 5. Calculate the New Scope Signature: Hash sorted definition type IDs.
-	signature := hashTypeIDs(defTypeIDs)
-
-	// 6. Identify Values Requiring Reset: Collect TypeIDs that need reset AND existed in the base scope.
+	// 5. Identify Values Requiring Reset: Collect TypeIDs that need reset AND existed in the base scope.
 	var resetIDs []_TypeID
 	if scope.values != nil {
 		for id, state := range states {
@@ -514,7 +520,7 @@ func newForkerWithTypes(
 	singleFunc1 := len(defKinds) == 1 && len(newValuesTemplate) == 1 && defKinds[0] == reflect.Func
 	singleFunc2 := len(defKinds) == 2 && len(newValuesTemplate) == 2 && defKinds[0] == reflect.Func && defKinds[1] == reflect.Func
 
-	// 7. Return the completed _Forker.
+	// 6. Return the completed _Forker.
 	return &_Forker{
 		Signature:         signature,
 		NewValuesTemplate: newValuesTemplate,

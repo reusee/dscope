@@ -57,12 +57,11 @@ func hashWord(state, word uint64) uint64 {
 	return x ^ (x >> 31)
 }
 
-// hashTypeIDs hashes the given type IDs into a digest. A scope's identity is its
-// sorted set of definition type IDs, so every signature and cache key must use
-// this digest. Each half is an independent stream: its own seed, and one
-// bijective folding step per hashed word. The length of the ID list is folded in
-// as well, so lists of different lengths stay apart. The digest needs no buffer
-// and allocates nothing.
+// hashTypeIDs hashes type IDs into a digest. Scope signatures and fork cache
+// keys use this same digest encoding. Each half is an independent stream: its
+// own seed, and one bijective folding step per hashed word. The length of the
+// ID list is folded in as well, so lists of different lengths stay apart. The
+// digest needs no buffer and allocates nothing.
 func hashTypeIDs(ids []_TypeID) (ret _Hash) {
 	h0, h1 := hashSeeds[0], hashSeeds[1]
 	h0 = hashWord(h0, uint64(len(ids)))
@@ -179,7 +178,7 @@ type Scope struct {
 	// values points to the top layer of the immutable value stack (_StackedMap).
 	values *_StackedMap
 	// signature is a hash representing the structural identity of this scope,
-	// based on all definition types involved in its creation.
+	// based on its effective output-to-definition mappings.
 	signature _Hash
 }
 
