@@ -6,7 +6,7 @@
 
 Managing dependencies in larger Go applications can become complex. `dscope` offers several advantages:
 
-*   **Type-Safe Dependencies**: Leverages Go's type system to ensure that dependencies are resolved correctly at compile time or with clear runtime panics if a type is missing. Generic functions like `Get[T](scope)` provide compile-time type checking for retrievals.
+*   **Type-Safe Dependencies**: Leverages Go's type system to ensure that dependencies are resolved correctly at compile time or with clear runtime panics if a type is missing. Generic methods like `scope.Get[T]()` provide compile-time type checking for retrievals.
 *   **Define and Depend on Interfaces (or Concrete Types)**: While you can register and request concrete types directly, `dscope` fully supports defining providers that return interfaces and requesting dependencies via those interfaces, promoting loose coupling.
 ## Core Concepts
 
@@ -45,11 +45,11 @@ scope := dscope.New(func() int {
 	calls++
 	return calls
 })
-fmt.Println(dscope.Get[int](scope))      // Output: 1
-fmt.Println(dscope.Get[int](scope))      // Output: 1 (result is cached)
+fmt.Println(scope.Get[int]())      // Output: 1
+fmt.Println(scope.Get[int]())      // Output: 1 (result is cached)
 
 resetScope := scope.Reset()
-fmt.Println(dscope.Get[int](resetScope)) // Output: 2 (recomputed)
+fmt.Println(resetScope.Get[int]()) // Output: 2 (recomputed)
 ```
 
 `dscope.Reset` (type `Reset func() Scope`) is also provided as a built-in dependency bound to the current scope's `Reset` method, so it can be injected into providers, similar to `dscope.Fork`:
@@ -98,11 +98,11 @@ func main() {
 
 ### 2. Getting Values by Type
 
-You can retrieve values from the scope using `scope.GetType(reflect.Type)`, the generic `dscope.Get[T](scope)`, or `scope.Assign(pointers...)`.
+You can retrieve values from the scope using `scope.GetType(reflect.Type)`, the generic `scope.Get[T]()`, or `scope.Assign(&target)`.
 
-*   **`dscope.Get[T](scope)` (Recommended for type safety):**
+*   **`scope.Get[T]()` (Recommended for type safety):**
     ```go
-    msg := dscope.Get[Message](scope)
+    msg := scope.Get[Message]()
     fmt.Println(msg) // Output: Hello, dscope!
     ```
 
@@ -112,11 +112,12 @@ You can retrieve values from the scope using `scope.GetType(reflect.Type)`, the 
         fmt.Println(msg) // Output: Hello, dscope!
     }
     ```
-*   **`scope.Assign(pointers...)`:**
+*   **`scope.Assign(&target)`:**
     ```go
     var m Message
     var g Greeter
-    scope.Assign(&m, &g)
+    scope.Assign(&m)
+    scope.Assign(&g)
     fmt.Println(g, m) // Output: Hello Hello, dscope!
     ```
 
@@ -161,14 +162,14 @@ baseScope := dscope.New(func() int { return 10 })
 branch1 := baseScope.Fork(func(i int) string {
 	return fmt.Sprintf("Number: %d", i)
 })
-fmt.Println(dscope.Get[string](branch1)) // Output: Number: 10
+fmt.Println(branch1.Get[string]()) // Output: Number: 10
 
 // Fork 2: Override an existing type
 branch2 := baseScope.Fork(func() int { return 20 })
-fmt.Println(dscope.Get[int](branch2)) // Output: 20
+fmt.Println(branch2.Get[int]()) // Output: 20
 
 // Original scope is unaffected
-fmt.Println(dscope.Get[int](baseScope)) // Output: 10
+fmt.Println(baseScope.Get[int]()) // Output: 10
 ```
 
 ### 5. Modules
@@ -176,21 +177,24 @@ fmt.Println(dscope.Get[int](baseScope)) // Output: 10
 Modules help organize definitions. You can embed `dscope.Module` in your structs and then use `dscope.Methods(moduleInstances...)` to add all exported methods of those instances (and their embedded modules) as providers to the scope.
 
 ```go
+type DBConnection string
+type MyService string
+
 type DatabaseModule struct {
 	dscope.Module
 }
 
-func (dbm *DatabaseModule) ProvideDBConnection() string { // Becomes a provider
+func (dbm *DatabaseModule) ProvideDBConnection() DBConnection { // Becomes a provider
 	return "db_connection_string"
 }
 
 type ServiceModule struct {
 	dscope.Module
-	DBDep DatabaseModule // Embedded module's methods will also be added
+	DBDep DatabaseModule // Module field's methods will also be added
 }
 
-func (sm *ServiceModule) ProvideMyService(dbConn string) string { // Becomes a provider
-	return "service_using_" + dbConn
+func (sm *ServiceModule) ProvideMyService(dbConn DBConnection) MyService { // Becomes a provider
+	return MyService("service_using_" + string(dbConn))
 }
 
 func main() {
@@ -198,7 +202,7 @@ func main() {
 	scope := dscope.New(
 		dscope.Methods(new(ServiceModule))...,
 	)
-	service := dscope.Get[string](scope) // Will try to get "service_using_db_connection_string"
+	service := scope.Get[MyService]()
 	fmt.Println(service)
 }
 ```

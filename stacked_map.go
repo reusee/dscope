@@ -165,6 +165,32 @@ func (s *_StackedMap) Load(id _TypeID) (ret _Value, ok bool) {
 	return s.loadSlow(id, word)
 }
 
+// loadMeta finds the value metadata with the specified TypeID without
+// materialising reset initializers or updating lookup memos.
+func (s *_StackedMap) loadMeta(id _TypeID) (ret _Value, ok bool) {
+	for cur := s; cur != nil; {
+		if cur.isLazyReset() {
+			cur = cur.extra.reset.base
+			continue
+		}
+		values := cur.Values
+		left, right := uint(0), uint(len(values))
+		for left < right {
+			mid := (left + right) >> 1
+			midID := values[mid].id
+			if midID > id {
+				right = mid
+			} else if midID < id {
+				left = mid + 1
+			} else {
+				return values[mid], true
+			}
+		}
+		cur = cur.Next
+	}
+	return ret, false
+}
+
 func (s *_StackedMap) loadSlow(id _TypeID, word uint64) (ret _Value, ok bool) {
 	if extra := s.extra; extra != nil {
 		if reset := extra.reset; reset != nil && reset.base != nil {
@@ -334,6 +360,31 @@ func (s *_StackedMap) IterValues() iter.Seq[_Value] {
 					refreshers = append(refreshers, cur)
 				}
 			}
+		}
+	}
+}
+
+// iterMeta yields the effective _Value metadata entries of the stack without
+// materialising reset initializers.
+func (s *_StackedMap) iterMeta() iter.Seq[_Value] {
+	return func(yield func(_Value) bool) {
+		keys := make(map[_TypeID]struct{})
+		for cur := s; cur != nil; {
+			if cur.isLazyReset() {
+				cur = cur.extra.reset.base
+				continue
+			}
+			for _, d := range cur.Values {
+				id := d.id
+				if _, ok := keys[id]; ok {
+					continue
+				}
+				keys[id] = struct{}{}
+				if !yield(d) {
+					return
+				}
+			}
+			cur = cur.Next
 		}
 	}
 }

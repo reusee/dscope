@@ -1,6 +1,7 @@
 package dscope
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -308,4 +309,38 @@ func TestMethodsDistinctInstancesOfSameType(t *testing.T) {
 			t.Fatalf("definition %d returned %d, want 42", i, got)
 		}
 	}
+}
+
+func TestMethodsDoesNotMutateCallerPointers(t *testing.T) {
+	t.Run("nil inner module pointer", func(t *testing.T) {
+		var inner *TestMethodsFoo
+		defs := Methods(&inner)
+		if inner != nil {
+			t.Fatal("Methods mutated caller's nil *TestMethodsFoo pointer")
+		}
+		scope := New(defs...)
+		if got := scope.Get[int](); got != 42 {
+			t.Fatalf("got %d, want 42", got)
+		}
+	})
+
+	t.Run("nil inner pointer to interface", func(t *testing.T) {
+		var inner *io.Reader
+		func() {
+			defer func() {
+				p := recover()
+				if p == nil {
+					t.Fatal("should panic")
+				}
+				err, ok := p.(error)
+				if !ok || !errors.Is(err, ErrBadArgument) {
+					t.Fatalf("expected ErrBadArgument, got %T: %v", p, p)
+				}
+			}()
+			Methods(&inner)
+		}()
+		if inner != nil {
+			t.Fatal("Methods materialised and mutated caller's nil *io.Reader pointer on interface chain")
+		}
+	})
 }

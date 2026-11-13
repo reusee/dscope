@@ -408,3 +408,124 @@ func TestInjectStructCircularEmbedding(t *testing.T) {
 	}()
 	New().InjectStruct(&Rec{})
 }
+
+func TestInjectStructIgnoredTag(t *testing.T) {
+	type EmbeddedPtr struct {
+		Missing float64 `dscope:"."`
+	}
+	type EmbeddedVal struct {
+		Val int `dscope:"."`
+	}
+	type Target struct {
+		Kept         int         `dscope:"."`
+		SkippedVal   int         `dscope:"-"`
+		SkippedLazy  Inject[int] `dscope:"-"`
+		*EmbeddedPtr `dscope:"-"`
+		EmbeddedVal  `dscope:"-"`
+	}
+
+	scope := New(Provide(42))
+	var target Target
+	scope.InjectStruct(&target)
+
+	if target.Kept != 42 {
+		t.Fatalf("Kept = %d, want 42", target.Kept)
+	}
+	if target.SkippedVal != 0 {
+		t.Fatalf("SkippedVal = %d, want 0", target.SkippedVal)
+	}
+	if target.SkippedLazy != nil {
+		t.Fatal("SkippedLazy should remain nil when tagged dscope:\"-\"")
+	}
+	if target.EmbeddedPtr != nil {
+		t.Fatal("EmbeddedPtr should remain nil when tagged dscope:\"-\"")
+	}
+	if target.EmbeddedVal.Val != 0 {
+		t.Fatalf("EmbeddedVal.Val = %d, want 0", target.EmbeddedVal.Val)
+	}
+}
+
+type TestDualBranch1 struct {
+	*TestDualRoot
+}
+
+type TestDualBranch2 struct {
+	*TestDualRoot
+}
+
+type TestDualRoot struct {
+	*TestDualBranch1
+	*TestDualBranch2
+}
+
+func TestInjectStructCircularEmbeddingRejectedUpFront(t *testing.T) {
+	t.Run("self cycle", func(t *testing.T) {
+		type Rec struct {
+			*Rec
+		}
+		var rec Rec
+		func() {
+			defer func() {
+				p := recover()
+				if p == nil {
+					t.Fatal("should panic")
+				}
+				err, ok := p.(error)
+				if !ok || !errors.Is(err, ErrBadArgument) {
+					t.Fatalf("expected ErrBadArgument, got %T: %v", p, p)
+				}
+			}()
+			New().InjectStruct(&rec)
+		}()
+		if rec.Rec != nil {
+			t.Fatal("InjectStruct allocated circular embedded pointers before rejecting circular type")
+		}
+	})
+
+	t.Run("branching cycle", func(t *testing.T) {
+		var root TestDualRoot
+		func() {
+			defer func() {
+				p := recover()
+				if p == nil {
+					t.Fatal("should panic on branching circular embedding")
+				}
+				err, ok := p.(error)
+				if !ok || !errors.Is(err, ErrBadArgument) {
+					t.Fatalf("expected ErrBadArgument, got %T: %v", p, p)
+				}
+				if !strings.Contains(err.Error(), "recursive struct injection depth limit exceeded") {
+					t.Fatalf("unexpected error message: %v", err)
+				}
+			}()
+			New().InjectStruct(&root)
+		}()
+		if root.TestDualBranch1 != nil || root.TestDualBranch2 != nil {
+			t.Fatal("InjectStruct allocated branching circular embedded pointers before rejecting circular type")
+		}
+	})
+
+	t.Run("diamond non-cyclic embedding allowed", func(t *testing.T) {
+		type SharedLeaf struct {
+			V int `dscope:"."`
+		}
+		type Left struct {
+			*SharedLeaf
+		}
+		type Right struct {
+			*SharedLeaf
+		}
+		type Diamond struct {
+			*Left
+			*Right
+		}
+		var d Diamond
+		New(Provide(77)).InjectStruct(&d)
+		if d.Left == nil || d.Left.SharedLeaf == nil || d.Left.V != 77 {
+			t.Fatalf("Left branch not injected: %+v", d.Left)
+		}
+		if d.Right == nil || d.Right.SharedLeaf == nil || d.Right.V != 77 {
+			t.Fatalf("Right branch not injected: %+v", d.Right)
+		}
+	})
+}

@@ -373,7 +373,7 @@ func newForkerWithTypes(
 				numValues++
 				newDefOrigins = append(newDefOrigins, id)
 				origins = append(origins, origin)
-				if _, ok := scope.values.Load(id); ok {
+				if _, ok := scope.values.loadMeta(id); ok {
 					redefinedIDs = append(redefinedIDs, id) // Mark override
 				}
 			}
@@ -396,7 +396,7 @@ func newForkerWithTypes(
 			})
 			newDefOrigins = append(newDefOrigins, id)
 			origins = append(origins, origin)
-			if _, ok := scope.values.Load(id); ok {
+			if _, ok := scope.values.loadMeta(id); ok {
 				redefinedIDs = append(redefinedIDs, id) // Mark override
 			}
 			defNumValues = append(defNumValues, 1)
@@ -438,7 +438,8 @@ func newForkerWithTypes(
 		color int
 		reset bool
 	}
-	valuesTemplate := scope.values.Append(sortedNewValuesTemplate)
+	valuesTemplate := newStackedMapLayer(scope.values, len(sortedNewValuesTemplate))
+	copy(valuesTemplate.Values, sortedNewValuesTemplate)
 	states := make(map[_TypeID]traversalState, len(newValuesTemplate))
 
 	var path []_TypeID
@@ -474,7 +475,7 @@ func newForkerWithTypes(
 				}
 				continue
 			}
-			depValue, ok := valuesTemplate.Load(depID)
+			depValue, ok := valuesTemplate.loadMeta(depID)
 			if !ok {
 				path = path[:len(path)-1]
 				return false, errWith(ErrDependencyNotFound, "dependency not found in definition %v, no definition for %v", value.typeInfo.DefType, typeIDToType(depID))
@@ -493,12 +494,12 @@ func newForkerWithTypes(
 	}
 
 	// 4. Analyze all effective values and derive the new scope identity.
-	for value := range valuesTemplate.IterValues() {
+	for value := range valuesTemplate.iterMeta() {
 		if _, err := traverse(value); err != nil {
 			panic(err)
 		}
 	}
-	signature := scopeSignature(slices.Collect(valuesTemplate.IterValues()))
+	signature := scopeSignature(slices.Collect(valuesTemplate.iterMeta()))
 
 	// 5. Identify Values Requiring Reset: Collect TypeIDs that need reset AND existed in the base scope.
 	var resetIDs []_TypeID
@@ -510,7 +511,7 @@ func newForkerWithTypes(
 			if containsID(redefinedIDs, id) {
 				continue
 			}
-			if _, ok := scope.values.Load(id); ok {
+			if _, ok := scope.values.loadMeta(id); ok {
 				resetIDs = append(resetIDs, id)
 			}
 		}

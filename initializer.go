@@ -47,10 +47,12 @@ func initInitializer(i *_Initializer, def any, isPointer bool) {
 	if isPointer {
 		definitionValue := reflect.ValueOf(def).Elem()
 		if definitionValue.Kind() == reflect.Interface {
-			copiedValue := reflect.New(definitionValue.Type()).Elem()
-			copiedValue.Set(definitionValue)
+			var copiedValue reflect.Value
 			var iface any
-			if !copiedValue.IsNil() {
+			if definitionValue.IsNil() {
+				copiedValue = reflect.Zero(definitionValue.Type())
+			} else {
+				copiedValue = definitionValue.Elem().Convert(definitionValue.Type())
 				iface = copiedValue.Interface()
 			}
 			i.result = &_MultiResult{

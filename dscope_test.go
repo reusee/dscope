@@ -1615,3 +1615,29 @@ func TestNilDefinitionOnCachedForker(t *testing.T) {
 		New(nilPtr)
 	})
 }
+
+func TestInterfacePointerDefinitionImmutableValue(t *testing.T) {
+	type Greeter interface {
+		Greet() string
+	}
+	var nonNil any = "hello"
+	var nilIface Greeter
+
+	scope := New(&nonNil, &nilIface)
+
+	rvNonNil := scope.GetType(reflect.TypeFor[any]())
+	if rvNonNil.CanSet() || rvNonNil.CanAddr() {
+		t.Fatalf("GetType(any) returned settable/addressable reflect.Value (CanSet=%v, CanAddr=%v), breaking Scope immutability", rvNonNil.CanSet(), rvNonNil.CanAddr())
+	}
+	if got := rvNonNil.Interface(); got != "hello" {
+		t.Fatalf("got %v, want \"hello\"", got)
+	}
+
+	rvNil := scope.GetType(reflect.TypeFor[Greeter]())
+	if rvNil.CanSet() || rvNil.CanAddr() {
+		t.Fatalf("GetType(Greeter) returned settable/addressable reflect.Value (CanSet=%v, CanAddr=%v), breaking Scope immutability", rvNil.CanSet(), rvNil.CanAddr())
+	}
+	if rvNil.Type() != reflect.TypeFor[Greeter]() || !rvNil.IsNil() {
+		t.Fatalf("got (%v, isNil=%v), want nil Greeter", rvNil.Type(), rvNil.IsNil())
+	}
+}

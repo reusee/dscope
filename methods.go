@@ -141,19 +141,27 @@ func (d *_MethodDiscovery) extendPointerChain(
 	names map[string]reflect.Type,
 	outerType reflect.Type,
 ) {
+	base := t
+	for base.Kind() == reflect.Pointer {
+		base = base.Elem()
+	}
+	endsInInterface := base.Kind() == reflect.Interface
+
 	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 		if v.IsNil() {
+			if endsInInterface {
+				panic(errWith(ErrBadArgument, "nil pointer to interface %v", outerType))
+			}
 			v = reflect.New(t).Elem()
 		} else {
 			v = v.Elem()
 		}
 		if v.Kind() == reflect.Pointer && v.IsNil() {
-			if v.CanSet() {
-				v.Set(reflect.New(v.Type().Elem()))
-			} else {
-				v = reflect.New(v.Type().Elem())
+			if endsInInterface {
+				panic(errWith(ErrBadArgument, "nil pointer to interface %v", outerType))
 			}
+			v = reflect.New(v.Type().Elem())
 		}
 		if t.Kind() == reflect.Pointer {
 			collected := collectMethods(v, skip, names)

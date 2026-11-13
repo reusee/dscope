@@ -155,6 +155,62 @@ func TestForkResetLayerIsLazy(t *testing.T) {
 	}
 }
 
+func TestResetCacheStaysLazyAcrossForkAndAllTypes(t *testing.T) {
+	type (
+		Config    int
+		Service   int
+		ExtraType string
+	)
+	scope := New(
+		func() Config { return 1 },
+		func(c Config) Service { return Service(c) },
+	)
+
+	cacheLen := func(s Scope) int {
+		if s.values == nil || s.values.extra == nil || s.values.extra.reset == nil {
+			t.Fatal("missing reset state")
+		}
+		cache := s.values.extra.reset.cache.Load()
+		if cache == nil {
+			return 0
+		}
+		n := 0
+		cache.Range(func(_, _ any) bool {
+			n++
+			return true
+		})
+		return n
+	}
+
+	resetScope := scope.Reset()
+	for range resetScope.AllTypes() {
+	}
+	if n := cacheLen(resetScope); n != 0 {
+		t.Fatalf("AllTypes on Reset scope populated %d fresh initializers, want 0", n)
+	}
+
+	child := scope.Fork(func() Config { return 2 })
+	for range child.AllTypes() {
+	}
+	if n := cacheLen(child); n != 0 {
+		t.Fatalf("AllTypes on partial-reset Fork scope populated %d fresh initializers, want 0", n)
+	}
+
+	grandchild := child.Fork(func(s Service) ExtraType {
+		if s == 2 {
+			return "two"
+		}
+		return "other"
+	})
+	if n := cacheLen(child); n != 0 {
+		t.Fatalf("Fork on partial-reset scope populated %d fresh initializers before access, want 0", n)
+	}
+
+	if got := grandchild.Get[ExtraType](); got != "two" {
+		t.Fatalf("grandchild ExtraType = %q, want %q", got, "two")
+	}
+}
+
 // TestRefreshKeepsOutputsApart verifies that a scope which hands out fresh
 // values answers with the output that was asked for. The outputs of one
 // definition share one provider, so a reset layer keeps them apart by the

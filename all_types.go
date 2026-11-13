@@ -16,7 +16,7 @@ func (s Scope) AllTypes() iter.Seq[reflect.Type] {
 		if !yield(reflect.TypeFor[Reset]()) {
 			return
 		}
-		for value := range s.values.IterValues() {
+		for value := range s.values.iterMeta() {
 			// Always-provided types (e.g. InjectStruct, Fork, Reset) are emitted above as
 			// built-ins. They may also appear in s.values if a user provides a
 			// definition for them, but Scope.get ignores such definitions and

@@ -16,9 +16,10 @@ dscope inject theory:
 - A field is injected when it carries the tag dscope:"." or dscope:"inject";
   a field of type Inject[T] receives a lazy function that resolves T on
   demand; an untagged embedded struct is recursed into, allocating nil pointer
-  fields along the way.
+  fields along the way; a field tagged dscope:"-" is skipped.
 - Tagged fields are resolved exactly like any other lookup. Unexported fields
   are never touched.
+- Circular struct embedding is rejected before mutating the target.
 - The target may be a pointer chain ending in a struct; nil pointers along the
   chain are allocated when settable.
 `
@@ -99,6 +100,42 @@ type _InjectFieldCache struct {
 	rv    reflect.Value
 }
 
+func validateAcyclicEmbeddedStructs(root reflect.Type) {
+	states := make(map[reflect.Type]uint8)
+	var visit func(t reflect.Type)
+	visit = func(t reflect.Type) {
+		switch states[t] {
+		case 1:
+			panic(errWith(ErrBadArgument, "recursive struct injection depth limit exceeded: %v", root))
+		case 2:
+			return
+		}
+		states[t] = 1
+		for i := range t.NumField() {
+			field := t.Field(i)
+			if field.PkgPath != "" || !field.Anonymous {
+				continue
+			}
+			if field.Tag.Get("dscope") != "" {
+				continue
+			}
+			if field.Type.Kind() == reflect.Func && field.Type.Implements(isInjectType) {
+				continue
+			}
+			ft := field.Type
+			if ft.Kind() == reflect.Pointer {
+				ft = ft.Elem()
+			}
+			if ft.Kind() != reflect.Struct {
+				continue
+			}
+			visit(ft)
+		}
+		states[t] = 2
+	}
+	visit(root)
+}
+
 func makeInjectStructFunc(t reflect.Type) _InjectStructFunc {
 	numDeref := 0
 l:
@@ -109,9 +146,6 @@ l:
 		switch t.Kind() {
 		case reflect.Pointer:
 			numDeref++
-			// This may causes stack overflow for recursive pointer types.
-			// Fixing this will introduce extra cost for common cases.
-			// So we choose not to handle recursive pointer types, just let it crash.
 			t = t.Elem()
 		case reflect.Struct:
 			break l
@@ -119,6 +153,8 @@ l:
 			panic(errWith(ErrBadArgument, "target type %v is not a struct or pointer to struct", t))
 		}
 	}
+
+	validateAcyclicEmbeddedStructs(t)
 
 	type FieldInfo struct {
 		Index      int
@@ -139,6 +175,9 @@ l:
 		}
 
 		directive := field.Tag.Get("dscope")
+		if directive == "-" {
+			continue
+		}
 		if field.Type.Kind() == reflect.Func && field.Type.Implements(isInjectType) {
 			// Only treat as Inject[T] if it is a function.
 			// Pointers to Inject[T] also implement the interface but cannot be
@@ -160,7 +199,7 @@ l:
 				TypeID: getTypeID(field.Type),
 			})
 
-		} else if field.Anonymous {
+		} else if field.Anonymous && directive == "" {
 			fieldType := field.Type
 			if fieldType.Kind() == reflect.Pointer {
 				if fieldType.Elem().Kind() != reflect.Struct {
