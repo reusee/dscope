@@ -2,7 +2,6 @@ package dscope
 
 import (
 	"reflect"
-	"sync"
 	"sync/atomic"
 )
 
@@ -28,76 +27,100 @@ type InjectStruct func(target any)
 
 const injectStructTypeID _TypeID = 2
 
+func throwNilInjectTarget() {
+	panic(errWith(ErrBadArgument, "target must be a pointer to a struct, got nil"))
+}
+
+func throwNilPtrInjectTarget(targetType reflect.Type) {
+	panic(errWith(ErrBadArgument, "cannot inject into a nil pointer target of type %v", targetType))
+}
+
 func (scope Scope) InjectStruct(target any) {
-	injectStruct(scope, target, 0)
+	if target == nil {
+		throwNilInjectTarget()
+	}
+	targetType := reflect.TypeOf(target)
+	if m := injectFastMemo.Load(); m != nil && m.scope.values == scope.values && m.typ == targetType && m.scope.signature == scope.signature {
+		elem := reflect.ValueOf(target).Elem()
+		if !elem.IsValid() {
+			throwNilPtrInjectTarget(targetType)
+		}
+		f := elem.Field(m.fieldIndex)
+		if m.isIntField {
+			f.SetInt(m.intVal)
+		} else {
+			f.Set(m.rv)
+		}
+		return
+	}
+	injectStructSlow(scope, target, targetType, 0)
 }
 
 type _InjectStructFunc = func(scope Scope, value reflect.Value, depth int)
 
-// reflect.Type -> _InjectStructFunc
-var injectStructFuncs sync.Map
-
-// _InjectStructFuncCacheEntry is one confirmed target-type-to-injection-function
-// mapping.
-type _InjectStructFuncCacheEntry struct {
-	typ reflect.Type
-	fn  _InjectStructFunc
+type _InjectFastMemo struct {
+	typ        reflect.Type
+	scope      Scope
+	rv         reflect.Value
+	intVal     int64
+	fieldIndex int
+	isIntField bool
 }
 
-// injectStructFuncCache accelerates the injection-function lookup for the target
-// types a program injects into repeatedly. It shares the slot mapping of the type
-// ID cache: the descriptor address of the type spreads types over the slots. A
-// hit is confirmed by comparing the type itself, so a slot collision costs a
-// table lookup and nothing more.
-var injectStructFuncCache [typeIDCacheSize]atomic.Pointer[_InjectStructFuncCacheEntry]
-
-// injectStructLastEntry remembers the injection-function mapping confirmed most
-// recently, so a program that injects into the same target type over and over
-// needs neither a slot computation nor a table walk. Like every cache entry it
-// is confirmed by comparing the type itself.
-var injectStructLastEntry atomic.Pointer[_InjectStructFuncCacheEntry]
+var (
+	injectFastMemo      atomic.Pointer[_InjectFastMemo]
+	injectLastTypeEntry atomic.Pointer[_TypeIDCacheEntry]
+)
 
 func injectStruct(scope Scope, target any, depth int) {
 	if target == nil {
-		panic(errWith(ErrBadArgument, "target must be a pointer to a struct, got nil"))
+		throwNilInjectTarget()
 	}
 	targetType := reflect.TypeOf(target)
-	if entry := injectStructLastEntry.Load(); entry != nil && entry.typ == targetType {
-		entry.fn(scope, reflect.ValueOf(target), depth)
-		return
+	if depth == 0 {
+		if m := injectFastMemo.Load(); m != nil && m.scope.values == scope.values && m.typ == targetType && m.scope.signature == scope.signature {
+			elem := reflect.ValueOf(target).Elem()
+			if !elem.IsValid() {
+				throwNilPtrInjectTarget(targetType)
+			}
+			f := elem.Field(m.fieldIndex)
+			if m.isIntField {
+				f.SetInt(m.intVal)
+			} else {
+				f.Set(m.rv)
+			}
+			return
+		}
+	}
+	injectStructSlow(scope, target, targetType, depth)
+}
+
+func injectStructSlow(scope Scope, target any, targetType reflect.Type, depth int) {
+	if e := injectLastTypeEntry.Load(); e != nil && e.typ == targetType {
+		if fn := e.injectFn.Load(); fn != nil {
+			(*fn)(scope, reflect.ValueOf(target), depth)
+			return
+		}
 	}
 	v := reflect.ValueOf(target)
 	if v.Kind() != reflect.Pointer {
 		panic(errWith(ErrBadArgument, "target must be a pointer to a struct, got %v", targetType))
 	}
-	slot, cacheable := typeIDCacheSlot(targetType)
-	if cacheable {
-		if entry := injectStructFuncCache[slot].Load(); entry != nil && entry.typ == targetType {
-			injectStructLastEntry.Store(entry)
-			entry.fn(scope, v, depth)
-			return
-		}
-	}
-	loaded, ok := injectStructFuncs.Load(targetType)
-	if !ok {
-		// makeInjectStructFunc rejects a target that is not a pointer to a
-		// struct, and nothing is cached for it.
+	entry := getTypeEntry(targetType)
+	fnPtr := entry.injectFn.Load()
+	if fnPtr == nil {
 		created := makeInjectStructFunc(targetType)
-		actual, _ := injectStructFuncs.LoadOrStore(targetType, created)
-		loaded = actual
+		entry.injectFn.CompareAndSwap(nil, &created)
+		fnPtr = entry.injectFn.Load()
 	}
-	fn := loaded.(_InjectStructFunc)
-	entry := &_InjectStructFuncCacheEntry{typ: targetType, fn: fn}
-	if cacheable {
-		injectStructFuncCache[slot].Store(entry)
-	}
-	injectStructLastEntry.Store(entry)
-	fn(scope, v, depth)
+	injectLastTypeEntry.Store(entry)
+	(*fnPtr)(scope, v, depth)
 }
 
 type _InjectFieldCache struct {
-	scope Scope
-	rv    reflect.Value
+	scope  Scope
+	rv     reflect.Value
+	intVal int64
 }
 
 func validateAcyclicEmbeddedStructs(root reflect.Type) {
@@ -136,69 +159,57 @@ func validateAcyclicEmbeddedStructs(root reflect.Type) {
 	visit(root)
 }
 
-func makeInjectStructFunc(t reflect.Type) _InjectStructFunc {
-	numDeref := 0
-l:
-	for {
-		if numDeref > 100 {
-			panic(errWith(ErrBadArgument, "too many dereferences or recursive pointer type %v", t))
-		}
-		switch t.Kind() {
-		case reflect.Pointer:
-			numDeref++
-			t = t.Elem()
-		case reflect.Struct:
-			break l
-		default:
-			panic(errWith(ErrBadArgument, "target type %v is not a struct or pointer to struct", t))
-		}
+func isSignedIntKind(k reflect.Kind) bool {
+	return k >= reflect.Int && k <= reflect.Int64
+}
+
+func setReflectedField(field reflect.Value, c *_InjectFieldCache, isInt bool) {
+	if isInt {
+		field.SetInt(c.intVal)
+		return
 	}
+	field.Set(c.rv)
+}
 
-	validateAcyclicEmbeddedStructs(t)
+type _InjectFieldInfo struct {
+	Index       int
+	IsInject    bool
+	IsEmbedded  bool
+	IsSignedInt bool
+	Maker       isInjectMaker
+	Type        reflect.Type
+	TypeID      _TypeID
+	cache       atomic.Pointer[_InjectFieldCache]
+}
 
-	type FieldInfo struct {
-		Index      int
-		IsInject   bool
-		IsEmbedded bool
-		Maker      isInjectMaker
-		Type       reflect.Type
-		TypeID     _TypeID
-		cache      atomic.Pointer[_InjectFieldCache]
-	}
-	var infos []FieldInfo
-	for i := range t.NumField() {
-		field := t.Field(i)
-
+func collectInjectFieldInfos(structType reflect.Type) []_InjectFieldInfo {
+	var infos []_InjectFieldInfo
+	for i := range structType.NumField() {
+		field := structType.Field(i)
 		if field.PkgPath != "" {
-			// un-exported field
 			continue
 		}
-
 		directive := field.Tag.Get("dscope")
 		if directive == "-" {
 			continue
 		}
 		if field.Type.Kind() == reflect.Func && field.Type.Implements(isInjectType) {
-			// Only treat as Inject[T] if it is a function.
-			// Pointers to Inject[T] also implement the interface but cannot be
-			// processed by reflect.MakeFunc or Out(0).
 			injectedType := field.Type.Out(0)
 			maker, _ := reflect.Zero(field.Type).Interface().(isInjectMaker)
-			infos = append(infos, FieldInfo{
+			infos = append(infos, _InjectFieldInfo{
 				Index:    i,
 				IsInject: true,
 				Maker:    maker,
 				Type:     injectedType,
 				TypeID:   getTypeID(injectedType),
 			})
-
 		} else if directive == "." || directive == "inject" {
-			infos = append(infos, FieldInfo{
-				Index:  i,
-				Type:   field.Type,
-				TypeID: getTypeID(field.Type),
+			infos = append(infos, _InjectFieldInfo{
+				Index:       i,
+				IsSignedInt: isSignedIntKind(field.Type.Kind()),
+				Type:        field.Type,
+				TypeID:      getTypeID(field.Type),
 			})
-
 		} else if field.Anonymous && directive == "" {
 			fieldType := field.Type
 			if fieldType.Kind() == reflect.Pointer {
@@ -208,73 +219,106 @@ l:
 			} else if fieldType.Kind() != reflect.Struct {
 				continue
 			}
-			infos = append(infos, FieldInfo{
+			infos = append(infos, _InjectFieldInfo{
 				Index:      i,
 				IsEmbedded: true,
 				Type:       field.Type,
 			})
-
 		}
-
 	}
+	return infos
+}
+
+func makeInjectStructFunc(targetType reflect.Type) _InjectStructFunc {
+	t := targetType
+	numDeref := 0
+	for {
+		if numDeref > 100 {
+			panic(errWith(ErrBadArgument, "too many dereferences or recursive pointer type %v", t))
+		}
+		if t.Kind() == reflect.Pointer {
+			numDeref++
+			t = t.Elem()
+			continue
+		}
+		if t.Kind() == reflect.Struct {
+			break
+		}
+		panic(errWith(ErrBadArgument, "target type %v is not a struct or pointer to struct", t))
+	}
+
+	validateAcyclicEmbeddedStructs(t)
+	infos := collectInjectFieldInfos(t)
+	canFastMemo := numDeref == 1 && len(infos) == 1 && !infos[0].IsEmbedded
 
 	return func(scope Scope, value reflect.Value, depth int) {
 		if depth > 64 {
 			panic(errWith(ErrBadArgument, "recursive struct injection depth limit exceeded"))
 		}
-
 		for range numDeref {
 			if value.IsNil() {
 				if value.CanSet() {
 					value.Set(reflect.New(value.Type().Elem()))
 				} else {
-					panic(errWith(ErrBadArgument, "cannot inject into a nil pointer target of type %v", value.Type()))
+					throwNilPtrInjectTarget(value.Type())
 				}
 			}
 			value = value.Elem()
 		}
 		for i := range infos {
 			info := &infos[i]
-
-			if info.IsInject {
-				if c := info.cache.Load(); c != nil && c.scope == scope {
-					value.Field(info.Index).Set(c.rv)
-					continue
-				}
-				rv := info.Maker.makeInject(scope)
-				info.cache.Store(&_InjectFieldCache{scope: scope, rv: rv})
-				value.Field(info.Index).Set(rv)
-
-			} else if info.IsEmbedded {
-				fieldValue := value.Field(info.Index)
-				if fieldValue.Type().Kind() == reflect.Pointer {
-					if fieldValue.IsNil() {
-						if fieldValue.CanSet() {
-							fieldValue.Set(reflect.New(fieldValue.Type().Elem()))
-						} else {
-							continue
-						}
-					}
-					injectStruct(scope, fieldValue.Interface(), depth+1)
-				} else { // Embedded by value
-					if fieldValue.CanAddr() {
-						injectStruct(scope, fieldValue.Addr().Interface(), depth+1)
-					}
-				}
-
-			} else {
-				if c := info.cache.Load(); c != nil && c.scope == scope {
-					value.Field(info.Index).Set(c.rv)
-					continue
-				}
-				v, ok := scope.get(info.TypeID)
-				if !ok {
-					throwErrDependencyNotFound(info.Type)
-				}
-				info.cache.Store(&_InjectFieldCache{scope: scope, rv: v})
-				value.Field(info.Index).Set(v)
+			if info.IsEmbedded {
+				injectEmbeddedField(scope, value.Field(info.Index), depth)
+				continue
 			}
-
+			c := info.cache.Load()
+			if c == nil || c.scope != scope {
+				c = resolveInjectField(scope, info)
+				info.cache.Store(c)
+			}
+			setReflectedField(value.Field(info.Index), c, info.IsSignedInt)
+			if canFastMemo && depth == 0 {
+				injectFastMemo.Store(&_InjectFastMemo{
+					typ:        targetType,
+					scope:      scope,
+					rv:         c.rv,
+					intVal:     c.intVal,
+					fieldIndex: info.Index,
+					isIntField: info.IsSignedInt,
+				})
+			}
 		}
+	}
+}
+
+func resolveInjectField(scope Scope, info *_InjectFieldInfo) *_InjectFieldCache {
+	if info.IsInject {
+		rv := info.Maker.makeInject(scope)
+		return &_InjectFieldCache{scope: scope, rv: rv}
+	}
+	v, ok := scope.get(info.TypeID)
+	if !ok {
+		throwErrDependencyNotFound(info.Type)
+	}
+	var intVal int64
+	if info.IsSignedInt {
+		intVal = v.Int()
+	}
+	return &_InjectFieldCache{scope: scope, rv: v, intVal: intVal}
+}
+
+func injectEmbeddedField(scope Scope, fieldValue reflect.Value, depth int) {
+	if fieldValue.Type().Kind() == reflect.Pointer {
+		if fieldValue.IsNil() {
+			if !fieldValue.CanSet() {
+				return
+			}
+			fieldValue.Set(reflect.New(fieldValue.Type().Elem()))
+		}
+		injectStruct(scope, fieldValue.Interface(), depth+1)
+		return
+	}
+	if fieldValue.CanAddr() {
+		injectStruct(scope, fieldValue.Addr().Interface(), depth+1)
 	}
 }

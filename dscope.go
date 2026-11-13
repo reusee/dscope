@@ -7,13 +7,11 @@ import (
 	"sync/atomic"
 )
 
-// _Value is one provided type in one layer. id repeats the identifier of
-// typeInfo so that a search compares one word instead of chasing the typeInfo
-// pointer, and it is the field every lookup, memo and sort reads.
+// _Value is one provided type in one layer.
 type _Value struct {
-	id          _TypeID
 	initializer *_Initializer
 	typeInfo    *_TypeInfo
+	id          _TypeID
 }
 
 // _TypeInfo describes how one definition produces one of its values: the
@@ -21,33 +19,21 @@ type _Value struct {
 // definition that produced it.
 type _TypeInfo struct {
 	DefType      reflect.Type
+	Dependencies []_TypeID
 	DefTypeID    _TypeID
 	Position     int
-	Dependencies []_TypeID
 }
 
 // _TypeID is a unique identifier for a reflect.Type.
 type _TypeID int
 
-// _Hash is used for scope signatures and cache keys: two digest streams, each
-// started from one hashSeeds half and advanced by one hashWord step per hashed
-// word. TheoryOfScopeIdentity carries the identity and collision rules.
+// _Hash is used for scope signatures and cache keys.
 type _Hash [2]uint64
 
-// hashSeeds seeds the two halves of every _Hash. The values come from the
-// process-wide generator of math/rand/v2, which the runtime seeds from the
-// operating system, so they are unpredictable for the lifetime of the process.
 var hashSeeds = [2]uint64{rand.Uint64(), rand.Uint64()}
 
-// hashStep is the per-word advance of the hash mixer. Adding a fixed odd
-// constant before each mixing step is the splitmix64 state advance: every word
-// of a stream changes the state.
 const hashStep = 0x9e3779b97f4a7c15
 
-// hashWord folds one word into a hash stream. It advances the state by the word
-// and the step constant, then scrambles the state. Every operation is
-// bijective — shifts and xors are invertible, the multipliers are odd — so a
-// word sequence maps to a state one to one.
 func hashWord(state, word uint64) uint64 {
 	x := state + word + hashStep
 	x ^= x >> 30
@@ -57,11 +43,6 @@ func hashWord(state, word uint64) uint64 {
 	return x ^ (x >> 31)
 }
 
-// hashTypeIDs hashes type IDs into a digest. Scope signatures and fork cache
-// keys use this same digest encoding. Each half is an independent stream: its
-// own seed, and one bijective folding step per hashed word. The length of the
-// ID list is folded in as well, so lists of different lengths stay apart. The
-// digest needs no buffer and allocates nothing.
 func hashTypeIDs(ids []_TypeID) (ret _Hash) {
 	h0, h1 := hashSeeds[0], hashSeeds[1]
 	h0 = hashWord(h0, uint64(len(ids)))
@@ -75,19 +56,18 @@ func hashTypeIDs(ids []_TypeID) (ret _Hash) {
 	return
 }
 
-// forkKey derives the forker cache key of a Fork call: the base scope's
-// signature followed by the type IDs of the new definitions, in the digest
-// encoding hashTypeIDs uses. The signature starts the two streams as their
-// initial state: a different signature starts a different state, and every
-// following step is bijective, so two different keys never share a digest. The
-// key folds its words directly, so a lookup of a small Fork call allocates
-// nothing.
-func forkKey(signature _Hash, defs []any) (ret _Hash) {
+func forkKey(signature _Hash, defs []any) _Hash {
 	if len(defs) == 1 {
-		t0 := reflect.TypeOf(defs[0])
-		if entry := forkKeyLastEntry.Load(); entry != nil && entry.sig == signature && entry.t0 == t0 {
+		if entry := forkKeyLastEntry.Load(); entry != nil && entry.sig == signature && entry.t0 == reflect.TypeOf(defs[0]) {
 			return entry.key
 		}
+	}
+	return forkKeySlow(signature, defs)
+}
+
+func forkKeySlow(signature _Hash, defs []any) (ret _Hash) {
+	if len(defs) == 1 {
+		t0 := reflect.TypeOf(defs[0])
 		h0, h1 := hashSeeds[0]^signature[0], hashSeeds[1]^signature[1]
 		id := uint64(getTypeID(t0))
 		h0 = hashWord(hashWord(h0, 1), id)
@@ -117,10 +97,6 @@ type _ForkKeyCacheEntry struct {
 
 var forkKeyLastEntry atomic.Pointer[_ForkKeyCacheEntry]
 
-// forkKeyFromTypes derives the forker cache key from pre-computed definition
-// types. It is forkKey with the reflect.TypeOf calls hoisted out, so a Fork
-// that already holds the types pays for hashing only. The digest encoding and
-// the bijective property are identical to forkKey.
 func forkKeyFromTypes(signature _Hash, defTypes []reflect.Type) (ret _Hash) {
 	h0, h1 := hashSeeds[0]^signature[0], hashSeeds[1]^signature[1]
 	h0 = hashWord(h0, uint64(len(defTypes)))
@@ -173,17 +149,11 @@ dscope definition theory:
 `
 
 // Scope represents an immutable dependency injection container.
-// Operations like Fork create new Scope values.
 type Scope struct {
-	// values points to the top layer of the immutable value stack (_StackedMap).
-	values *_StackedMap
-	// signature is a hash representing the structural identity of this scope,
-	// based on its effective output-to-definition mappings.
+	values    *_StackedMap
 	signature _Hash
 }
 
-// _LazyResetBundle keeps a lazy reset layer, its optional metadata, and its
-// reset state in one allocation.
 type _LazyResetBundle struct {
 	layer _StackedMap
 	extra _StackedMapExtra
@@ -194,32 +164,67 @@ type _LazyResetBundle struct {
 var Universe = Scope{}
 
 // New creates a new root Scope with the given definitions.
-// Equivalent to Universe.Fork(defs...).
-func New(
-	defs ...any,
-) Scope {
+func New(defs ...any) Scope {
 	return Universe.Fork(defs...)
 }
 
-// forkers caches _Forker instances to speed up repeated Fork calls.
-// The key is a _Hash derived from the base scope signature and new def types.
-// _Hash -> *_Forker
-var forkers sync.Map
+const forkerCacheSize = 1024
 
-// forkerCacheSize is the number of slots of the direct-mapped cache in front of
-// the forker table.
-const forkerCacheSize = 256
-
-// _ForkerCacheEntry is one confirmed fork-key-to-forker mapping.
 type _ForkerCacheEntry struct {
 	key    _Hash
 	forker *_Forker
 }
 
+type _ForkerTable struct {
+	slots [forkerCacheSize]atomic.Pointer[_ForkerCacheEntry]
+	mu    sync.RWMutex
+	m     map[_Hash]*_Forker
+}
+
+func (t *_ForkerTable) Load(key _Hash) (*_Forker, bool) {
+	slot := &t.slots[key[0]&(forkerCacheSize-1)]
+	if entry := slot.Load(); entry != nil && entry.key == key {
+		return entry.forker, true
+	}
+	return t.loadSlow(key, slot)
+}
+
+func (t *_ForkerTable) loadSlow(key _Hash, slot *atomic.Pointer[_ForkerCacheEntry]) (*_Forker, bool) {
+	t.mu.RLock()
+	f, ok := t.m[key]
+	t.mu.RUnlock()
+	if ok && slot.Load() == nil {
+		slot.CompareAndSwap(nil, &_ForkerCacheEntry{key: key, forker: f})
+	}
+	return f, ok
+}
+
+func (t *_ForkerTable) LoadOrStore(key _Hash, forker *_Forker) (*_Forker, bool) {
+	t.mu.Lock()
+	if t.m == nil {
+		t.m = make(map[_Hash]*_Forker, 64)
+	}
+	if existing, ok := t.m[key]; ok {
+		t.mu.Unlock()
+		return existing, true
+	}
+	t.m[key] = forker
+	t.mu.Unlock()
+	slot := &t.slots[key[0]&(forkerCacheSize-1)]
+	if slot.Load() == nil {
+		slot.CompareAndSwap(nil, &_ForkerCacheEntry{key: key, forker: forker})
+	}
+	return forker, false
+}
+
+var forkers _ForkerTable
+
 type _Forker1CacheEntry struct {
 	sig    _Hash
 	t0     reflect.Type
 	forker *_Forker
+	nilPtr any
+	isPtr  bool
 }
 
 type _Forker2CacheEntry struct {
@@ -227,38 +232,10 @@ type _Forker2CacheEntry struct {
 	t0     reflect.Type
 	t1     reflect.Type
 	forker *_Forker
-}
-
-// forkerCache accelerates the forker lookup of the shapes a program forks over
-// and over. A hit takes one atomic read and a comparison of the full key, the
-// same comparison the forker table performs, so the cache never decides which
-// forker a key maps to: a slot collision costs a table lookup and nothing more.
-var forkerCache [forkerCacheSize]atomic.Pointer[_ForkerCacheEntry]
-
-// lookupForker returns the forker of a fork key, using the direct-mapped cache
-// before the forker table, and returns nil when no forker is known.
-func lookupForker(key _Hash) *_Forker {
-	slot := &forkerCache[(key[0]^key[1])&(forkerCacheSize-1)]
-	if entry := slot.Load(); entry != nil && entry.key == key {
-		return entry.forker
-	}
-	v, ok := forkers.Load(key)
-	if !ok {
-		return nil
-	}
-	forker := v.(*_Forker)
-	publishForker(key, forker)
-	return forker
-}
-
-// publishForker stores a forker in an empty slot of the direct-mapped cache. A
-// slot that already answers for another key stays as it is: a colliding key
-// keeps using the forker table, so no Fork allocates a cache entry.
-func publishForker(key _Hash, forker *_Forker) {
-	slot := &forkerCache[(key[0]^key[1])&(forkerCacheSize-1)]
-	if slot.Load() == nil {
-		slot.CompareAndSwap(nil, &_ForkerCacheEntry{key: key, forker: forker})
-	}
+	nil0   any
+	nil1   any
+	isPtr0 bool
+	isPtr1 bool
 }
 
 var (
@@ -266,71 +243,189 @@ var (
 	forker2LastEntry atomic.Pointer[_Forker2CacheEntry]
 )
 
-func (scope Scope) Fork(
-	defs ...any,
-) Scope {
-
+func (scope Scope) Fork(defs ...any) Scope {
 	if len(defs) == 0 {
-		// A Fork with no definitions adds nothing to the scope: every effective
-		// definition, and every value, is the one the base scope already holds.
-		// Return the base scope itself instead of rebuilding an identical one.
 		return scope
 	}
+	return scope.forkDefs(defs)
+}
 
+func (scope Scope) forkDefs(defs []any) Scope {
 	if len(defs) == 1 {
 		def := defs[0]
 		if def != nil {
 			t0 := reflect.TypeOf(def)
 			if entry := forker1LastEntry.Load(); entry != nil && entry.sig == scope.signature && entry.t0 == t0 {
-				if reflect.ValueOf(def).IsNil() {
-					validateDefinitionWithType(def, t0)
+				if entry.isPtr {
+					if def == entry.nilPtr {
+						throwNilDef(def, true)
+					}
+				} else if reflect.ValueOf(def).IsNil() {
+					throwNilDef(def, false)
 				}
-				return entry.forker.Fork(scope, defs)
-			}
-			if _, ok := def.(isModule); !ok {
-				validateDefinitionWithType(def, t0)
-				id0 := uint64(getTypeID(t0))
-				h0 := hashWord(hashWord(hashSeeds[0]^scope.signature[0], 1), id0)
-				h1 := hashWord(hashWord(hashSeeds[1]^scope.signature[1], 1), id0)
-				key := _Hash{h0, h1}
-				forker := lookupForker(key)
-				if forker == nil {
-					forker = newForkerWithTypes(scope, defs, []reflect.Type{t0})
-					v, _ := forkers.LoadOrStore(key, forker)
-					forker = v.(*_Forker)
-					publishForker(key, forker)
+				f := entry.forker
+				if f.kind == forkerKindSingleFunc1 {
+					base := scope.values
+					if base != nil && (base.isLazyReset() || base.Height > stackHeightLimit) {
+						base = base.flatten()
+					}
+					if len(f.ResetIDs) == 0 {
+						bundle := new(_ForkBundle)
+						layer := &bundle.layer
+						if base != nil {
+							layer.Next = base
+							layer.Height = base.Height + 1
+							if hb := base.hot.Load(); hb != nil && hb.id != f.val0ID {
+								layer.hot.Store(hb)
+							}
+						} else {
+							layer.Height = 1
+						}
+						layer.count = 1
+						bundle.init0.Def = def
+						layer.val0 = _Value{
+							initializer: &bundle.init0,
+							typeInfo:    f.val0TypeInfo,
+							id:          f.val0ID,
+						}
+						return Scope{values: layer, signature: f.Signature}
+					}
+					return f.applySingleFunc1Reset(base, def)
 				}
-				forker1LastEntry.Store(&_Forker1CacheEntry{sig: scope.signature, t0: t0, forker: forker})
-				return forker.Fork(scope, defs)
+				return f.forkNonSingle1(scope, defs)
 			}
+			return scope.fork1Miss(defs, def, t0)
 		}
 	} else if len(defs) == 2 {
 		d0, d1 := defs[0], defs[1]
 		if d0 != nil && d1 != nil {
 			t0, t1 := reflect.TypeOf(d0), reflect.TypeOf(d1)
 			if entry := forker2LastEntry.Load(); entry != nil && entry.sig == scope.signature && entry.t0 == t0 && entry.t1 == t1 {
-				if reflect.ValueOf(d0).IsNil() {
-					validateDefinitionWithType(d0, t0)
+				if entry.isPtr0 {
+					if d0 == entry.nil0 {
+						throwNilDef(d0, true)
+					}
+				} else if reflect.ValueOf(d0).IsNil() {
+					throwNilDef(d0, false)
 				}
-				if reflect.ValueOf(d1).IsNil() {
-					validateDefinitionWithType(d1, t1)
+				if entry.isPtr1 {
+					if d1 == entry.nil1 {
+						throwNilDef(d1, true)
+					}
+				} else if reflect.ValueOf(d1).IsNil() {
+					throwNilDef(d1, false)
 				}
-				return entry.forker.Fork(scope, defs)
+				f := entry.forker
+				if f.kind == forkerKindSingleFunc2 {
+					base := scope.values
+					if base != nil && (base.isLazyReset() || base.Height > stackHeightLimit) {
+						base = base.flatten()
+					}
+					if len(f.ResetIDs) == 0 {
+						bundle := new(_ForkBundle2)
+						layer := &bundle.layer
+						if base != nil {
+							layer.Next = base
+							layer.Height = base.Height + 1
+							if hb := base.hot.Load(); hb != nil && hb.id != f.val0ID && hb.id != f.val1ID {
+								layer.hot.Store(hb)
+							}
+						} else {
+							layer.Height = 1
+						}
+						layer.count = 2
+						bundle.inits[0].Def = d0
+						bundle.inits[1].Def = d1
+						v0 := _Value{initializer: &bundle.inits[0], typeInfo: f.val0TypeInfo, id: f.val0ID}
+						v1 := _Value{initializer: &bundle.inits[1], typeInfo: f.val1TypeInfo, id: f.val1ID}
+						if !f.swap2 {
+							layer.val0 = v0
+							bundle.val1[0] = v1
+						} else {
+							layer.val0 = v1
+							bundle.val1[0] = v0
+						}
+						bundle.extra.values = bundle.val1[:]
+						layer.extra = &bundle.extra
+						return Scope{values: layer, signature: f.Signature}
+					}
+					return f.applySingleFunc2Reset(base, d0, d1)
+				}
+				return f.Fork(scope, defs)
 			}
+			return scope.fork2Miss(defs, d0, d1, t0, t1)
 		}
 	}
+	return scope.forkMany(defs)
+}
 
-	// handle modules
+func (scope Scope) fork1Miss(defs []any, def any, t0 reflect.Type) Scope {
+	if _, ok := def.(isModule); ok {
+		return scope.forkMany(defs)
+	}
+	typeEntry := getTypeEntry(t0)
+	validateDefinitionEntry(def, typeEntry)
+	id0 := uint64(typeEntry.id)
+	h0 := hashWord(hashWord(hashSeeds[0]^scope.signature[0], 1), id0)
+	h1 := hashWord(hashWord(hashSeeds[1]^scope.signature[1], 1), id0)
+	key := _Hash{h0, h1}
+	forker, ok := forkers.Load(key)
+	if !ok {
+		forker = newForkerWithEntries(scope, []*_TypeIDCacheEntry{typeEntry})
+		forker, _ = forkers.LoadOrStore(key, forker)
+	}
+	meta := getOrBuildDefMeta(typeEntry)
+	forker1LastEntry.Store(&_Forker1CacheEntry{
+		sig:    scope.signature,
+		t0:     t0,
+		forker: forker,
+		nilPtr: meta.nilPtr,
+		isPtr:  meta.isPointer,
+	})
+	return forker.Fork(scope, defs)
+}
+
+func (scope Scope) fork2Miss(defs []any, d0, d1 any, t0, t1 reflect.Type) Scope {
+	_, m0 := d0.(isModule)
+	_, m1 := d1.(isModule)
+	if m0 || m1 {
+		return scope.forkMany(defs)
+	}
+	e0 := getTypeEntry(t0)
+	validateDefinitionEntry(d0, e0)
+	e1 := getTypeEntry(t1)
+	validateDefinitionEntry(d1, e1)
+	h0 := hashWord(hashWord(hashWord(hashSeeds[0]^scope.signature[0], 2), uint64(e0.id)), uint64(e1.id))
+	h1 := hashWord(hashWord(hashWord(hashSeeds[1]^scope.signature[1], 2), uint64(e0.id)), uint64(e1.id))
+	key := _Hash{h0, h1}
+	forker, ok := forkers.Load(key)
+	if !ok {
+		forker = newForkerWithEntries(scope, []*_TypeIDCacheEntry{e0, e1})
+		forker, _ = forkers.LoadOrStore(key, forker)
+	}
+	meta0 := getOrBuildDefMeta(e0)
+	meta1 := getOrBuildDefMeta(e1)
+	forker2LastEntry.Store(&_Forker2CacheEntry{
+		sig:    scope.signature,
+		t0:     t0,
+		t1:     t1,
+		forker: forker,
+		nil0:   meta0.nilPtr,
+		nil1:   meta1.nilPtr,
+		isPtr0: meta0.isPointer,
+		isPtr1: meta1.isPointer,
+	})
+	return forker.Fork(scope, defs)
+}
+
+func (scope Scope) forkMany(defs []any) Scope {
 	var moduleObjects []any
 	for _, def := range defs {
 		if module, ok := def.(isModule); ok {
 			moduleObjects = append(moduleObjects, module)
 		}
 	}
-
 	if len(moduleObjects) > 0 {
-		// If we have modules, we need to construct a new defs slice
-		// to avoid modifying the caller's slice.
 		newDefs := make([]any, 0, len(defs))
 		for _, def := range defs {
 			if _, ok := def.(isModule); !ok {
@@ -343,32 +438,33 @@ func (scope Scope) Fork(
 		}
 	}
 
-	defTypes := make([]reflect.Type, len(defs))
+	var entriesBuf [8]*_TypeIDCacheEntry
+	var entries []*_TypeIDCacheEntry
+	if len(defs) <= len(entriesBuf) {
+		entries = entriesBuf[:len(defs)]
+	} else {
+		entries = make([]*_TypeIDCacheEntry, len(defs))
+	}
+	h0, h1 := hashSeeds[0]^scope.signature[0], hashSeeds[1]^scope.signature[1]
+	h0 = hashWord(h0, uint64(len(defs)))
+	h1 = hashWord(h1, uint64(len(defs)))
 	for i, def := range defs {
 		if def == nil {
 			panic(errWith(ErrBadArgument, "nil definition"))
 		}
-		defTypes[i] = reflect.TypeOf(def)
-		validateDefinitionWithType(def, defTypes[i])
+		e := getTypeEntry(reflect.TypeOf(def))
+		validateDefinitionEntry(def, e)
+		entries[i] = e
+		id := uint64(e.id)
+		h0 = hashWord(h0, id)
+		h1 = hashWord(h1, id)
 	}
-
-	key := forkKeyFromTypes(scope.signature, defTypes)
-
-	if forker := lookupForker(key); forker != nil {
-		if len(defs) == 2 {
-			forker2LastEntry.Store(&_Forker2CacheEntry{sig: scope.signature, t0: defTypes[0], t1: defTypes[1], forker: forker})
-		}
-		return forker.Fork(scope, defs)
+	key := _Hash{h0, h1}
+	forker, ok := forkers.Load(key)
+	if !ok {
+		forker = newForkerWithEntries(scope, entries)
+		forker, _ = forkers.LoadOrStore(key, forker)
 	}
-
-	forker := newForkerWithTypes(scope, defs, defTypes)
-	v, _ := forkers.LoadOrStore(key, forker)
-	forker = v.(*_Forker)
-	publishForker(key, forker)
-	if len(defs) == 2 {
-		forker2LastEntry.Store(&_Forker2CacheEntry{sig: scope.signature, t0: defTypes[0], t1: defTypes[1], forker: forker})
-	}
-
 	return forker.Fork(scope, defs)
 }
 
@@ -415,24 +511,23 @@ dscope assignment theory:
   reflection panic.
 `
 
-// Assign retrieves the value of type T from the scope and writes it to the
-// provided pointer. It panics if ptr is nil or if the type is not found.
-// It's safe to call Assign concurrently.
+// Assign retrieves the value of type T from the scope and writes it to ptr.
 func (scope Scope) Assign[T any](ptr *T) {
 	if ptr == nil {
 		panic(errWith(ErrBadArgument, "cannot assign to a nil pointer target of type %T", ptr))
 	}
-	*ptr = scope.Get[T]()
+	if s := scope.values; s != nil {
+		if hb := s.hot.Load(); hb != nil {
+			if p, ok := hb.val.(*T); ok {
+				*ptr = *p
+				return
+			}
+		}
+	}
+	*ptr = getSlow[T](scope)
 }
 
-func (scope Scope) get(id _TypeID) (
-	ret reflect.Value,
-	ok bool,
-) {
-
-	// Built-in dependencies are bound method values. Convert each to its named
-	// type so that type assertions and generic Get[T] succeed: a method value
-	// has an unnamed function type, which is not identical to the named type.
+func (scope Scope) get(id _TypeID) (ret reflect.Value, ok bool) {
 	switch id {
 	case injectStructTypeID:
 		return reflect.ValueOf(InjectStruct(scope.InjectStruct)), true
@@ -446,7 +541,6 @@ func (scope Scope) get(id _TypeID) (
 	if !ok {
 		return ret, false
 	}
-
 	return value.initializer.get(scope, value), true
 }
 
@@ -461,6 +555,18 @@ func (scope Scope) getBuiltinIface(id _TypeID) any {
 	}
 }
 
+func evalValueIface(scope Scope, v _Value) any {
+	init := v.initializer
+	state := init.state.Load()
+	if state&initializerStateDone != 0 {
+		if state&initializerStateMulti == 0 {
+			return init.result
+		}
+		return init.result.(*_MultiResult).ifaces[v.typeInfo.Position]
+	}
+	return init.getIface(scope, v)
+}
+
 func (scope Scope) getIface(id _TypeID) (any, bool) {
 	if uint(id-1) < 3 {
 		return scope.getBuiltinIface(id), true
@@ -469,91 +575,199 @@ func (scope Scope) getIface(id _TypeID) (any, bool) {
 	if s == nil {
 		return nil, false
 	}
-	word := s.hit.Load()
-	if _TypeID(word>>stackedMapHitBits) == id {
-		if pos := uint(word&stackedMapHitPosMask) - 1; pos < uint(len(s.Values)) {
-			init := s.Values[pos].initializer
+	extra := s.extra
+	if extra == nil {
+		if s.count == 1 && s.val0.id == id {
+			init := s.val0.initializer
 			state := init.state.Load()
 			if state&initializerStateDone != 0 {
 				if state&initializerStateMulti == 0 {
 					return init.result, true
 				}
-				return init.result.(*_MultiResult).ifaces[s.Values[pos].typeInfo.Position], true
+				return init.result.(*_MultiResult).ifaces[s.val0.typeInfo.Position], true
 			}
-			return init.getIface(scope, s.Values[pos]), true
+			return init.getIface(scope, s.val0), true
 		}
+		value, ok := s.Next.loadSlow(id)
+		if !ok {
+			return nil, false
+		}
+		return evalValueIface(scope, value), true
 	}
-	if s.extra != nil && s.extra.reset == nil {
-		if positions := s.extra.index; positions != nil {
-			mask := uint64(len(positions) - 1)
-			for slot := uint64(id) & mask; ; slot = (slot + 1) & mask {
-				position := positions[slot]
-				if position == 0 {
-					break
-				}
-				v := &s.Values[position-1]
-				if v.id == id {
-					if word == 0 {
-						s.storeHit(id, int(position)-1)
+	vpHit := extra.hitVal.Load()
+	if vpHit != nil && vpHit.id == id {
+		init := vpHit.initializer
+		state := init.state.Load()
+		if state&initializerStateDone != 0 {
+			if state&initializerStateMulti == 0 {
+				return init.result, true
+			}
+			return init.result.(*_MultiResult).ifaces[vpHit.typeInfo.Position], true
+		}
+		return init.getIface(scope, *vpHit), true
+	}
+	if extra.reset == nil {
+		if idxPtr := extra.index; idxPtr != nil {
+			if id >= s.val0.id {
+				positions := *idxPtr
+				values := extra.values
+				mask := uint64(len(positions) - 1)
+				for slot := indexHashSlot(id, mask); ; slot = (slot + 1) & mask {
+					pos := positions[slot]
+					if pos == 0 {
+						break
 					}
-					init := v.initializer
-					state := init.state.Load()
-					if state&initializerStateDone != 0 {
-						if state&initializerStateMulti == 0 {
-							return init.result, true
+					vp := &values[pos-1]
+					if vp.id == id {
+						if vpHit == nil {
+							s.storeHitPtr(vp)
 						}
-						return init.result.(*_MultiResult).ifaces[v.typeInfo.Position], true
+						init := vp.initializer
+						state := init.state.Load()
+						if state&initializerStateDone != 0 {
+							if state&initializerStateMulti == 0 {
+								return init.result, true
+							}
+							return init.result.(*_MultiResult).ifaces[vp.typeInfo.Position], true
+						}
+						return init.getIface(scope, *vp), true
 					}
-					return init.getIface(scope, *v), true
 				}
 			}
 			value, ok := s.Next.Load(id)
 			if !ok {
 				return nil, false
 			}
-			return value.initializer.getIface(scope, value), true
+			return evalValueIface(scope, value), true
 		}
 	}
-	value, ok := s.loadSlow(id, word)
+	value, ok := s.loadSlow(id)
 	if !ok {
 		return nil, false
 	}
-	return value.initializer.getIface(scope, value), true
+	return evalValueIface(scope, value), true
 }
 
-// Get is a type-safe generic method to retrieve a single value of type T.
-// It panics if the type is not found or if an error occurs during resolution.
-func (scope Scope) Get[T any]() (o T) {
+func cacheResolvedValue[T any](s *_StackedMap, id _TypeID, slot uint64, hasSlot bool, typ reflect.Type, o T) {
+	if s.hot.Load() == nil {
+		p := new(T)
+		*p = o
+		hb := &_HotBox{val: p, id: id}
+		if s.hot.CompareAndSwap(nil, hb) {
+			return
+		}
+		if s.extra != nil {
+			if !hasSlot {
+				slot = boxSlot(typ)
+			}
+			boxes := s.extra.getOrCreateBoxes()
+			if boxes[slot].Load() == nil {
+				boxes[slot].CompareAndSwap(nil, hb)
+			}
+		}
+		return
+	}
+	if s.extra == nil {
+		return
+	}
+	if !hasSlot {
+		slot = boxSlot(typ)
+	}
+	boxes := s.extra.getOrCreateBoxes()
+	if boxes[slot].Load() != nil {
+		return
+	}
+	p := new(T)
+	*p = o
+	hb := &_HotBox{val: p, id: id}
+	boxes[slot].CompareAndSwap(nil, hb)
+}
+
+func getSlow[T any](scope Scope) (o T) {
 	typ := reflect.TypeFor[T]()
-	iface, ok := scope.getIface(getTypeIDForGet(typ))
+	s := scope.values
+	var slot uint64
+	var hasSlot bool
+	if s != nil && s.extra != nil {
+		slot = boxSlot(typ)
+		hasSlot = true
+		if boxes := s.extra.boxes.Load(); boxes != nil {
+			if hb := boxes[slot].Load(); hb != nil {
+				if p, ok := hb.val.(*T); ok {
+					return *p
+				}
+			}
+		}
+	}
+	id := getTypeIDForGet(typ)
+	iface, ok := scope.getIface(id)
 	if !ok {
 		throwErrDependencyNotFound(typ)
 	}
 	if iface != nil {
 		o = iface.(T)
 	}
+	if s != nil && uint(id-1) >= 3 {
+		cacheResolvedValue(s, id, slot, hasSlot, typ, o)
+	}
 	return o
 }
 
-// TryGet is a type-safe generic method to retrieve a single value of type T.
-// Unlike Get, it does not panic when the type is missing from the scope:
-// it returns (zero, false) instead. Panics raised by provider evaluation
-// still propagate.
-func (scope Scope) TryGet[T any]() (o T, ok bool) {
-	iface, found := scope.getIface(getTypeIDForGet(reflect.TypeFor[T]()))
+func tryGetSlow[T any](scope Scope) (o T, ok bool) {
+	typ := reflect.TypeFor[T]()
+	s := scope.values
+	var slot uint64
+	var hasSlot bool
+	if s != nil && s.extra != nil {
+		slot = boxSlot(typ)
+		hasSlot = true
+		if boxes := s.extra.boxes.Load(); boxes != nil {
+			if hb := boxes[slot].Load(); hb != nil {
+				if p, hit := hb.val.(*T); hit {
+					return *p, true
+				}
+			}
+		}
+	}
+	id := getTypeIDForGet(typ)
+	iface, found := scope.getIface(id)
 	if !found {
 		return o, false
 	}
 	if iface != nil {
 		o = iface.(T)
 	}
+	if s != nil && uint(id-1) >= 3 {
+		cacheResolvedValue(s, id, slot, hasSlot, typ, o)
+	}
 	return o, true
 }
 
-// GetType retrieves the value of the given type from the scope and returns
-// it as a reflect.Value. It panics with a structured dependency-not-found
-// error if the type is not defined in the scope, mirroring the generic
-// Get[T].
+// Get is a type-safe generic method to retrieve a single value of type T.
+func (scope Scope) Get[T any]() (o T) {
+	if s := scope.values; s != nil {
+		if hb := s.hot.Load(); hb != nil {
+			if p, ok := hb.val.(*T); ok {
+				return *p
+			}
+		}
+	}
+	return getSlow[T](scope)
+}
+
+// TryGet is a type-safe generic method to retrieve a single value of type T.
+func (scope Scope) TryGet[T any]() (o T, ok bool) {
+	if s := scope.values; s != nil {
+		if hb := s.hot.Load(); hb != nil {
+			if p, hit := hb.val.(*T); hit {
+				return *p, true
+			}
+		}
+	}
+	return tryGetSlow[T](scope)
+}
+
+// GetType retrieves the value of the given type from the scope as reflect.Value.
 func (scope Scope) GetType(typ reflect.Type) reflect.Value {
 	value, ok := scope.TryGetType(typ)
 	if !ok {
@@ -562,14 +776,9 @@ func (scope Scope) GetType(typ reflect.Type) reflect.Value {
 	return value
 }
 
-// TryGetType retrieves the value of the given type from the scope as a
-// reflect.Value. Unlike GetType, it does not panic when the type is missing
-// from the scope: it returns the zero reflect.Value and false instead.
-// Panics raised by provider evaluation still propagate.
+// TryGetType retrieves the value of the given type from the scope as reflect.Value.
 func (scope Scope) TryGetType(typ reflect.Type) (reflect.Value, bool) {
 	if typ == nil {
-		// Reject nil types up front: getTypeID(nil) would otherwise register a
-		// bogus nil -> id mapping in the global type tables.
 		panic(errWith(ErrBadArgument, "nil reflect.Type provided"))
 	}
 	value, found := scope.get(getTypeID(typ))
@@ -579,84 +788,54 @@ func (scope Scope) TryGetType(typ reflect.Type) (reflect.Value, bool) {
 	return value, true
 }
 
-// Cache for the argument-fetching logic for a given function type.
-// reflect.Type -> func(Scope, []reflect.Value) int
-var getArgsFunc sync.Map
+var getArgsFuncLastEntry atomic.Pointer[_TypeIDCacheEntry]
 
-// _GetArgsFuncCacheEntry is one confirmed function-type-to-argument-fetcher
-// mapping.
-type _GetArgsFuncCacheEntry struct {
-	typ reflect.Type
-	fn  func(Scope, []reflect.Value) int
-}
-
-// getArgsFuncCache accelerates the argument-fetcher lookup for the function
-// types a program calls repeatedly. It shares the slot mapping of the type ID
-// cache: the descriptor address of the type spreads function types over the
-// slots. A hit is confirmed by comparing the type itself, so a slot collision
-// costs a sync.Map lookup and nothing more.
-var getArgsFuncCache [typeIDCacheSize]atomic.Pointer[_GetArgsFuncCacheEntry]
-
-// getArgsFuncLastEntry remembers the argument-fetcher mapping confirmed most
-// recently, so a program that resolves the arguments of one provider function
-// over and over needs neither a slot computation nor a map walk. Like every
-// cache entry it is confirmed by comparing the type itself.
-var getArgsFuncLastEntry atomic.Pointer[_GetArgsFuncCacheEntry]
-
-// getArgs resolves the arguments for a function of type `fnType` from the scope
-// and places them into the `args` slice. It returns the number of arguments resolved.
 func (scope Scope) getArgs(fnType reflect.Type, args []reflect.Value) int {
 	if entry := getArgsFuncLastEntry.Load(); entry != nil && entry.typ == fnType {
-		return entry.fn(scope, args)
-	}
-	slot, cacheable := typeIDCacheSlot(fnType)
-	if cacheable {
-		if entry := getArgsFuncCache[slot].Load(); entry != nil && entry.typ == fnType {
-			getArgsFuncLastEntry.Store(entry)
-			return entry.fn(scope, args)
+		if fn := entry.getArgsFn.Load(); fn != nil {
+			return (*fn)(scope, args)
 		}
-	}
-	if v, ok := getArgsFunc.Load(fnType); ok {
-		fn := v.(func(Scope, []reflect.Value) int)
-		entry := &_GetArgsFuncCacheEntry{typ: fnType, fn: fn}
-		if cacheable {
-			getArgsFuncCache[slot].Store(entry)
-		}
-		getArgsFuncLastEntry.Store(entry)
-		return fn(scope, args)
 	}
 	return scope.getArgsSlow(fnType, args)
 }
 
-// getArgsSlow generates and caches the argument-fetching logic for a function type.
 func (scope Scope) getArgsSlow(fnType reflect.Type, args []reflect.Value) int {
+	entry := getTypeEntry(fnType)
+	if fn := entry.getArgsFn.Load(); fn != nil {
+		getArgsFuncLastEntry.Store(entry)
+		return (*fn)(scope, args)
+	}
 	numIn := fnType.NumIn()
 	ids := make([]_TypeID, numIn)
 	for i := range numIn {
-		t := fnType.In(i)
-		ids[i] = getTypeID(t)
+		ids[i] = getTypeID(fnType.In(i))
 	}
-	getArgs := func(scope Scope, args []reflect.Value) int {
-		for i := range ids {
+	fn := func(scope Scope, args []reflect.Value) int {
+		for i, id := range ids {
 			var ok bool
-			args[i], ok = scope.get(ids[i])
+			args[i], ok = scope.get(id)
 			if !ok {
-				throwErrDependencyNotFound(typeIDToType(ids[i]))
+				throwErrDependencyNotFound(typeIDToType(id))
 			}
 		}
 		return numIn
 	}
-	v, _ := getArgsFunc.LoadOrStore(fnType, getArgs)
-	fn := v.(func(Scope, []reflect.Value) int)
-	entry := &_GetArgsFuncCacheEntry{typ: fnType, fn: fn}
-	if slot, cacheable := typeIDCacheSlot(fnType); cacheable {
-		getArgsFuncCache[slot].Store(entry)
-	}
+	entry.getArgsFn.CompareAndSwap(nil, &fn)
+	loaded := entry.getArgsFn.Load()
 	getArgsFuncLastEntry.Store(entry)
-	return fn(scope, args)
+	return (*loaded)(scope, args)
 }
 
-const reflectValuesPoolMaxLen = 64
+const (
+	reflectValuesSmallLen   = 8
+	reflectValuesPoolMaxLen = 64
+)
+
+var reflectValuesSmallPool = sync.Pool{
+	New: func() any {
+		return new([reflectValuesSmallLen]reflect.Value)
+	},
+}
 
 var reflectValuesPool = sync.Pool{
 	New: func() any {
@@ -664,26 +843,29 @@ var reflectValuesPool = sync.Pool{
 	},
 }
 
-// call resolves the parameters of fnValue from the scope, invokes fnValue, and
-// returns its results. fnValue is a definition that already passed
-// validateDefinition — a valid, non-nil function returning at least one value
-// — so the invocation itself cannot fail on malformed input.
 func (scope Scope) call(fnValue reflect.Value) []reflect.Value {
 	fnType := fnValue.Type()
 	nArgs := fnType.NumIn()
 	if nArgs == 0 {
-		// A provider without parameters takes the direct path: reflect accepts
-		// a nil argument slice, so no pooled buffer is involved.
 		return fnValue.Call(nil)
 	}
-	// Use pool for small number of arguments
+	if nArgs <= reflectValuesSmallLen {
+		var local [reflectValuesSmallLen]reflect.Value
+		n := scope.getArgs(fnType, local[:nArgs])
+		ptr := reflectValuesSmallPool.Get().(*[reflectValuesSmallLen]reflect.Value)
+		copy(ptr[:n], local[:n])
+		rets := fnValue.Call(ptr[:n])
+		clear(ptr[:n])
+		reflectValuesSmallPool.Put(ptr)
+		return rets
+	}
 	if nArgs <= reflectValuesPoolMaxLen {
+		var local [reflectValuesPoolMaxLen]reflect.Value
+		n := scope.getArgs(fnType, local[:nArgs])
 		ptr := reflectValuesPool.Get().(*[reflectValuesPoolMaxLen]reflect.Value)
-		args := ptr[:nArgs]
-		n := scope.getArgs(fnType, args)
-		rets := fnValue.Call(args[:n])
-		// Release the resolved arguments before the buffer returns to the pool.
-		clear(args)
+		copy(ptr[:n], local[:n])
+		rets := fnValue.Call(ptr[:n])
+		clear(ptr[:n])
 		reflectValuesPool.Put(ptr)
 		return rets
 	}

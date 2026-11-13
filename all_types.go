@@ -7,13 +7,13 @@ import (
 
 func (s Scope) AllTypes() iter.Seq[reflect.Type] {
 	return func(yield func(reflect.Type) bool) {
-		if !yield(reflect.TypeFor[InjectStruct]()) {
+		if !yield(injectStructReflectType) {
 			return
 		}
-		if !yield(reflect.TypeFor[Fork]()) {
+		if !yield(forkReflectType) {
 			return
 		}
-		if !yield(reflect.TypeFor[Reset]()) {
+		if !yield(resetReflectType) {
 			return
 		}
 		for value := range s.values.iterMeta() {

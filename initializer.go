@@ -23,10 +23,8 @@ dscope lazy initialization theory:
 type _Initializer struct {
 	Def    any
 	result any
-	mu     sync.Mutex
-	// state publishes the result and records whether it contains multiple
-	// outputs. A release store publishes result before a reader observes the
-	// completed state.
+	// state publishes the result, tracks evaluation locking/contention, and
+	// records whether result holds multiple outputs.
 	state        atomic.Uint32
 	DefIsPointer bool
 }
@@ -34,6 +32,13 @@ type _Initializer struct {
 const (
 	initializerStateDone uint32 = 1 << iota
 	initializerStateMulti
+	initializerStateLocked
+	initializerStateWaiters
+)
+
+var (
+	initWaitMu  sync.Mutex
+	initWaiters = make(map[*_Initializer]chan struct{})
 )
 
 type _MultiResult struct {
@@ -44,50 +49,88 @@ type _MultiResult struct {
 func initInitializer(i *_Initializer, def any, isPointer bool) {
 	i.Def = def
 	i.DefIsPointer = isPointer
-	if isPointer {
-		definitionValue := reflect.ValueOf(def).Elem()
-		if definitionValue.Kind() == reflect.Interface {
-			var copiedValue reflect.Value
-			var iface any
-			if definitionValue.IsNil() {
-				copiedValue = reflect.Zero(definitionValue.Type())
-			} else {
-				copiedValue = definitionValue.Elem().Convert(definitionValue.Type())
-				iface = copiedValue.Interface()
-			}
-			i.result = &_MultiResult{
-				vals:   []reflect.Value{copiedValue},
-				ifaces: []any{iface},
-			}
-			i.state.Store(initializerStateDone | initializerStateMulti)
-		} else {
-			i.result = definitionValue.Interface()
-			i.state.Store(initializerStateDone)
-		}
+	if !isPointer {
+		return
 	}
+	definitionValue := reflect.ValueOf(def).Elem()
+	if definitionValue.Kind() == reflect.Interface {
+		var copiedValue reflect.Value
+		var iface any
+		if definitionValue.IsNil() {
+			copiedValue = reflect.Zero(definitionValue.Type())
+		} else {
+			copiedValue = definitionValue.Elem().Convert(definitionValue.Type())
+			iface = copiedValue.Interface()
+		}
+		i.result = &_MultiResult{
+			vals:   []reflect.Value{copiedValue},
+			ifaces: []any{iface},
+		}
+		i.state.Store(initializerStateDone | initializerStateMulti)
+		return
+	}
+	i.result = definitionValue.Interface()
+	i.state.Store(initializerStateDone)
 }
 
-// reset make the initializer re-evaluate Values
+// reset makes the initializer re-evaluate Values.
 func (s *_Initializer) reset() *_Initializer {
 	if s.DefIsPointer {
-		// no need to re-evaluate
 		return s
 	}
 	return &_Initializer{
-		// these fields recognize the provided type and def to get the values, so not changing
 		Def:          s.Def,
 		DefIsPointer: s.DefIsPointer,
 	}
 }
 
-func (i *_Initializer) evaluate(scope Scope) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	if i.state.Load()&initializerStateDone != 0 {
+func (i *_Initializer) releaseWaiters() {
+	initWaitMu.Lock()
+	ch := initWaiters[i]
+	delete(initWaiters, i)
+	initWaitMu.Unlock()
+	if ch != nil {
+		close(ch)
+	}
+}
+
+func (i *_Initializer) waitEvaluation() {
+	initWaitMu.Lock()
+	s := i.state.Load()
+	if s&initializerStateDone != 0 || s == 0 {
+		initWaitMu.Unlock()
 		return
 	}
+	ch, existed := initWaiters[i]
+	if !existed {
+		ch = make(chan struct{})
+		initWaiters[i] = ch
+	}
+	if s&initializerStateWaiters == 0 {
+		if !i.state.CompareAndSwap(s, s|initializerStateWaiters) {
+			if !existed {
+				delete(initWaiters, i)
+			}
+			initWaitMu.Unlock()
+			return
+		}
+	}
+	initWaitMu.Unlock()
+	<-ch
+}
+
+func (i *_Initializer) runProvider(scope Scope) {
+	completed := false
+	defer func() {
+		if !completed {
+			if prev := i.state.Swap(0); prev&initializerStateWaiters != 0 {
+				i.releaseWaiters()
+			}
+		}
+	}()
+
 	vals := scope.call(reflect.ValueOf(i.Def))
-	state := initializerStateDone
+	finalState := initializerStateDone
 	if len(vals) == 1 && vals[0].Kind() != reflect.Interface {
 		i.result = vals[0].Interface()
 	} else {
@@ -97,13 +140,30 @@ func (i *_Initializer) evaluate(scope Scope) {
 				ifaces[j] = vj.Interface()
 			}
 		}
-		state |= initializerStateMulti
+		finalState |= initializerStateMulti
 		i.result = &_MultiResult{
 			vals:   vals,
 			ifaces: ifaces,
 		}
 	}
-	i.state.Store(state)
+	completed = true
+	if prev := i.state.Swap(finalState); prev&initializerStateWaiters != 0 {
+		i.releaseWaiters()
+	}
+}
+
+func (i *_Initializer) evaluate(scope Scope) {
+	for {
+		s := i.state.Load()
+		if s&initializerStateDone != 0 {
+			return
+		}
+		if s == 0 && i.state.CompareAndSwap(0, initializerStateLocked) {
+			i.runProvider(scope)
+			return
+		}
+		i.waitEvaluation()
+	}
 }
 
 func (i *_Initializer) get(scope Scope, v _Value) reflect.Value {

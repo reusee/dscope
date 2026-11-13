@@ -31,13 +31,25 @@ dscope module method discovery theory:
 `
 
 func validateFiniteMethodsPointerChain(typ reflect.Type) {
-	visitedTypes := make(map[reflect.Type]struct{})
-	for typ.Kind() == reflect.Pointer {
-		if _, exists := visitedTypes[typ]; exists {
-			panic(errWith(ErrBadArgument, "recursive pointer type %v", typ))
+	if typ.Kind() != reflect.Pointer {
+		return
+	}
+	next := typ.Elem()
+	if next.Kind() != reflect.Pointer {
+		return
+	}
+	slow := next
+	fast := next.Elem()
+	for fast.Kind() == reflect.Pointer {
+		if slow == fast {
+			panic(errWith(ErrBadArgument, "recursive pointer type %v", slow))
 		}
-		visitedTypes[typ] = struct{}{}
-		typ = typ.Elem()
+		nextFast := fast.Elem()
+		if nextFast.Kind() != reflect.Pointer {
+			return
+		}
+		slow = slow.Elem()
+		fast = nextFast.Elem()
 	}
 }
 
